@@ -791,13 +791,21 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: ALPN is configured. Checking for negotiated protocol", handler);
 
-            if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
-                aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
-                memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
-                memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
-                sc_handler->protocol.len = alpn_result.ProtocolIdSize;
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS, "id=%p: negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+            if (status == SEC_E_OK) {
+                if (alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
+                    aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
+                    memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
+                    memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
+                    sc_handler->protocol.len = alpn_result.ProtocolIdSize;
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_TLS, "id=%p: negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+                } else {
+                    /* this is not an error */
+                    AWS_LOGF_INFO(
+                        AWS_LS_IO_TLS,
+                        "id=%p: ALPN - no protocol was negotiated during TLS handshake",
+                        handler);
+                }
             } else {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
@@ -1082,13 +1090,21 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
 
-            if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
-                aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
-                memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
-                memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
-                sc_handler->protocol.len = alpn_result.ProtocolIdSize;
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS, "id=%p: Negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+            if (status == SEC_E_OK) {
+                if (alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
+                    aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
+                    memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
+                    memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
+                    sc_handler->protocol.len = alpn_result.ProtocolIdSize;
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_TLS, "id=%p: Negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+                } else {
+                    /* this is not an error */
+                    AWS_LOGF_INFO(
+                        AWS_LS_IO_TLS,
+                        "id=%p: ALPN - no negotiated protocol was returned by remote endpoint",
+                        handler);
+                }
             } else {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
