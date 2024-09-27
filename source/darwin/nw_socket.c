@@ -256,7 +256,8 @@ static int s_setup_socket_params(
                           default:
                               AWS_LOGF_ERROR(
                                   AWS_LS_IO_SOCKET,
-                                  "id=%p options=%p: Unrecognized minimum TLS version used for parameter creation.",
+                                  "id=%p options=%p: Unrecognized minimum TLS version used for parameter creation. "
+                                  "System default minimum TLS version will be used.",
                                   (void *)nw_socket,
                                   (void *)options);
                               break;
