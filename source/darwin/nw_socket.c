@@ -211,6 +211,17 @@ static int s_setup_socket_params(
                 struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
                 struct dispatch_loop *dispatch_loop = nw_socket->event_loop->impl_data;
 
+                /* This check cannot be done within the TLS options block and must be handled here. */
+                if (transport_ctx->minimum_tls_version == AWS_IO_SSLv3) {
+                    AWS_LOGF_ERROR(
+                        AWS_LS_IO_SOCKET,
+                        "id=%p options=%p: Apple Network Framework does not support SSLv3 due to its "
+                        "deprecated status and known security flaws.",
+                        (void *)nw_socket,
+                        (void *)options);
+                    return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+                }
+
                 nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     // TLS options block
                     ^(nw_protocol_options_t tls_options) {
@@ -239,11 +250,15 @@ static int s_setup_socket_params(
                                   sec_options, tls_protocol_version_TLSv13);
                               break;
                           case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                              sec_protocol_options_set_min_tls_protocol_version(
-                                  sec_options, tls_protocol_version_TLSv12);
+                              /* not assigning a min tls protocol version automatically uses the
+                               * system default version. */
                               break;
-                          case AWS_IO_SSLv3:
                           default:
+                              AWS_LOGF_ERROR(
+                                  AWS_LS_IO_SOCKET,
+                                  "id=%p options=%p: Unrecognized minimum TLS version used for parameter creation.",
+                                  (void *)nw_socket,
+                                  (void *)options);
                               break;
                       }
 
