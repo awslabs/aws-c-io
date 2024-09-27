@@ -543,7 +543,7 @@ AWS_IO_API int aws_tls_ctx_options_set_secitem_options(
     struct aws_secitem_options *secitem_options);
 
 /**
- * Cleans up resources allocated by init_* functions
+ * Cleans up resources in secitem_options.
  */
 AWS_IO_API void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_options);
 
