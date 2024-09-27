@@ -142,7 +142,7 @@ struct nw_socket {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     nw_connection_t nw_connection;
-    nw_parameters_t socket_options_to_params;
+    nw_parameters_t nw_parameters;
     struct aws_linked_list read_queue;
     int last_error;
     aws_socket_on_readable_fn *on_readable;
@@ -197,6 +197,13 @@ static int s_setup_socket_params(
     struct nw_socket *nw_socket,
     const struct aws_socket_options *options,
     struct aws_tls_connection_options *tls_ctx_options) {
+
+    /* If we already have parameters set, release them before re-establishing new parameters */
+    if (nw_socket->nw_parameters != NULL) {
+        nw_release(nw_socket->nw_parameters);
+        nw_socket->nw_parameters = NULL;
+    }
+
     if (options->type == AWS_SOCKET_STREAM) {
         if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
             /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
@@ -204,7 +211,7 @@ static int s_setup_socket_params(
                 struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
                 struct dispatch_loop *dispatch_loop = nw_socket->event_loop->impl_data;
 
-                nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
+                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     // TLS options block
                     ^(nw_protocol_options_t tls_options) {
                       /* Obtain the security protocol options from the tls_options. Changes made directly
@@ -335,7 +342,7 @@ static int s_setup_socket_params(
                     });
             } else {
                 // TLS options are not set and the TLS options block should be disabled.
-                nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
+                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     // TLS options Block disabled
                     NW_PARAMETERS_DISABLE_PROTOCOL,
                     // TCP options Block
@@ -345,8 +352,7 @@ static int s_setup_socket_params(
             }
         } else if (options->domain == AWS_SOCKET_LOCAL) {
 #if defined(TARGET_OS_OSX) && TARGET_OS_OSX
-            nw_socket->socket_options_to_params =
-                nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+            nw_socket->nw_parameters = nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
 #else  /* TARGET_OS_OSX */
             /* AF_LOCAL is not supported on iOS with Network Framework. TCP or UDP should be used instead. */
             AWS_LOGF_ERROR(
@@ -358,7 +364,7 @@ static int s_setup_socket_params(
 #endif /* !TARGET_OS_OSX */
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
-        nw_socket->socket_options_to_params = nw_parameters_create_secure_udp(
+        nw_socket->nw_parameters = nw_parameters_create_secure_udp(
             NW_PARAMETERS_DISABLE_PROTOCOL,
             // TCP options Block
             ^(nw_protocol_options_t tcp_options) {
@@ -366,7 +372,7 @@ static int s_setup_socket_params(
             });
     }
 
-    if (!nw_socket->socket_options_to_params) {
+    if (!nw_socket->nw_parameters) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p options=%p: failed to create nw_parameters_t for nw_socket.",
@@ -375,7 +381,7 @@ static int s_setup_socket_params(
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
     /* allow a local address to be used by multiple parameters. */
-    nw_parameters_set_reuse_local_address(nw_socket->socket_options_to_params, true);
+    nw_parameters_set_reuse_local_address(nw_socket->nw_parameters, true);
 
     return AWS_OP_SUCCESS;
 }
@@ -479,9 +485,9 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     }
 
     /* Network Framework cleanup */
-    if (nw_socket->socket_options_to_params) {
-        nw_release(nw_socket->socket_options_to_params);
-        nw_socket->socket_options_to_params = NULL;
+    if (nw_socket->nw_parameters) {
+        nw_release(nw_socket->nw_parameters);
+        nw_socket->nw_parameters = NULL;
     }
 
     if (nw_socket->nw_connection) {
@@ -597,11 +603,16 @@ static int s_socket_connect_fn(
     }
 
     if (tls_connection_options->ctx) {
+        if (nw_socket->tls_ctx) {
+            aws_tls_ctx_release(nw_socket->tls_ctx);
+            nw_socket->tls_ctx = NULL;
+        }
         nw_socket->tls_ctx = tls_connection_options->ctx;
         aws_tls_ctx_acquire(nw_socket->tls_ctx);
     }
 
     nw_socket->event_loop = event_loop;
+
     if (s_setup_socket_params(nw_socket, &socket->options, tls_connection_options)) {
         return AWS_OP_ERR;
     }
@@ -691,7 +702,7 @@ static int s_socket_connect_fn(
         return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
-    socket->io_handle.data.handle = nw_connection_create(endpoint, nw_socket->socket_options_to_params);
+    socket->io_handle.data.handle = nw_connection_create(endpoint, nw_socket->nw_parameters);
     nw_socket->nw_connection = socket->io_handle.data.handle;
     nw_release(endpoint);
 
@@ -909,7 +920,7 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
         return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
-    nw_parameters_set_local_endpoint(nw_socket->socket_options_to_params, endpoint);
+    nw_parameters_set_local_endpoint(nw_socket->nw_parameters, endpoint);
     nw_release(endpoint);
 
     if (socket->options.type == AWS_SOCKET_STREAM) {
@@ -946,7 +957,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    socket->io_handle.data.handle = nw_listener_create(nw_socket->socket_options_to_params);
+    socket->io_handle.data.handle = nw_listener_create(nw_socket->nw_parameters);
     nw_retain(socket->io_handle.data.handle);
     nw_socket->is_listener = true;
 
@@ -1083,15 +1094,14 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 }
 
 static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_direction dir) {
-    // DEBUG WIP does this need implementation?
     (void)dir;
     return s_socket_close_fn(socket);
 }
 
-/* DEBUG WIP REMOVE THIS OR SETUP s_setup_socket_params to get TLS options */
 static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_socket_options *options) {
     if (socket->options.domain != options->domain || socket->options.type != options->type) {
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        return AWS_OP_ERR;
     }
 
     AWS_LOGF_DEBUG(
@@ -1110,13 +1120,7 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
 
     struct nw_socket *nw_socket = socket->impl;
 
-    /* If nw_parameters_t has been previously set, they need to be released prior to assinging a new one */
-    if (nw_socket->socket_options_to_params) {
-        nw_release(nw_socket->socket_options_to_params);
-        nw_socket->socket_options_to_params = NULL;
-    }
-
-    return s_setup_socket_params(nw_socket, options, NULL);
+    return AWS_OP_SUCCESS;
 }
 
 static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aws_event_loop *event_loop) {
