@@ -55,6 +55,8 @@ static struct aws_event_loop_vtable s_vtable = {
 
 enum aws_ionotify_event_loop_state { AIELS_BASE_UNINITIALIZED, AIELS_LOOP_STOPPED, AIELS_LOOP_STARTED };
 
+enum aws_ionotify_subscription_state { AISS_INITIATED, AISS_SIGEVENT_REGISTERED };
+
 struct aws_ionotify_event_loop {
     struct aws_allocator *allocator;
     struct aws_event_loop base;
@@ -95,6 +97,7 @@ struct aws_ionotify_handle_data {
     struct aws_event_loop *event_loop;
     aws_event_loop_on_event_fn *on_event;
     int events_subscribed;
+    int events_to_resubscribe;
     /* A QNX event notification can use only 4 bits for I/O event types (input data, output data, out-of-band data, and
      * extended flag indicating that additional events happened). So, the latest_io_event_types field contains these
      * additional event types converted to CRT event loop domain (enum aws_io_event_type). */
@@ -110,6 +113,7 @@ struct aws_ionotify_handle_data {
     int handle_id;
     /* False when handle is unsubscribed, but this struct hasn't been cleaned up yet. */
     bool is_subscribed;
+    enum aws_ionotify_subscription_state subscription_state;
 };
 
 /* SI_NOTIFY is a QNX special sigev code requesting resource managers to return active event type along with the event
@@ -420,11 +424,11 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     aws_task_scheduler_cancel_task(&ionotify_event_loop->scheduler, task);
 }
 
-/* Map ionotify_handle_data to internal ID. */
+/* Map aws_ionotify_handle_data to internal ID. */
 static int s_add_handle(
     struct aws_ionotify_event_loop *ionotify_event_loop,
-    struct aws_ionotify_handle_data *ionotify_handle_data) {
-    AWS_FATAL_ASSERT(s_is_on_callers_thread(ionotify_handle_data->event_loop));
+    struct aws_ionotify_handle_data *handle_data) {
+    AWS_FATAL_ASSERT(s_is_on_callers_thread(handle_data->event_loop));
 
     /* Special constant, _NOTIFY_DATA_MASK, limits the maximum value that can be used as user data in I/O events. */
     int max_handle_id = _NOTIFY_DATA_MASK;
@@ -433,7 +437,7 @@ static int s_add_handle(
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: Maximum number of registered handles reached",
-            (void *)ionotify_handle_data->event_loop);
+            (void *)handle_data->event_loop);
         return AWS_OP_ERR;
     }
 
@@ -452,9 +456,9 @@ static int s_add_handle(
         }
     } while (elem == NULL);
 
-    ionotify_handle_data->handle_id = next_handle_id;
+    handle_data->handle_id = next_handle_id;
     ionotify_event_loop->last_handle_id = next_handle_id;
-    elem->value = ionotify_handle_data;
+    elem->value = handle_data;
 
     return AWS_OP_SUCCESS;
 }
@@ -465,13 +469,13 @@ struct aws_ionotify_handle_data *s_find_handle(
     int handle_id) {
     AWS_FATAL_ASSERT(s_is_on_callers_thread(event_loop));
     (void)event_loop;
-    struct aws_ionotify_handle_data *ionotify_handle_data = NULL;
+    struct aws_ionotify_handle_data *handle_data = NULL;
     struct aws_hash_element *elem = NULL;
     aws_hash_table_find(&ionotify_event_loop->handles, (void *)handle_id, &elem);
     if (elem != NULL) {
-        ionotify_handle_data = elem->value;
+        handle_data = elem->value;
     }
-    return ionotify_handle_data;
+    return handle_data;
 }
 
 static void s_remove_handle(
@@ -483,135 +487,50 @@ static void s_remove_handle(
     aws_hash_table_remove(&ionotify_event_loop->handles, (void *)handle_id, NULL, NULL);
 }
 
-/* Scheduled task that performs the actual subscription using ionotify. */
-static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
-    (void)task;
+static void s_process_ionotify(
+    struct aws_ionotify_event_loop *ionotify_event_loop,
+    struct aws_ionotify_handle_data *handle_data,
+    int event_mask) {
 
-    /* If task was cancelled, nothing to do. */
-    if (status == AWS_TASK_STATUS_CANCELED) {
-        return;
-    }
-
-    struct aws_ionotify_handle_data *ionotify_handle_data = user_data;
-    struct aws_event_loop *event_loop = ionotify_handle_data->event_loop;
-    struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
-
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "id=%p fd=%d: Subscribing to events, event mask is %d",
-        (void *)event_loop,
-        ionotify_handle_data->handle->data.fd,
-        ionotify_handle_data->events_subscribed);
-
-    /* Map ionotify_handle_data to ID. This ID will be returned with the I/O events from ionotify. */
-    if (ionotify_handle_data->handle_id == 0) {
-        s_add_handle(ionotify_event_loop, ionotify_handle_data);
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p fd=%d: Mapped fd to handle ID %d",
-            (void *)event_loop,
-            ionotify_handle_data->handle->data.fd,
-            ionotify_handle_data->handle_id);
-        /* I/O events from ionotify will be delivered as pulses with a user-defined 28-bit ID.
-         * SIGEV_PULSE_PRIO_INHERIT means the thread that receives the pulse will run at the initial priority of the
-         * process. */
-        short pulse_priority = SIGEV_PULSE_PRIO_INHERIT;
-        short pulse_sigev_code = IO_EVENT_PULSE_SIGEV_CODE;
-        SIGEV_PULSE_INT_INIT(
-            &ionotify_handle_data->event,
-            ionotify_handle_data->pulse_connection_id,
-            pulse_priority,
-            pulse_sigev_code,
-            ionotify_handle_data->handle_id);
-
-        /* From the iomgr.h header:
-         *   If extended conditions are requested, and they need to be returned in an armed event, the negative of the
-         *   satisfied conditions are returned in (io_notify_t).i.event.sigev_code.
-         * Extended conditions are the ones starting with _NOTIFY_CONDE_.
-         * For that feature to work, special bits in the event structure must be set. */
-        ionotify_handle_data->event.sigev_notify |= SIGEV_FLAG_CODE_UPDATEABLE;
-        SIGEV_MAKE_UPDATEABLE(&ionotify_handle_data->event);
-
-        /* The application must register the event by calling MsgRegisterEvent() with the fd processed in ionotify().
-         * See:
-         * https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/i/ionotify.html
-         * https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/m/msgregisterevent.html
-         *
-         * It's enough to register an event only once and then reuse it on followup ionotify rearming calls.
-         * NOTE: If you create a new sigevent for the same file descriptor, with the same flags, you HAVE to register
-         * it again. */
-        int rc = MsgRegisterEvent(&ionotify_handle_data->event, ionotify_handle_data->handle->data.fd);
-        int errno_value = errno;
-        if (rc == -1) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_EVENT_LOOP,
-                "id=%p fd=%d: Failed to register sigevent, errno %d",
-                (void *)event_loop,
-                ionotify_handle_data->handle->data.fd,
-                errno_value);
-            /* With sigevent not registered in the system, I/O events from QNX resource managers can't be delivered
-             * to the event loop. Notify about error via a callback and stop subscribing. */
-            ionotify_handle_data->on_event(
-                event_loop, ionotify_handle_data->handle, AWS_IO_EVENT_TYPE_ERROR, ionotify_handle_data->user_data);
-            return;
-        }
-    } else if (!ionotify_handle_data->is_subscribed) {
-        /* This is a resubscribing task, but unsubscribe happened, so ignore it. */
-        return;
-    }
-
-    ionotify_handle_data->is_subscribed = true;
-
-    /* Everyone is always registered for errors. */
-    int event_mask = _NOTIFY_COND_EXTEN | _NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL;
-    if (ionotify_handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
-        event_mask |= _NOTIFY_COND_INPUT;
-        event_mask |= _NOTIFY_COND_OBAND;
-    }
-    if (ionotify_handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
-        event_mask |= _NOTIFY_COND_OUTPUT;
-    }
+    struct aws_event_loop *event_loop = &ionotify_event_loop->base;
 
     /* Arm resource manager associated with a given file descriptor in edge-triggered mode.
      * After this call, a corresponding resource manager starts sending events. */
-    int rc = ionotify(
-        ionotify_handle_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &ionotify_handle_data->event);
+    int rc = ionotify(handle_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, &handle_data->event);
     int errno_value = errno;
     if (rc == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p fd=%d: Failed to subscribe to I/O events, errno %d",
             (void *)event_loop,
-            ionotify_handle_data->handle->data.fd,
+            handle_data->handle->data.fd,
             errno_value);
-        ionotify_handle_data->on_event(
-            event_loop, ionotify_handle_data->handle, AWS_IO_EVENT_TYPE_ERROR, ionotify_handle_data->user_data);
+        handle_data->on_event(event_loop, handle_data->handle, AWS_IO_EVENT_TYPE_ERROR, handle_data->user_data);
         return;
     }
 
     /* ionotify can return active conditions if they are among specified. Send notification to kick-start processing fd
      * if it has desired conditions. */
 
-    /* User-provided field has no space for extended conditions, so set field in ionotify_handle_data. */
+    /* User-provided field has no space for extended conditions, so set field in aws_ionotify_handle_data. */
     if (rc & (_NOTIFY_CONDE_ERR | _NOTIFY_CONDE_NVAL)) {
-        ionotify_handle_data->latest_io_event_types |= AWS_IO_EVENT_TYPE_ERROR;
+        handle_data->latest_io_event_types |= AWS_IO_EVENT_TYPE_ERROR;
     }
     if (rc & _NOTIFY_CONDE_HUP) {
-        ionotify_handle_data->latest_io_event_types |= AWS_IO_EVENT_TYPE_CLOSED;
+        handle_data->latest_io_event_types |= AWS_IO_EVENT_TYPE_CLOSED;
     }
 
-    if ((rc & (_NOTIFY_COND_OBAND | _NOTIFY_COND_INPUT | _NOTIFY_COND_OUTPUT)) ||
-        ionotify_handle_data->latest_io_event_types) {
+    if ((rc & (_NOTIFY_COND_OBAND | _NOTIFY_COND_INPUT | _NOTIFY_COND_OUTPUT)) || handle_data->latest_io_event_types) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p fd=%d: Sending a kick-start pulse because fd has desired I/O conditions (rc is %d)",
             (void *)event_loop,
-            ionotify_handle_data->handle->data.fd,
+            handle_data->handle->data.fd,
             rc);
         /* Set _NOTIFY_COND_MASK low bits to ID, the same as ionotify does, so the main loop can process all pulses in
          * unified manner. */
         int kick_start_event_mask = rc & _NOTIFY_COND_MASK;
-        kick_start_event_mask |= ionotify_handle_data->handle_id;
+        kick_start_event_mask |= handle_data->handle_id;
         int send_rc = MsgSendPulse(
             ionotify_event_loop->pulse_connection_id, -1, IO_EVENT_KICKSTART_SIGEV_CODE, kick_start_event_mask);
         if (send_rc == -1) {
@@ -619,7 +538,7 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
                 AWS_LS_IO_EVENT_LOOP,
                 "id=%p fd=%d: Failed to send a kick-start pulse",
                 (void *)event_loop,
-                ionotify_handle_data->handle->data.fd);
+                handle_data->handle->data.fd);
         }
 
         /* QNX resource manager for POSIX pipes has a bug/undocumented behavior when under specific conditions it stops
@@ -644,19 +563,148 @@ static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_ta
          */
         int active_events = rc & (_NOTIFY_COND_OBAND | _NOTIFY_COND_INPUT | _NOTIFY_COND_OUTPUT);
         if (active_events) {
-            rc = ionotify(ionotify_handle_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, active_events, NULL);
+            rc = ionotify(handle_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, active_events, NULL);
             if (rc == -1) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_EVENT_LOOP,
                     "id=%p fd=%d: Failed to disarm events",
                     (void *)event_loop,
-                    ionotify_handle_data->handle->data.fd);
+                    handle_data->handle->data.fd);
             }
         }
     }
 }
 
-/* This callback is called by I/O operations to notify about their results. */
+/* Scheduled task that performs the actual subscription using ionotify. */
+static void s_subscribe_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+
+    /* If task was cancelled, nothing to do. */
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        return;
+    }
+
+    struct aws_ionotify_handle_data *handle_data = user_data;
+    struct aws_event_loop *event_loop = handle_data->event_loop;
+    struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p fd=%d: Subscribing to events, event mask is %d",
+        (void *)event_loop,
+        handle_data->handle->data.fd,
+        handle_data->events_subscribed);
+
+    /* Map aws_ionotify_handle_data to ID. This ID will be returned with the I/O events from ionotify. */
+    if (s_add_handle(ionotify_event_loop, handle_data)) {
+        return;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p fd=%d: Mapped fd to handle ID %d",
+        (void *)event_loop,
+        handle_data->handle->data.fd,
+        handle_data->handle_id);
+    /* I/O events from ionotify will be delivered as pulses with a user-defined 28-bit ID.
+     * SIGEV_PULSE_PRIO_INHERIT means the thread that receives the pulse will run at the initial priority of the
+     * process. */
+    short pulse_priority = SIGEV_PULSE_PRIO_INHERIT;
+    short pulse_sigev_code = IO_EVENT_PULSE_SIGEV_CODE;
+    SIGEV_PULSE_INT_INIT(
+        &handle_data->event,
+        handle_data->pulse_connection_id,
+        pulse_priority,
+        pulse_sigev_code,
+        handle_data->handle_id);
+
+    /* From the iomgr.h header:
+     *   If extended conditions are requested, and they need to be returned in an armed event, the negative of the
+     *   satisfied conditions are returned in (io_notify_t).i.event.sigev_code.
+     * Extended conditions are the ones starting with _NOTIFY_CONDE_.
+     * For that feature to work, special bits in the event structure must be set. */
+    handle_data->event.sigev_notify |= SIGEV_FLAG_CODE_UPDATEABLE;
+    SIGEV_MAKE_UPDATEABLE(&handle_data->event);
+
+    /* The application must register the event by calling MsgRegisterEvent() with the fd processed in ionotify().
+     * See:
+     * https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/i/ionotify.html
+     * https://www.qnx.com/developers/docs/8.0/com.qnx.doc.neutrino.lib_ref/topic/m/msgregisterevent.html
+     *
+     * It's enough to register an event only once and then reuse it on followup ionotify rearming calls.
+     * NOTE: If you create a new sigevent for the same file descriptor, with the same flags, you HAVE to register
+     * it again. */
+    int rc = MsgRegisterEvent(&handle_data->event, handle_data->handle->data.fd);
+    int errno_value = errno;
+    if (rc == -1) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p fd=%d: Failed to register sigevent, errno %d",
+            (void *)event_loop,
+            handle_data->handle->data.fd,
+            errno_value);
+        /* With sigevent not registered in the system, I/O events can't be delivered to the event loop. Notify about
+         * error via a callback and stop subscribing. */
+        handle_data->on_event(event_loop, handle_data->handle, AWS_IO_EVENT_TYPE_ERROR, handle_data->user_data);
+        return;
+    }
+
+    handle_data->subscription_state = AISS_SIGEVENT_REGISTERED;
+
+    handle_data->is_subscribed = true;
+
+    /* Everyone is always registered for errors. */
+    int event_mask = _NOTIFY_COND_EXTEN | _NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL;
+    if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
+        event_mask |= _NOTIFY_COND_INPUT;
+        event_mask |= _NOTIFY_COND_OBAND;
+    }
+    if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
+        event_mask |= _NOTIFY_COND_OUTPUT;
+    }
+
+    s_process_ionotify(ionotify_event_loop, handle_data, event_mask);
+}
+
+static void s_resubscribe_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+
+    /* If task was cancelled, nothing to do. */
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        return;
+    }
+
+    struct aws_ionotify_handle_data *handle_data = user_data;
+    struct aws_event_loop *event_loop = handle_data->event_loop;
+    struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
+
+    if (!handle_data->is_subscribed) {
+        return;
+    }
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p fd=%d: Resubscribing to events, event mask is %d",
+        (void *)event_loop,
+        handle_data->handle->data.fd,
+        handle_data->events_to_resubscribe);
+
+    handle_data->is_subscribed = true;
+
+    int event_mask = 0;
+    if (handle_data->events_to_resubscribe & AWS_IO_EVENT_TYPE_READABLE) {
+        event_mask |= _NOTIFY_COND_INPUT;
+        event_mask |= _NOTIFY_COND_OBAND;
+    }
+    if (handle_data->events_to_resubscribe & AWS_IO_EVENT_TYPE_WRITABLE) {
+        event_mask |= _NOTIFY_COND_OUTPUT;
+    }
+
+    handle_data->events_to_resubscribe = 0;
+
+    s_process_ionotify(ionotify_event_loop, handle_data, event_mask);
+}
+
 static void s_process_io_result(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -665,9 +713,9 @@ static void s_process_io_result(
     AWS_FATAL_ASSERT(s_is_on_callers_thread(event_loop));
 
     AWS_FATAL_ASSERT(handle->additional_data);
-    struct aws_ionotify_handle_data *ionotify_handle_data = handle->additional_data;
+    struct aws_ionotify_handle_data *handle_data = handle->additional_data;
 
-    if (!ionotify_handle_data->is_subscribed) {
+    if (!handle_data->is_subscribed) {
         return;
     }
 
@@ -685,7 +733,7 @@ static void s_process_io_result(
 
     int event_types = 0;
     if (io_op_result->error_code == AWS_IO_SOCKET_CLOSED) {
-        ionotify_handle_data->latest_io_event_types = AWS_IO_EVENT_TYPE_CLOSED;
+        handle_data->latest_io_event_types = AWS_IO_EVENT_TYPE_CLOSED;
     }
     if (io_op_result->read_error_code == AWS_IO_READ_WOULD_BLOCK) {
         event_types |= AWS_IO_EVENT_TYPE_READABLE;
@@ -698,33 +746,31 @@ static void s_process_io_result(
     if (event_types != 0) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p fd=%d: Got EWOULDBLOCK, rearming fd", (void *)event_loop, handle->data.fd);
-        /* We're on the event loop thread, just schedule subscribing task. */
-        ionotify_handle_data->events_subscribed = event_types;
+        /* Mark a newly appeared event for resubscribing and reschedule the resubscribing task in case it's already
+         * scheduled. */
+        handle_data->events_to_resubscribe |= event_types;
         struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
-        aws_task_scheduler_cancel_task(&ionotify_event_loop->scheduler, &ionotify_handle_data->resubscribe_task);
-        aws_task_scheduler_schedule_now(&ionotify_event_loop->scheduler, &ionotify_handle_data->resubscribe_task);
+        aws_task_scheduler_cancel_task(&ionotify_event_loop->scheduler, &handle_data->resubscribe_task);
+        aws_task_scheduler_schedule_now(&ionotify_event_loop->scheduler, &handle_data->resubscribe_task);
     }
 
     /* Notify event loop of error conditions. */
-    if (ionotify_handle_data->latest_io_event_types != 0) {
+    if (handle_data->latest_io_event_types != 0) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p fd=%d: fd errored, sending UPDATE_ERROR pulse",
             (void *)event_loop,
-            ionotify_handle_data->handle->data.fd);
+            handle_data->handle->data.fd);
         struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
         int send_rc = MsgSendPulse(
-            ionotify_event_loop->pulse_connection_id,
-            -1,
-            IO_EVENT_UPDATE_ERROR_SIGEV_CODE,
-            ionotify_handle_data->handle_id);
+            ionotify_event_loop->pulse_connection_id, -1, IO_EVENT_UPDATE_ERROR_SIGEV_CODE, handle_data->handle_id);
         int errno_value = errno;
         if (send_rc == -1) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_EVENT_LOOP,
                 "id=%p fd=%d: Failed to send UPDATE_ERROR pulse, errno %d",
                 (void *)event_loop,
-                ionotify_handle_data->handle->data.fd,
+                handle_data->handle->data.fd,
                 errno_value);
         }
     }
@@ -792,56 +838,53 @@ static int s_subscribe_to_io_events(
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP, "id=%p fd=%d: Initiate subscription to events", (void *)event_loop, handle->data.fd);
-    struct aws_ionotify_handle_data *ionotify_handle_data =
+    struct aws_ionotify_handle_data *handle_data =
         aws_mem_calloc(event_loop->alloc, 1, sizeof(struct aws_ionotify_handle_data));
-    handle->additional_data = ionotify_handle_data;
+    handle->additional_data = handle_data;
 
-    ionotify_handle_data->alloc = event_loop->alloc;
-    ionotify_handle_data->handle = handle;
-    ionotify_handle_data->event_loop = event_loop;
-    ionotify_handle_data->on_event = on_event;
-    ionotify_handle_data->events_subscribed = events;
-    ionotify_handle_data->pulse_connection_id = ionotify_event_loop->pulse_connection_id;
-    ionotify_handle_data->user_data = user_data;
-    ionotify_handle_data->handle->update_io_result = s_update_io_result;
+    handle_data->alloc = event_loop->alloc;
+    handle_data->handle = handle;
+    handle_data->event_loop = event_loop;
+    handle_data->on_event = on_event;
+    handle_data->events_subscribed = events;
+    handle_data->pulse_connection_id = ionotify_event_loop->pulse_connection_id;
+    handle_data->user_data = user_data;
+    handle_data->handle->update_io_result = s_update_io_result;
 
-    aws_task_init(
-        &ionotify_handle_data->resubscribe_task,
-        s_subscribe_task,
-        ionotify_handle_data,
-        "ionotify_event_loop_resubscribe");
+    aws_task_init(&handle_data->resubscribe_task, s_resubscribe_task, handle_data, "ionotify_event_loop_resubscribe");
 
-    aws_task_init(
-        &ionotify_handle_data->subscribe_task, s_subscribe_task, ionotify_handle_data, "ionotify_event_loop_subscribe");
-    s_schedule_task_now(event_loop, &ionotify_handle_data->subscribe_task);
+    aws_task_init(&handle_data->subscribe_task, s_subscribe_task, handle_data, "ionotify_event_loop_subscribe");
+    s_schedule_task_now(event_loop, &handle_data->subscribe_task);
 
     return AWS_OP_SUCCESS;
 }
 
 static void s_free_io_event_resources(void *user_data) {
     struct aws_ionotify_handle_data *handle_data = user_data;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "Releasing ionotify_handle_data at %p", user_data);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "Releasing aws_ionotify_handle_data at %p", user_data);
     aws_mem_release(handle_data->alloc, (void *)handle_data);
 }
 
 static void s_unsubscribe_cleanup_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     (void)status;
-    struct aws_ionotify_handle_data *ionotify_handle_data = (struct aws_ionotify_handle_data *)arg;
+    struct aws_ionotify_handle_data *handle_data = (struct aws_ionotify_handle_data *)arg;
 
-    int rc = MsgUnregisterEvent(&ionotify_handle_data->event);
-    int errno_value = errno;
-    if (rc == -1) {
-        /* Not much can be done here, so just log error. */
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p fd=%d: Failed to unregister sigevent, errno %d",
-            (void *)ionotify_handle_data->event_loop,
-            ionotify_handle_data->handle->data.fd,
-            errno_value);
+    if (handle_data->subscription_state == AISS_SIGEVENT_REGISTERED) {
+        int rc = MsgUnregisterEvent(&handle_data->event);
+        int errno_value = errno;
+        if (rc == -1) {
+            /* Not much can be done at this point, just log the error. */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p fd=%d: Failed to unregister sigevent, errno %d",
+                (void *)handle_data->event_loop,
+                handle_data->handle->data.fd,
+                errno_value);
+        }
     }
 
-    s_free_io_event_resources(ionotify_handle_data);
+    s_free_io_event_resources(handle_data);
 }
 
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
@@ -850,46 +893,47 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
     struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
 
     AWS_FATAL_ASSERT(handle->additional_data);
-    struct aws_ionotify_handle_data *ionotify_handle_data = handle->additional_data;
+    struct aws_ionotify_handle_data *handle_data = handle->additional_data;
 
     /* Disarm resource manager for a given fd. */
     int event_mask = _NOTIFY_COND_EXTEN | _NOTIFY_CONDE_ERR | _NOTIFY_CONDE_HUP | _NOTIFY_CONDE_NVAL;
-    event_mask |= _NOTIFY_COND_INPUT | _NOTIFY_CONDE_RDNORM | _NOTIFY_COND_OBAND;
-    event_mask |= _NOTIFY_COND_OUTPUT | _NOTIFY_CONDE_WRNORM;
-    int rc = ionotify(ionotify_handle_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, NULL);
+    if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_READABLE) {
+        event_mask |= _NOTIFY_COND_INPUT;
+        event_mask |= _NOTIFY_COND_OBAND;
+    }
+    if (handle_data->events_subscribed & AWS_IO_EVENT_TYPE_WRITABLE) {
+        event_mask |= _NOTIFY_COND_OUTPUT;
+    }
+    int rc = ionotify(handle_data->handle->data.fd, _NOTIFY_ACTION_EDGEARM, event_mask, NULL);
     int errno_value = errno;
     if (rc == -1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p fd=%d: Failed to unsubscribe from events, errno %d",
             (void *)event_loop,
-            ionotify_handle_data->handle->data.fd,
+            handle_data->handle->data.fd,
             errno_value);
-        return aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
     }
 
     /* We can't clean up yet, because we have schedule tasks and more events to process,
      * mark it as unsubscribed and schedule a cleanup task. */
-    ionotify_handle_data->is_subscribed = false;
+    handle_data->is_subscribed = false;
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p fd=%d: Removing from handles map using ID %d",
         (void *)event_loop,
         handle->data.fd,
-        ionotify_handle_data->handle_id);
-    s_remove_handle(event_loop, ionotify_event_loop, ionotify_handle_data->handle_id);
+        handle_data->handle_id);
+    s_remove_handle(event_loop, ionotify_event_loop, handle_data->handle_id);
 
     handle->additional_data = NULL;
     handle->update_io_result = NULL;
 
-    /* There might be pending tasks for ionotify_handle_data, so put a cleanup task. */
+    /* There might be pending tasks for handle_data, so put a cleanup task. */
     aws_task_init(
-        &ionotify_handle_data->cleanup_task,
-        s_unsubscribe_cleanup_task,
-        ionotify_handle_data,
-        "ionotify_event_loop_unsubscribe_cleanup");
-    s_schedule_task_now(event_loop, &ionotify_handle_data->cleanup_task);
+        &handle_data->cleanup_task, s_unsubscribe_cleanup_task, handle_data, "ionotify_event_loop_unsubscribe_cleanup");
+    s_schedule_task_now(event_loop, &handle_data->cleanup_task);
 
     return AWS_OP_SUCCESS;
 }
@@ -977,8 +1021,8 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Got pulse for handle ID %d", (void *)event_loop, handle_id);
 
     struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
-    struct aws_ionotify_handle_data *ionotify_handle_data = s_find_handle(event_loop, ionotify_event_loop, handle_id);
-    if (ionotify_handle_data == NULL) {
+    struct aws_ionotify_handle_data *handle_data = s_find_handle(event_loop, ionotify_event_loop, handle_id);
+    if (handle_data == NULL) {
         /* This situation is totally OK when the corresponding fd is already unsubscribed. */
         AWS_LOGF_DEBUG(
             AWS_LS_IO_EVENT_LOOP,
@@ -988,7 +1032,7 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
         return;
     }
 
-    if (!ionotify_handle_data->is_subscribed) {
+    if (!handle_data->is_subscribed) {
         return;
     }
 
@@ -996,7 +1040,7 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
         AWS_LS_IO_EVENT_LOOP,
         "id=%p fd=%d: Processing pulse with code %d",
         (void *)event_loop,
-        ionotify_handle_data->handle->data.fd,
+        handle_data->handle->data.fd,
         pulse->code);
     int event_mask = 0;
     if (pulse->value.sival_int & _NOTIFY_COND_OBAND) {
@@ -1004,23 +1048,17 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
             AWS_LS_IO_EVENT_LOOP,
             "id=%p fd=%d: fd got out-of-band data",
             (void *)event_loop,
-            ionotify_handle_data->handle->data.fd);
+            handle_data->handle->data.fd);
         event_mask |= AWS_IO_EVENT_TYPE_READABLE;
     }
     if (pulse->value.sival_int & _NOTIFY_COND_INPUT) {
         AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p fd=%d: fd is readable",
-            (void *)event_loop,
-            ionotify_handle_data->handle->data.fd);
+            AWS_LS_IO_EVENT_LOOP, "id=%p fd=%d: fd is readable", (void *)event_loop, handle_data->handle->data.fd);
         event_mask |= AWS_IO_EVENT_TYPE_READABLE;
     }
     if (pulse->value.sival_int & _NOTIFY_COND_OUTPUT) {
         AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p fd=%d: fd is writable",
-            (void *)event_loop,
-            ionotify_handle_data->handle->data.fd);
+            AWS_LS_IO_EVENT_LOOP, "id=%p fd=%d: fd is writable", (void *)event_loop, handle_data->handle->data.fd);
         event_mask |= AWS_IO_EVENT_TYPE_WRITABLE;
     }
     if (pulse->value.sival_int & _NOTIFY_COND_EXTEN) {
@@ -1032,23 +1070,22 @@ static void s_process_pulse(struct aws_event_loop *event_loop, const struct _pul
             AWS_LS_IO_EVENT_LOOP,
             "id=%p fd=%d: fd has extended condition, pulse code is %d",
             (void *)event_loop,
-            ionotify_handle_data->handle->data.fd,
+            handle_data->handle->data.fd,
             pulse->code);
     }
 
-    if (ionotify_handle_data->latest_io_event_types) {
+    if (handle_data->latest_io_event_types) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
             "id=%p fd=%d: latest_io_event_types is non-empty",
             (void *)event_loop,
-            ionotify_handle_data->handle->data.fd);
-        event_mask |= ionotify_handle_data->latest_io_event_types;
+            handle_data->handle->data.fd);
+        event_mask |= handle_data->latest_io_event_types;
         /* Reset additional I/O event types to not process them twice. */
-        ionotify_handle_data->latest_io_event_types = 0;
+        handle_data->latest_io_event_types = 0;
     }
 
-    ionotify_handle_data->on_event(
-        event_loop, ionotify_handle_data->handle, event_mask, ionotify_handle_data->user_data);
+    handle_data->on_event(event_loop, handle_data->handle, event_mask, handle_data->user_data);
 }
 
 static void aws_event_loop_thread(void *args) {
