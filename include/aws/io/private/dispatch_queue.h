@@ -49,4 +49,4 @@ struct dispatch_loop {
     bool wakeup_schedule_needed;
 };
 
-#endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H */
+#endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H  */
