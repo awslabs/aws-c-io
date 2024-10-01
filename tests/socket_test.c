@@ -203,10 +203,10 @@ static bool s_test_running_as_root(struct aws_allocator *alloc) {
     for (size_t i = 0; i < group->configuration_count; ++i) {
         struct aws_event_loop *event_loop = group->configurations[i].event_loop_new_fn(alloc, &options);
 
-        struct aws_socket_options options = aws_socket_options_default_tcp_ipv4(event_loop->vtable->event_loop_style);
+        struct aws_socket_options socket_options = aws_socket_options_default_tcp_ipv4(event_loop->vtable->event_loop_style);
         aws_event_loop_destroy(event_loop);
 
-        int err = aws_socket_init(&socket, alloc, &options);
+        int err = aws_socket_init(&socket, alloc, &socket_options);
         AWS_FATAL_ASSERT(!err);
 
         err = aws_socket_bind(&socket, &endpoint);
@@ -248,7 +248,7 @@ static int s_test_socket_ex(
         struct aws_socket listener;
         ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
-        endpoint->port += i;
+        endpoint->port += (uint32_t)i;
         ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
 
         struct aws_socket_endpoint bound_endpoint;
@@ -658,7 +658,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
         struct aws_mutex mutex = AWS_MUTEX_INIT;
         struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
-        struct aws_socket_options options =
+        struct aws_socket_options socket_options =
             aws_socket_options_default_tcp_ipv4(aws_event_loop_group_get_style(el_group));
 
         struct aws_host_resolver_default_options resolver_options = {
@@ -707,7 +707,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
         };
 
         struct aws_socket outgoing;
-        ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+        ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &socket_options));
         ASSERT_SUCCESS(
             aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
         aws_mutex_lock(&mutex);
@@ -746,7 +746,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
         struct aws_mutex mutex = AWS_MUTEX_INIT;
         struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
-        struct aws_socket_options options =
+        struct aws_socket_options socket_options =
             aws_socket_options_default_tcp_ipv4(aws_event_loop_group_get_style(el_group));
 
         struct aws_host_resolver_default_options resolver_options = {
@@ -795,7 +795,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
         };
 
         struct aws_socket outgoing;
-        ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+        ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &socket_options));
         ASSERT_SUCCESS(
             aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 

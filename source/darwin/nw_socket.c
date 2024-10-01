@@ -121,7 +121,7 @@ struct nw_socket {
     aws_socket_on_readable_fn *on_readable;
     void *on_readable_user_data;
     bool setup_run;
-    bool currently_connected; // If the io port is connected. Similar to posix_socket->currently_subscribed. 
+    bool currently_connected; // If the io port is connected. Similar to posix_socket->currently_subscribed.
     bool read_queued;
     bool is_listener;
     struct nw_socket_timeout_args *timeout_args;
