@@ -300,7 +300,7 @@ int aws_tls_ctx_options_set_secitem_options(
 
 #endif /* __APPLE__ */
 
-    (void)options;
+    (void)tls_ctx_options;
     (void)secitem_options;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Setting of secitem options only supported on Apple.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
