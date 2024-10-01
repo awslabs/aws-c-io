@@ -146,10 +146,11 @@ elseif (APPLE)
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
      else ()
-        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
+        file(GLOB AWS_KQUEUE_SRC
         "source/posix/socket.c"
         )
-         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+        list(APPEND AWS_IO_OS_SRC ${AWS_KQUEUE_SRC})
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")

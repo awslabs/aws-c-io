@@ -1393,20 +1393,6 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
 }
-
-int aws_socket_init_poll_based(
-    struct aws_socket *socket,
-    struct aws_allocator *alloc,
-    const struct aws_socket_options *options) {
-    (void)socket;
-    (void)alloc;
-    (void)options;
-
-    AWS_FATAL_ASSERT(!"This socket type is not implemented for this build configuration. You have selected a "
-                      "poll-based socket, but no poll-based implementation is available");
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
-}
-
 int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
     if (socket->local_endpoint.address[0] == 0) {
         AWS_LOGF_ERROR(
