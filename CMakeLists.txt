@@ -117,7 +117,9 @@ elseif (APPLE)
 
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
-            "source/posix/*.c"
+            "source/posix/pipe.c"
+            "source/posix/host_resolver.c"
+            "source/posix/shared_library.c"
             "source/darwin/darwin_pki_utils.c"
             "source/darwin/secure_transport_tls_channel_handler.c"
             )
@@ -144,6 +146,9 @@ elseif (APPLE)
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
      else ()
+        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
+        "source/posix/socket.c"
+        )
          set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
     endif()
 
