@@ -731,27 +731,37 @@ static void s_process_io_result(
         io_op_result->write_error_code,
         aws_error_str(io_op_result->write_error_code));
 
-    int event_types = 0;
-    if (io_op_result->error_code == AWS_IO_SOCKET_CLOSED) {
-        handle_data->latest_io_event_types = AWS_IO_EVENT_TYPE_CLOSED;
-    }
+    /* ionotify requires resubscribing to events that it delivers. We cannot simply resubscribe on an incoming event,
+     * because QNX resource managers arm a condition (e.g. socket-is-readable) only if it's not currently present on fd.
+     * So, we do it here, on getting AWS_IO_READ_WOULD_BLOCK from I/O operation. */
+    int events_to_resubscribe = 0;
     if (io_op_result->read_error_code == AWS_IO_READ_WOULD_BLOCK) {
-        event_types |= AWS_IO_EVENT_TYPE_READABLE;
+        events_to_resubscribe |= AWS_IO_EVENT_TYPE_READABLE;
     }
     if (io_op_result->write_error_code == AWS_IO_READ_WOULD_BLOCK) {
-        event_types |= AWS_IO_EVENT_TYPE_WRITABLE;
+        events_to_resubscribe |= AWS_IO_EVENT_TYPE_WRITABLE;
     }
 
     /* Rearm resource manager. */
-    if (event_types != 0) {
+    if (events_to_resubscribe != 0) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP, "id=%p fd=%d: Got EWOULDBLOCK, rearming fd", (void *)event_loop, handle->data.fd);
         /* Mark a newly appeared event for resubscribing and reschedule the resubscribing task in case it's already
          * scheduled. */
-        handle_data->events_to_resubscribe |= event_types;
+        handle_data->events_to_resubscribe |= events_to_resubscribe;
         struct aws_ionotify_event_loop *ionotify_event_loop = event_loop->impl_data;
         aws_task_scheduler_cancel_task(&ionotify_event_loop->scheduler, &handle_data->resubscribe_task);
         aws_task_scheduler_schedule_now(&ionotify_event_loop->scheduler, &handle_data->resubscribe_task);
+    }
+
+    /* Event though event loop arms QNX resource managers for all possible error conditions, when the actual error
+     * occurs, QNX just delivers "fd is READABLE/WRITABLE, ah, and also there is some extended condition, no idea what
+     * it is" in most cases. The extended condition bit can't be used as an error indicator just by itself, because it's
+     * also set in success paths as well (e.g. on accepting a new connection). So, the event loop relies on getting
+     * errors from I/O operations.
+     * The latest_io_event_types field is used because there is no space for this info in a pulse object. */
+    if (io_op_result->error_code == AWS_IO_SOCKET_CLOSED) {
+        handle_data->latest_io_event_types = AWS_IO_EVENT_TYPE_CLOSED;
     }
 
     /* Notify event loop of error conditions. */
