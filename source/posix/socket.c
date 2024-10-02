@@ -1030,7 +1030,7 @@ static void s_socket_accept_event(
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_SOCKET, "id=%p fd=%d: incoming connection", (void *)socket, socket->io_handle.data.fd);
 
-            struct aws_socket *new_sock = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_socket));
+            struct aws_socket *new_sock = aws_mem_acquire(socket->allocator, 1, sizeof(struct aws_socket));
 
             if (!new_sock) {
                 close(in_fd);
