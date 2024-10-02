@@ -224,7 +224,8 @@ static struct aws_socket_vtable vtables[3][2] =
                      .socket_close_fn = s_socket_close,
                      .socket_subscribe_to_readable_events_fn = s_stream_subscribe_to_read,
                      .socket_assign_to_event_loop_fn = s_socket_assign_to_event_loop,
-                     .socket_cleanup_fn = aws_socket_clean_up.socket_get_error_fn = s_socket_get_error,
+                     .socket_cleanup_fn = aws_socket_clean_up,
+                     .socket_get_error_fn = s_socket_get_error,
                      .socket_is_open_fn = s_socket_is_open,
                      .socket_set_options_fn = s_socket_set_options,
                      .socket_shutdown_dir_fn = s_socket_shutdown_dir,
@@ -235,12 +236,12 @@ static struct aws_socket_vtable vtables[3][2] =
                      .socket_stop_accept_fn = s_dgram_stop_accept,
                      .socket_bind_fn = s_ipv6_dgram_bind,
                      .socket_listen_fn = s_udp_listen,
-                     .socket_read_fn = s_dgram_read,
-                     .read = s_dgram_read,
+                     .socket_read_fn = s_dgram_read
                      .socket_close_fn = s_socket_close,
                      .socket_subscribe_to_readable_events_fn = s_dgram_subscribe_to_read,
                      .socket_assign_to_event_loop_fn = s_socket_assign_to_event_loop,
-                     .socket_cleanup_fn = aws_socket_clean_up.socket_get_error_fn = s_socket_get_error,
+                     .socket_cleanup_fn = aws_socket_clean_up,
+                     .socket_get_error_fn = s_socket_get_error,
                      .socket_is_open_fn = s_socket_is_open,
                      .socket_set_options_fn = s_socket_set_options,
                      .socket_shutdown_dir_fn = s_socket_shutdown_dir,
@@ -258,7 +259,8 @@ static struct aws_socket_vtable vtables[3][2] =
                      .socket_close_fn = s_local_close,
                      .socket_subscribe_to_readable_events_fn = s_stream_subscribe_to_read,
                      .socket_assign_to_event_loop_fn = s_socket_assign_to_event_loop,
-                     .socket_cleanup_fn = aws_socket_clean_up.socket_get_error_fn = s_socket_get_error,
+                     .socket_cleanup_fn = aws_socket_clean_up,
+                     .socket_get_error_fn = s_socket_get_error,
                      .socket_is_open_fn = s_socket_is_open,
                      .socket_set_options_fn = s_socket_set_options,
                      .socket_shutdown_dir_fn = s_socket_shutdown_dir,
@@ -3034,7 +3036,7 @@ static int s_tcp_read(struct aws_socket *socket, struct aws_byte_buf *buffer, si
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
 
-    int error = WSAGetLastError();
+    error = WSAGetLastError();
 
     if (error == WSAEWOULDBLOCK) {
         AWS_LOGF_TRACE(
@@ -3132,7 +3134,7 @@ static int s_dgram_read(struct aws_socket *socket, struct aws_byte_buf *buffer, 
         return aws_raise_error(AWS_IO_SOCKET_CLOSED);
     }
 
-    int error = WSAGetLastError();
+    error = WSAGetLastError();
 
     if (error == WSAEWOULDBLOCK) {
         AWS_LOGF_TRACE(
