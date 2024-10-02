@@ -1239,7 +1239,12 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             struct aws_channel_slot *slot = handler->slot;
             aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
             error = AWS_OP_SUCCESS;
+        } else {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
+            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
+
         /* With TLS1.3 on SChannel a call to DecryptMessage could return SEC_I_RENEGOTIATE, at this point a client must
          * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received */
         if (status == SEC_I_RENEGOTIATE) {
@@ -1328,10 +1333,6 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 error = AWS_OP_ERR;
                 break;
             }
-        } else {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
 
