@@ -474,10 +474,10 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
             goto error;
         }
 
-        /* iOS uses Apple Network Framework. The TCP and TLS handshake are both handled by the
-         * network parameters and its options and verification block. We do not need to set up a
-         * separate TLS slot in the channel for iOS. */
-#if !defined(AWS_OS_IOS)
+        /* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling. 
+         * The TCP and TLS handshake are both handled by the network parameters and its options and verification block. 
+         * We do not need to set up a separate TLS slot in the channel for iOS. */
+#if !defined(AWS_USE_SECITEM)
         if (connection_args->channel_data.use_tls) {
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
@@ -487,7 +487,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
             }
             return;
         }
-#endif /* !AWS_OS_IOS */
+#endif /* !AWS_USE_SECITEM */
 
         s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
         return;

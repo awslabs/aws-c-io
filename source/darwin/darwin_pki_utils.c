@@ -18,7 +18,7 @@
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
-#if !defined(AWS_OS_IOS)
+#if !defined(AWS_USE_SECITEM)
 
 /*
  * Helper function to import ECC private key in PEM format into `import_keychain`. Return
@@ -285,7 +285,7 @@ done:
     return result;
 }
 
-#endif /* !AWS_OS_IOS */
+#endif /* !AWS_USE_SECITEM */
 
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,
@@ -623,10 +623,10 @@ int aws_secitem_import_cert_and_key(
     const struct aws_secitem_options *secitem_options) {
 
 // We currently only support Apple's network framework and SecItem keychain API on iOS.
-#if !defined(AWS_OS_IOS)
+#if !defined(AWS_USE_SECITEM)
     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif /* !AWS_OS_IOS */
+#endif /* !AWS_USE_SECITEM */
 
     AWS_PRECONDITION(public_cert_chain != NULL);
     AWS_PRECONDITION(private_key != NULL);

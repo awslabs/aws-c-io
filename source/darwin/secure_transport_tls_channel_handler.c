@@ -1089,7 +1089,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
-#if !defined(AWS_OS_IOS)
+#if !defined(AWS_USE_SECITEM)
         if (aws_import_public_and_private_keys_to_identity(
                 alloc,
                 secure_transport_ctx->wrapped_allocator,
@@ -1101,8 +1101,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-#endif /* !AWS_OS_IOS */
-#if defined(AWS_OS_IOS)
+#endif /* !AWS_USE_SECITEM */
+#if defined(AWS_USE_SECITEM)
 
         if (aws_secitem_import_cert_and_key(
                 alloc,
@@ -1115,13 +1115,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-#endif /* AWS_OS_IOS */
+#endif /* AWS_USE_SECITEM */
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
         struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);
-#if !defined(AWS_OS_IOS)
+#if !defined(AWS_USE_SECITEM)
         if (aws_import_pkcs12_to_identity(
                 secure_transport_ctx->wrapped_allocator,
                 &pkcs12_blob_cur,
@@ -1131,8 +1131,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-#endif /* !AWS_OS_IOS */
-#if defined(AWS_OS_IOS)
+#endif /* !AWS_USE_SECITEM */
+#if defined(AWS_USE_SECITEM)
         if (aws_secitem_import_pkcs12(
                 secure_transport_ctx->wrapped_allocator,
                 &pkcs12_blob_cur,
@@ -1142,7 +1142,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
             goto cleanup_wrapped_allocator;
         }
-#endif /* AWS_OS_IOS */
+#endif /* AWS_USE_SECITEM */
     }
 
     if (aws_tls_options_buf_is_set(&options->ca_file)) {
