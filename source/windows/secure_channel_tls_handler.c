@@ -1170,7 +1170,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE) {
             error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
-               If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
+               If SECBUFFER_EXTRA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
                We don't care what's in the third buffer for TLS usage.*/
             if (input_buffers[1].BufferType == SECBUFFER_DATA) {
