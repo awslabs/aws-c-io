@@ -40,7 +40,7 @@ option(BUILD_RELOCATABLE_BINARIES
 option(BYO_CRYPTO "Don't build a tls implementation or link against a crypto interface. This feature is only for unix builds currently."
         OFF)
 # DEBUG: directly set AWS_USE_DISPATCH_QUEUE
-set (AWS_USE_DISPATCH_QUEUE ON)
+set (AWS_USE_DISPATCH_QUEUE OFF)
 
 file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
@@ -117,7 +117,9 @@ elseif (APPLE)
 
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
-            "source/posix/*.c"
+            "source/posix/pipe.c"
+            "source/posix/host_resolver.c"
+            "source/posix/shared_library.c"
             "source/darwin/darwin_pki_utils.c"
             "source/darwin/secure_transport_tls_channel_handler.c"
             )
@@ -140,10 +142,15 @@ elseif (APPLE)
         message("use dispatch queue")
         file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
         "source/darwin/dispatch_queue_event_loop.c"
+        "source/darwin/nw_socket.c"
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
      else ()
-         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+        file(GLOB AWS_KQUEUE_SRC
+        "source/posix/socket.c"
+        )
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+        list(APPEND AWS_IO_OS_SRC ${AWS_KQUEUE_SRC})
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")

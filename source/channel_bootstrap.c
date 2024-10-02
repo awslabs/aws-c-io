@@ -523,6 +523,10 @@ static bool s_aws_socket_domain_uses_dns(enum aws_socket_domain domain) {
     return domain == AWS_SOCKET_IPV4 || domain == AWS_SOCKET_IPV6;
 }
 
+/* Called when a socket connection attempt task completes. First socket to successfully open
+ * assigns itself to connection_args->channel_data.socket and flips connection_args->connection_chosen
+ * to true. Subsequent successful sockets will be released and cleaned up
+ */
 static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
@@ -565,7 +569,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             (void *)connection_args->bootstrap,
             (void *)socket);
         aws_socket_close(socket);
-
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, socket);
 
@@ -813,7 +816,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     AWS_FATAL_ASSERT(options->shutdown_callback);
     AWS_FATAL_ASSERT(bootstrap);
 
-    const struct aws_socket_options *socket_options = options->socket_options;
+    struct aws_socket_options *socket_options = (struct aws_socket_options *)options->socket_options;
     AWS_FATAL_ASSERT(socket_options != NULL);
 
     const struct aws_tls_connection_options *tls_options = options->tls_options;
@@ -831,10 +834,6 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
 
     struct client_connection_args *client_connection_args =
         aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct client_connection_args));
-
-    if (!client_connection_args) {
-        return AWS_OP_ERR;
-    }
 
     const char *host_name = options->host_name;
     uint32_t port = options->port;
@@ -1361,9 +1360,7 @@ void s_on_server_connection_result(
             (void *)socket);
         struct server_channel_data *channel_data =
             aws_mem_calloc(connection_args->bootstrap->allocator, 1, sizeof(struct server_channel_data));
-        if (!channel_data) {
-            goto error_cleanup;
-        }
+
         channel_data->incoming_called = false;
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
@@ -1376,10 +1373,9 @@ void s_on_server_connection_result(
             .setup_user_data = channel_data,
             .shutdown_user_data = channel_data,
             .on_shutdown_completed = s_on_server_channel_on_shutdown,
+            .event_loop = event_loop,
+            .enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure,
         };
-
-        channel_args.event_loop = event_loop;
-        channel_args.enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure;
 
         if (aws_socket_assign_to_event_loop(new_socket, event_loop)) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);

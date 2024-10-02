@@ -129,17 +129,25 @@ static void s_read_task(struct aws_task *task, void *args, enum aws_task_status 
     (void)status;
 
     struct socket_io_args *io_args = args;
+
     aws_mutex_lock(io_args->mutex);
 
     size_t read = 0;
+
     while (read < io_args->to_read->len) {
         size_t data_len = 0;
+
         if (aws_socket_read(io_args->socket, io_args->read_data, &data_len)) {
             if (AWS_IO_READ_WOULD_BLOCK == aws_last_error()) {
-                continue;
+                /* we can't just loop here, since the socket may rely on the event-loop for actually getting
+                 * the data, so schedule a task to force a context switch and give the socket a chance to catch up. */
+                aws_mutex_unlock(io_args->mutex);
+                aws_event_loop_schedule_task_now(io_args->socket->event_loop, task);
+                return;
             }
             break;
         }
+
         read += data_len;
     }
     io_args->amount_read = read;
@@ -404,6 +412,9 @@ static int s_test_local_socket_communication(struct aws_allocator *allocator, vo
     options.connect_timeout_ms = 3000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_LOCAL;
+
+    uint64_t timestamp = 0;
+    ASSERT_SUCCESS(aws_sys_clock_get_ticks(&timestamp));
     struct aws_socket_endpoint endpoint;
     AWS_ZERO_STRUCT(endpoint);
     aws_socket_endpoint_init_local_address_for_test(&endpoint);
