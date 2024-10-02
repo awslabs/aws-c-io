@@ -18,7 +18,7 @@
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
-#if !defined(AWS_USE_SECITEM)
+#if !defined(AWS_OS_IOS)
 
 /*
  * Helper function to import ECC private key in PEM format into `import_keychain`. Return
@@ -285,7 +285,7 @@ done:
     return result;
 }
 
-#endif /* !AWS_USE_SECITEM */
+#endif /* !AWS_OS_IOS */
 
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,
