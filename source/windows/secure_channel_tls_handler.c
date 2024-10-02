@@ -1193,21 +1193,13 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                         input_buffers[3].cbBuffer);
                     sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
                 }
-                if (status != SEC_I_RENEGOTIATE) {
+                if (status == SEC_E_OK) {
                     sc_handler->read_extra = input_buffers[3].cbBuffer;
                     //     AWS_LOGF_TRACE(
                     //         AWS_LS_IO_TLS,
                     //         "id=%p: Extra (incomplete) message received with length %zu.",
                     //         (void *)handler,
                     //         sc_handler->read_extra);
-                } else {
-                    error = AWS_OP_SUCCESS;
-                    /* this means we processed everything in the buffer. */
-                    sc_handler->buffered_read_in_data_buf.len = 0;
-                    AWS_LOGF_TRACE(
-                        AWS_LS_IO_TLS,
-                        "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
-                        (void *)handler);
                 }
             } else {
                 error = AWS_OP_SUCCESS;
