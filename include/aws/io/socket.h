@@ -79,7 +79,7 @@ typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int 
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations. The user is resposnbile to releasing the socket memory after use. 
+ * performing IO operations. The user is resposnbile to releasing the socket memory after use.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -249,9 +249,9 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
 /**
  * TCP, LOCAL and VSOCK only. The socket will begin accepting new connections. This is an asynchronous operation. New
  * connections or errors will arrive via the `on_accept_result` callback.
- * 
+ *
  * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
- * 
+ *
  */
 AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,

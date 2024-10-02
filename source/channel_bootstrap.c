@@ -816,7 +816,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     AWS_FATAL_ASSERT(options->shutdown_callback);
     AWS_FATAL_ASSERT(bootstrap);
 
-    struct aws_socket_options *socket_options = (struct aws_socket_options *)options->socket_options;
+    const struct aws_socket_options *socket_options = options->socket_options;
     AWS_FATAL_ASSERT(socket_options != NULL);
 
     const struct aws_tls_connection_options *tls_options = options->tls_options;
