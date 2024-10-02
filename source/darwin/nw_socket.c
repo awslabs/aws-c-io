@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/private/socket.h>
+#include <aws/io/socket.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/string.h>
@@ -115,6 +115,7 @@ struct nw_socket {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     nw_connection_t nw_connection;
+    nw_listener_t nw_listener;
     nw_parameters_t socket_options_to_params;
     struct aws_linked_list read_queue;
     int last_error;
@@ -301,16 +302,22 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_socket->nw_connection = NULL;
     }
 
+    if(nw_socket->nw_listener){
+        nw_release(nw_socket->nw_listener);
+        nw_socket->nw_listener = NULL;
+    }
+
     aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
     aws_mem_release(nw_socket->allocator, nw_socket);
     nw_socket = NULL;
 }
 
-int aws_socket_init_completion_port_based(
+int aws_socket_init(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options) {
     AWS_ASSERT(options);
+    AWS_ZERO_STRUCT(*socket);
 
     struct nw_socket *nw_socket = aws_mem_calloc(alloc, 1, sizeof(struct nw_socket));
 
@@ -883,6 +890,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     }
 
     socket->io_handle.data.handle = nw_listener_create(nw_socket->socket_options_to_params);
+    nw_socket->nw_listener = socket->io_handle.data.handle;
     nw_retain(socket->io_handle.data.handle);
     nw_socket->is_listener = true;
 
@@ -983,7 +991,7 @@ static int s_socket_start_accept_fn(
       struct aws_socket *new_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
 
       struct aws_socket_options options = socket->options;
-      aws_socket_init_completion_port_based(new_socket, allocator, &options);
+      aws_socket_init(new_socket, allocator, &options);
       new_socket->state = CONNECTED_READ | CONNECTED_WRITE;
       new_socket->io_handle.data.handle = connection;
       nw_retain(connection);
@@ -1053,14 +1061,10 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     if (nw_socket->is_listener) {
         nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
         nw_listener_cancel(socket->io_handle.data.handle);
-
     } else {
-        if (nw_socket->currently_connected) {
-            nw_connection_cancel(socket->io_handle.data.handle);
-        }
-
         /* Setting to NULL removes previously set handler from nw_connection_t */
         nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
+        nw_connection_cancel(socket->io_handle.data.handle);
     }
     nw_socket->currently_connected = false;
 
@@ -1377,7 +1381,6 @@ static int s_socket_get_error_fn(struct aws_socket *socket) {
 
 static bool s_socket_is_open_fn(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
-
     if (!socket->io_handle.data.handle) {
         return false;
     }
