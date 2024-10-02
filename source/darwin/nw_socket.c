@@ -302,7 +302,7 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_socket->nw_connection = NULL;
     }
 
-    if(nw_socket->nw_listener){
+    if (nw_socket->nw_listener) {
         nw_release(nw_socket->nw_listener);
         nw_socket->nw_listener = NULL;
     }
@@ -312,10 +312,7 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     nw_socket = NULL;
 }
 
-int aws_socket_init(
-    struct aws_socket *socket,
-    struct aws_allocator *alloc,
-    const struct aws_socket_options *options) {
+int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
 

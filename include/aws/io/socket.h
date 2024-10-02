@@ -249,9 +249,9 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
 /**
  * TCP, LOCAL and VSOCK only. The socket will begin accepting new connections. This is an asynchronous operation. New
  * connections or errors will arrive via the `on_accept_result` callback.
- * 
+ *
  * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
- * 
+ *
  */
 AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,

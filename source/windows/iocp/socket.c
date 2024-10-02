@@ -504,7 +504,6 @@ void s_socket_clean_up(struct aws_socket *socket) {
 int s_socket_connect_validation(
     struct aws_socket *socket,
     const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result) {
     struct iocp_socket *socket_impl = socket->impl;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
@@ -628,7 +627,6 @@ int s_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction 
 }
 
 int s_validation_before_read(struct aws_socket *socket) {
-    struct iocp_socket *socket_impl = socket->impl;
     AWS_ASSERT(socket->readable_fn);
 
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
@@ -653,7 +651,6 @@ int s_validation_before_read(struct aws_socket *socket) {
 }
 
 int s_socket_subscribe_to_readable_events_validation(struct aws_socket *socket) {
-    struct iocp_socket *socket_impl = socket->impl;
     AWS_ASSERT(socket->event_loop);
     AWS_ASSERT(!socket->readable_fn);
 
@@ -721,7 +718,6 @@ static inline int s_process_tcp_sock_options(struct aws_socket *socket) {
 
 /* called when an IPV4 tcp socket successfully has connected. */
 static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
-    struct iocp_socket *socket_impl = socket->impl;
 
     if (s_process_tcp_sock_options(socket)) {
         goto error;
@@ -782,7 +778,6 @@ error:
 
 /* called upon a successful TCP over IPv6 connection. */
 static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
-    struct iocp_socket *socket_impl = socket->impl;
 
     if (s_process_tcp_sock_options(socket)) {
         goto error;
@@ -1090,7 +1085,7 @@ static int s_ipv4_stream_connect(
     AWS_ASSERT(connect_loop);
     AWS_ASSERT(on_connection_result);
 
-    int error = s_socket_connect_validation(socket, remote_endpoint, connect_loop, on_connection_result);
+    int error = s_socket_connect_validation(socket, remote_endpoint, on_connection_result);
     if (!error)
         return error;
 
@@ -1152,7 +1147,7 @@ static int s_ipv6_stream_connect(
     AWS_ASSERT(connect_loop);
     AWS_ASSERT(on_connection_result);
 
-    int error = s_socket_connect_validation(socket, remote_endpoint, connect_loop, on_connection_result);
+    int error = s_socket_connect_validation(socket, remote_endpoint, on_connection_result);
     if (!error)
         return error;
 
@@ -1237,7 +1232,7 @@ static int s_local_connect(
     AWS_ASSERT(connect_loop);
     AWS_ASSERT(on_connection_result);
 
-    int error = s_socket_connect_validation(socket, remote_endpoint, connect_loop, on_connection_result);
+    int error = s_socket_connect_validation(socket, remote_endpoint, on_connection_result);
     if (!error)
         return error;
 
@@ -1387,7 +1382,7 @@ static int s_ipv4_dgram_connect(
     void *user_data) {
     (void)user_data;
 
-    int error = s_socket_connect_validation(socket, remote_endpoint, connect_loop, on_connection_result);
+    int error = s_socket_connect_validation(socket, remote_endpoint, on_connection_result);
     if (!error)
         return error;
 
@@ -1417,7 +1412,7 @@ static int s_ipv6_dgram_connect(
     void *user_data) {
     (void)user_data;
 
-    int error = s_socket_connect_validation(socket, remote_endpoint, connect_loop, on_connection_result);
+    int error = s_socket_connect_validation(socket, remote_endpoint, on_connection_result);
     if (!error)
         return error;
 
@@ -2611,7 +2606,6 @@ static int s_local_close(struct aws_socket *socket) {
 int aws_socket_half_close(struct aws_socket *socket, enum aws_channel_direction dir) {
     int how = dir == AWS_CHANNEL_DIR_READ ? 0 : 1;
 
-    struct iocp_socket *socket_impl = socket->impl;
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: shutting down in direction %d",
