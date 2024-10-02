@@ -126,6 +126,38 @@ static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket
 static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
+static void s_socket_clean_up(struct aws_socket *socket);
+static int s_socket_connect(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *remote_endpoint,
+    struct aws_event_loop *event_loop,
+    aws_socket_on_connection_result_fn *on_connection_result,
+    void *user_data);
+static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_socket_listen(struct aws_socket *socket, int backlog_size);
+static int s_socket_start_accept(
+    struct aws_socket *socket,
+    struct aws_event_loop *accept_loop,
+    aws_socket_on_accept_result_fn *on_accept_result,
+    void *user_data);
+static int s_socket_stop_accept(struct aws_socket *socket);
+static int s_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options);
+static int s_socket_close(struct aws_socket *socket);
+static int s_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir);
+static int s_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_loop *event_loop);
+static int s_socket_subscribe_to_readable_events(
+    struct aws_socket *socket,
+    aws_socket_on_readable_fn *on_readable,
+    void *user_data);
+static int s_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
+static int s_socket_write(
+    struct aws_socket *socket,
+    const struct aws_byte_cursor *cursor,
+    aws_socket_on_write_completed_fn *written_fn,
+    void *user_data);
+static int s_socket_get_error(struct aws_socket *socket);
+static bool s_socket_is_open(struct aws_socket *socket);
+
 static int s_stream_subscribe_to_read(
     struct aws_socket *socket,
     aws_socket_on_readable_fn *on_readable,
@@ -325,7 +357,7 @@ struct io_operation_data {
 };
 
 struct iocp_socket {
-    struct socket_vtable *vtable;
+    struct aws_socket_vtable *vtable;
     struct iocp_socket_vtable *iocp_vtable;
     struct io_operation_data *read_io_data;
     struct aws_socket *incoming_socket;
@@ -471,8 +503,7 @@ int s_socket_connect_validation(
     struct aws_socket *socket,
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    void *user_data) {
+    aws_socket_on_connection_result_fn *on_connection_result) {
     struct iocp_socket *socket_impl = socket->impl;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
@@ -2292,7 +2323,7 @@ static int s_dgram_stop_accept(struct aws_socket *socket) {
     return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
 }
 
-int s_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options) {
+static int s_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options) {
     if (socket->options.domain != options->domain || socket->options.type != options->type) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
@@ -3236,7 +3267,7 @@ static void s_socket_written_event(
     aws_mem_release(operation_data->allocator, write_cb_args);
 }
 
-int s_socket_write(
+static int s_socket_write(
     struct aws_socket *socket,
     const struct aws_byte_cursor *cursor,
     aws_socket_on_write_completed_fn *written_fn,
@@ -3310,7 +3341,7 @@ int s_socket_write(
     return AWS_OP_SUCCESS;
 }
 
-int s_socket_get_error(struct aws_socket *socket) {
+static int s_socket_get_error(struct aws_socket *socket) {
     if (socket->options.domain != AWS_SOCKET_LOCAL) {
         int connect_result;
         socklen_t result_length = sizeof(connect_result);
