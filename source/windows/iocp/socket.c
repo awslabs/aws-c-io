@@ -416,6 +416,8 @@ static int s_socket_init(
     socket->state = INIT;
     socket->impl = impl;
     socket->options = *options;
+    socket->event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED;
+
 
     if (options->domain != AWS_SOCKET_LOCAL && create_underlying_socket) {
         if (s_create_socket(socket, options)) {
@@ -428,7 +430,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_init_completion_port_based(
+int aws_socket_init(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options) {

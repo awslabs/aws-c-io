@@ -290,7 +290,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_init_poll_based(
+int aws_socket_init(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options) {
