@@ -5,7 +5,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#ifdef AWS_OS_APPLE
+#ifdef AWS_USE_DISPATCH_QUEUE
 
 #include <Security/Security.h>
 #include <aws/io/tls_channel_handler.h>
@@ -50,6 +50,6 @@ struct dispatch_loop {
 
     bool wakeup_schedule_needed;
 };
-#endif
+#endif /* AWS_USE_DISPATCH_QUEUE */
 
 #endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H  */
