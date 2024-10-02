@@ -540,7 +540,7 @@ AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
  */
 AWS_IO_API int aws_tls_ctx_options_set_secitem_options(
     struct aws_tls_ctx_options *tls_ctx_options,
-    struct aws_secitem_options *secitem_options);
+    const struct aws_secitem_options *secitem_options);
 
 /**
  * Cleans up resources in secitem_options.

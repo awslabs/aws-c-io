@@ -271,7 +271,7 @@ int aws_tls_ctx_options_set_keychain_path(
 
 int aws_tls_ctx_options_set_secitem_options(
     struct aws_tls_ctx_options *tls_ctx_options,
-    struct aws_secitem_options *secitem_options) {
+    const struct aws_secitem_options *secitem_options) {
 #ifdef __APPLE__
 
     if (secitem_options->cert_label != NULL) {
@@ -280,9 +280,10 @@ int aws_tls_ctx_options_set_secitem_options(
         tls_ctx_options->secitem_options->cert_label =
             aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->cert_label);
         if (tls_ctx_options->secitem_options->cert_label == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Cert label option is invalid.");
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option certificate label is invalid.");
             return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         }
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: Secitem option certificate label set.");
     }
 
     if (secitem_options->key_label != NULL) {
@@ -291,9 +292,10 @@ int aws_tls_ctx_options_set_secitem_options(
         tls_ctx_options->secitem_options->key_label =
             aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->key_label);
         if (tls_ctx_options->secitem_options->key_label == NULL) {
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Key label option is invalid.");
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option key label is invalid.");
             return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         }
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: Secitem option key label set.");
     }
 
     return AWS_OP_SUCCESS;
