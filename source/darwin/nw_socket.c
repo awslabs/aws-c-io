@@ -1173,7 +1173,8 @@ static void s_schedule_next_read(struct aws_socket *socket) {
             "id=%p handle=%p: cannot read to because it is not connected",
             (void *)socket,
             socket->io_handle.data.handle);
-        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+        aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+        return 
     }
 
     // Acquire nw_socket after we call connection receive, and released it when handler is called.
