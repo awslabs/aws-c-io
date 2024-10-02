@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include <Block.h>
+#include <aws/io/private/dispatch_queue.h>
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
 
@@ -47,48 +48,11 @@ static struct aws_event_loop_vtable s_vtable = {
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
-struct dispatch_scheduling_state {
-    // Let's us skip processing an iteration task if one is already in the middle
-    // of executing
-    bool is_executing_iteration;
-
-    // List<scheduled_service_entry> in sorted order by timestamp
-    //
-    // When we go to schedule a new iteration, we check here first to see
-    // if our scheduling attempt is redundant
-    struct aws_linked_list scheduled_services;
-};
-
 struct scheduled_service_entry {
     struct aws_allocator *allocator;
     uint64_t timestamp;
     struct aws_linked_list_node node;
     struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
-};
-
-struct dispatch_loop {
-    struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
-    dispatch_queue_t dispatch_queue;
-    struct aws_task_scheduler scheduler;
-    struct aws_linked_list local_cross_thread_tasks;
-
-    // Apple dispatch queue uses the id string to identify the dispatch queue
-    struct aws_string *dispatch_queue_id;
-
-    struct {
-        struct dispatch_scheduling_state scheduling_state;
-        struct aws_linked_list cross_thread_tasks;
-        struct aws_mutex lock;
-        bool suspended;
-        // `is_executing` flag and `current_thread_id` together are used to identify the excuting
-        // thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct aws_event_loop *event_loop)`
-        // for details.
-        bool is_executing;
-        aws_thread_id_t current_thread_id;
-    } synced_data;
-
-    bool wakeup_schedule_needed;
 };
 
 struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {

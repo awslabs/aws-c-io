@@ -219,6 +219,7 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
+ *
  */
 AWS_IO_API int aws_socket_connect(
     struct aws_socket *socket,
@@ -248,8 +249,9 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
 /**
  * TCP, LOCAL and VSOCK only. The socket will begin accepting new connections. This is an asynchronous operation. New
  * connections or errors will arrive via the `on_accept_result` callback.
- *
+ * 
  * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
+ * 
  */
 AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,
