@@ -4,7 +4,6 @@
  */
 #include <aws/io/socket.h>
 
-
 void aws_socket_clean_up(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_cleanup_fn);
     socket->vtable->socket_cleanup_fn(socket);

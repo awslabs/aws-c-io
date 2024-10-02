@@ -418,7 +418,6 @@ static int s_socket_init(
     socket->options = *options;
     socket->event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED;
 
-
     if (options->domain != AWS_SOCKET_LOCAL && create_underlying_socket) {
         if (s_create_socket(socket, options)) {
             aws_mem_release(alloc, impl->read_io_data);
@@ -430,10 +429,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_init(
-    struct aws_socket *socket,
-    struct aws_allocator *alloc,
-    const struct aws_socket_options *options) {
+int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     AWS_ASSERT(options);
 
     aws_check_and_init_winsock();

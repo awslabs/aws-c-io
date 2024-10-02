@@ -249,6 +249,8 @@ static int s_socket_init(
     int existing_socket_fd) {
     AWS_ASSERT(options);
 
+    AWS_ZERO_STRUCT(*socket);
+
     struct posix_socket *posix_socket = aws_mem_calloc(alloc, 1, sizeof(struct posix_socket));
     if (!posix_socket) {
         socket->impl = NULL;
@@ -1030,7 +1032,7 @@ static void s_socket_accept_event(
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_SOCKET, "id=%p fd=%d: incoming connection", (void *)socket, socket->io_handle.data.fd);
 
-            struct aws_socket *new_sock = aws_mem_acquire(socket->allocator, sizeof(struct aws_socket));
+            struct aws_socket *new_sock = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_socket));
 
             if (!new_sock) {
                 close(in_fd);
