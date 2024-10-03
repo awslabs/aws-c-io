@@ -484,7 +484,6 @@ void s_socket_clean_up(struct aws_socket *socket) {
         (void *)socket,
         (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
-    socket_impl->vtable->socket_close_fn(socket);
     aws_socket_close(socket);
 
     if (socket_impl->incoming_socket) {
