@@ -41,7 +41,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .is_default = true,
     },
 #endif
-#if AWS_USE_EPOLL
+#ifdef AWS_USE_EPOLL
     {
         .name = "Linux Edge-Triggered Epoll",
         .event_loop_new_fn = aws_event_loop_new_epoll_with_options,
