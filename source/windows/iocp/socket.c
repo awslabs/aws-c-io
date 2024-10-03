@@ -192,7 +192,7 @@ static int s_determine_socket_error(int error);
    as well thought out. There were so many branches to handle three entirely different
    APIs we decided it was less painful to just have a bunch of function pointers in a table
    than to want to gouge our eyes out while looking at a ridiculous number of branches. */
-static struct iocp_vtable vtables[3][2] = {
+static struct iocp_socket_vtable s_iocp_vtables[3][2] = {
     [AWS_SOCKET_IPV4] =
         {
             [AWS_SOCKET_STREAM] =
@@ -270,7 +270,7 @@ static struct iocp_vtable vtables[3][2] = {
         },
 };
 
-static struct aws_socket_vtable s_vtable = {
+static struct aws_socket_vtable s_socket_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
     .socket_connect_fn = s_socket_connect,
     .socket_bind_fn = s_socket_bind,
@@ -347,7 +347,6 @@ struct io_operation_data {
 };
 
 struct iocp_socket {
-    struct aws_socket_vtable *vtable;
     struct iocp_socket_vtable *iocp_vtable;
     struct io_operation_data *read_io_data;
     struct aws_socket *incoming_socket;
@@ -407,14 +406,9 @@ static int s_socket_init(
         return AWS_OP_ERR;
     }
 
-    impl->vtable = &s_vtable;
-    if (!impl->vtable || !impl->iocp_vtable->read) {
-        aws_mem_release(alloc, impl);
-        socket->impl = NULL;
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-    }
+    socket->vtable = &s_socket_vtable;
 
-    impl->iocp_vtable = &iocp_vtables[options->domain][options->type];
+    impl->iocp_vtable = &s_iocp_vtables[options->domain][options->type];
     if (!impl->iocp_vtable || !impl->iocp_vtable->connection_success) {
         aws_mem_release(alloc, impl);
         socket->impl = NULL;
