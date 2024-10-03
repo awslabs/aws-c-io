@@ -9,6 +9,7 @@
 #include <aws/common/device_random.h>
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
+#include <aws/io/platform.h>
 
 #ifdef __APPLE__
 // DEBUG WIP we may need to wrap this for iOS specific
@@ -20,10 +21,10 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
     {
         .name = "WinNT IO Completion Ports",
         .event_loop_new_fn = aws_event_loop_new_iocp_with_options,
-        .is_default = true,
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
+        .is_default = true,
     },
-#endif
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
 #ifdef AWS_USE_DISPATCH_QUEUE
     /* use kqueue on OSX and dispatch_queues everywhere else */
     {
@@ -32,7 +33,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
         .is_default = true,
     },
-#endif
+#endif /* AWS_USE_DISPATCH_QUEUE */
 #ifdef AWS_USE_KQUEUE
     {
         .name = "BSD Edge-Triggered KQueue",
@@ -40,7 +41,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
         .is_default = true,
     },
-#endif
+#endif /* AWS_USE_KQUEUE */
 #ifdef AWS_USE_EPOLL
     {
         .name = "Linux Edge-Triggered Epoll",
@@ -48,7 +49,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
         .is_default = true,
     },
-#endif
+#endif /* AWS_USE_EPOLL */
 };
 
 static struct aws_event_loop_configuration_group s_available_configuration_group = {
@@ -482,21 +483,13 @@ size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop) {
     return aws_atomic_load_int(&event_loop->current_load_factor);
 }
 
-// As dispatch queue has ARC support, we could directly release the dispatch queue event loop. Disable the
-// caller thread validation on dispatch queue.
-#ifndef AWS_USE_DISPATCH_QUEUE
-#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop) AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(eventloop));
-#else
-#    define AWS_EVENT_LOOP_NOT_CALLER_THREAD(eventloop)
-#endif
-
 void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
     if (!event_loop) {
         return;
     }
 
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
-    AWS_EVENT_LOOP_NOT_CALLER_THREAD(event_loop);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
     event_loop->vtable->destroy(event_loop);
 }
