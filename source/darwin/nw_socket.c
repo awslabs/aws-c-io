@@ -2,6 +2,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
+#ifdef AWS_USE_DISPATCH_QUEUE
 
 #include <aws/io/private/socket.h>
 
@@ -1403,3 +1404,4 @@ static bool s_socket_is_open_fn(struct aws_socket *socket) {
 
     return nw_socket->last_error == AWS_OP_SUCCESS;
 }
+#endif /* AWS_USE_DISPATCH_QUEUE */

@@ -28,7 +28,7 @@ struct aws_io_handle {
         void *handle;
     } data;
     void *additional_data;
-#if AWS_USE_DISPATCH_QUEUE
+#ifdef AWS_USE_DISPATCH_QUEUE
     aws_io_set_queue_on_handle_fn *set_queue;
     aws_io_clear_queue_on_handle_fn *clear_queue;
 #endif /* AWS_USE_DISPATCH_QUEUE */
