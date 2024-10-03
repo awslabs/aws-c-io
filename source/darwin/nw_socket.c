@@ -370,13 +370,10 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
         timeout_args->socket->state = TIMEDOUT;
         int error_code = AWS_IO_SOCKET_TIMEOUT;
 
-        // timeout_args->socket->event_loop = NULL;
         struct nw_socket *socket_impl = timeout_args->socket->impl;
 
         aws_raise_error(error_code);
         struct aws_socket *socket = timeout_args->socket;
-        /*socket close sets timeout_args->socket to NULL and
-         * socket_impl->timeout_args to NULL. */
         aws_socket_close(socket);
         socket_impl->on_connection_result_fn(socket, error_code, socket_impl->connect_accept_user_data);
     }
@@ -941,7 +938,7 @@ static int s_socket_start_accept_fn(
     socket->event_loop = accept_loop;
     socket->accept_result_fn = on_accept_result;
     socket->connect_accept_user_data = user_data;
-    __block struct aws_allocator *allocator = socket->allocator;
+    struct aws_allocator *allocator = socket->allocator;
 
     nw_listener_set_state_changed_handler(
         socket->io_handle.data.handle, ^(nw_listener_state_t state, nw_error_t error) {
@@ -992,9 +989,16 @@ static int s_socket_start_accept_fn(
       struct aws_socket *new_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
 
       struct aws_socket_options options = socket->options;
-      aws_socket_init(new_socket, allocator, &options);
+      int error = aws_socket_init(new_socket, allocator, &options);
+      if(error)
+      {
+        aws_mem_release(allocator, new_socket);
+        s_schedule_on_listener_success(socket, aws_last_error(), NULL, user_data);
+        return;
+      }
       new_socket->state = CONNECTED_READ | CONNECTED_WRITE;
       new_socket->io_handle.data.handle = connection;
+      // The connection would be released in socket destroy.
       nw_retain(connection);
       new_socket->io_handle.set_queue = s_client_set_dispatch_queue;
       new_socket->io_handle.clear_queue = s_client_clear_dispatch_queue;
