@@ -505,7 +505,7 @@ int s_socket_connect_validation(
     struct aws_socket *socket,
     const struct aws_socket_endpoint *remote_endpoint,
     aws_socket_on_connection_result_fn *on_connection_result) {
-    (void)on_connection_result
+    (void)on_connection_result;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
         if (socket->state != INIT) {
