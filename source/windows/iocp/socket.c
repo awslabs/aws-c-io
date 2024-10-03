@@ -432,6 +432,7 @@ static int s_socket_init(
     socket->state = INIT;
     socket->impl = impl;
     socket->options = *options;
+    socket->event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED;
 
     if (options->domain != AWS_SOCKET_LOCAL && create_underlying_socket) {
         if (s_create_socket(socket, options)) {
