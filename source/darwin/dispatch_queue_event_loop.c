@@ -2,6 +2,9 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
+#include <aws/io/platform.h>
+
+#ifdef AWS_USE_DISPATCH_QUEUE
 
 #include <aws/io/event_loop.h>
 
@@ -514,3 +517,5 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     aws_mutex_unlock(&dispatch_queue->synced_data.lock);
     return result;
 }
+
+#endif /* AWS_USE_DISPATCH_QUEUE */
