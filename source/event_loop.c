@@ -9,6 +9,7 @@
 #include <aws/common/device_random.h>
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
+#include <aws/io/platform.h>
 
 #ifdef __APPLE__
 // DEBUG WIP we may need to wrap this for iOS specific

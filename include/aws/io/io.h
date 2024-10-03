@@ -9,6 +9,7 @@
 #include <aws/common/common.h>
 #include <aws/common/linked_list.h>
 #include <aws/io/exports.h>
+#include <aws/io/platform.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
 
