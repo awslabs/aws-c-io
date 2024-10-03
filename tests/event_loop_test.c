@@ -9,6 +9,7 @@
 #include <aws/common/system_info.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/platform.h>
 
 #include <aws/common/thread.h>
 #include <aws/testing/aws_test_harness.h>
