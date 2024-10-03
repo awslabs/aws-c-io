@@ -307,7 +307,10 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_socket->nw_listener = NULL;
     }
 
-    aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
+    if (nw_socket->timeout_args) {
+        aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
+    }
+
     aws_mem_release(nw_socket->allocator, nw_socket);
     nw_socket = NULL;
 }
@@ -317,6 +320,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
     AWS_ZERO_STRUCT(*socket);
 
     struct nw_socket *nw_socket = aws_mem_calloc(alloc, 1, sizeof(struct nw_socket));
+    nw_socket->allocator = alloc;
 
     socket->allocator = alloc;
     socket->state = INIT;
@@ -325,11 +329,11 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
     socket->vtable = &s_vtable;
     socket->event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED;
 
-    aws_ref_count_init(&nw_socket->ref_count, nw_socket, s_socket_impl_destroy);
     if (s_setup_socket_params(nw_socket, options)) {
+        aws_mem_release(alloc, nw_socket);
         return AWS_OP_ERR;
     }
-    nw_socket->allocator = alloc;
+    aws_ref_count_init(&nw_socket->ref_count, nw_socket, s_socket_impl_destroy);
     aws_linked_list_init(&nw_socket->read_queue);
 
     return AWS_OP_SUCCESS;
