@@ -33,7 +33,7 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .is_default = true,
     },
 #endif
-#if AWS_USE_KQUEUE
+#ifdef AWS_USE_KQUEUE
     {
         .name = "BSD Edge-Triggered KQueue",
         .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
