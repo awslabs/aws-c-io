@@ -158,7 +158,7 @@ jobs:
 
   macos:
     runs-on: macos-14 # latest
-    stradgy:
+    strategy:
       matrix:
         eventloop: ["-DAWS_USE_DISPATCH_QUEUE=ON", "-DAWS_USE_DISPATCH_QUEUE=OFF"]
     steps:
