@@ -150,6 +150,7 @@ static int s_socket_connect(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data);
 static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 static int s_socket_listen(struct aws_socket *socket, int backlog_size);
