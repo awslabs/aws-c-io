@@ -44,7 +44,7 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
-    
+
     if (options->secitem_options) {
         aws_tls_secitem_options_clean_up(options->secitem_options);
         aws_mem_release(options->allocator, options->secitem_options);
@@ -314,7 +314,7 @@ void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_option
     if (secitem_options == NULL) {
         return;
     }
-    
+
     if (secitem_options->cert_label) {
         aws_string_destroy(secitem_options->cert_label);
         secitem_options->cert_label = NULL;
