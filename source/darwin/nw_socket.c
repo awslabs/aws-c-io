@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/platform.h>
 #ifdef AWS_USE_DISPATCH_QUEUE
 
 #include <aws/io/private/socket.h>
@@ -13,7 +12,7 @@
 #include <aws/io/logging.h>
 
 #include <Network/Network.h>
-#include <aws/io/private/dispatch_queue.h>
+#include <aws/io/private/aws_apple_network_framework.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 
 #include <arpa/inet.h>

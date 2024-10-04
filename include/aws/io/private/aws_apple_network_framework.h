@@ -1,11 +1,10 @@
-#ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H
-#define AWS_IO_PRIVATE_DISPATCH_QUEUE_H
+#ifndef AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H
+#define AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H
 /**
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/platform.h>
 #include <aws/io/tls_channel_handler.h>
 
 #ifdef AWS_OS_APPLE
@@ -29,8 +28,6 @@ struct secure_transport_ctx {
 #include <aws/common/mutex.h>
 #include <aws/common/thread.h>
 #include <dispatch/dispatch.h>
-
-
 
 struct dispatch_scheduling_state {
     // Let's us skip processing an iteration task if one is already in the middle
@@ -70,4 +67,4 @@ struct dispatch_loop {
 };
 #endif /* AWS_USE_DISPATCH_QUEUE */
 
-#endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H  */
+#endif /* #ifndef AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H  */

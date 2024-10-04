@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/platform.h>
 #include <aws/io/private/socket.h>
 
 struct aws_socket_options aws_socket_options_default_tcp_ipv6(enum aws_event_loop_style el_style) {

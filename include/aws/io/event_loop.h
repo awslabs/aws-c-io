@@ -9,7 +9,6 @@
 #include <aws/common/atomics.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/ref_count.h>
-#include <aws/io/platform.h>
 
 #include <aws/io/io.h>
 

@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/platform.h>
 #include <aws/io/event_loop.h>
 
 #include <aws/common/clock.h>
