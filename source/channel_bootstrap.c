@@ -816,9 +816,8 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     AWS_FATAL_ASSERT(options->shutdown_callback);
     AWS_FATAL_ASSERT(bootstrap);
 
-    struct aws_socket_options *socket_options = (struct aws_socket_options *)options->socket_options;
+    const struct aws_socket_options *socket_options = options->socket_options;
     AWS_FATAL_ASSERT(socket_options != NULL);
-    socket_options->event_loop_style = aws_event_loop_group_get_style(bootstrap->event_loop_group);
 
     const struct aws_tls_connection_options *tls_options = options->tls_options;
 
@@ -1494,8 +1493,6 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     struct aws_event_loop *connection_loop =
         aws_event_loop_group_get_next_loop(bootstrap_options->bootstrap->event_loop_group);
 
-    ((struct aws_socket_options *)bootstrap_options->socket_options)->event_loop_style =
-        aws_event_loop_group_get_style(bootstrap_options->bootstrap->event_loop_group);
     if (aws_socket_init(
             &server_connection_args->listener,
             bootstrap_options->bootstrap->allocator,

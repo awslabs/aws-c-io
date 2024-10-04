@@ -249,6 +249,8 @@ static int s_socket_init(
     int existing_socket_fd) {
     AWS_ASSERT(options);
 
+    AWS_ZERO_STRUCT(*socket);
+
     struct posix_socket *posix_socket = aws_mem_calloc(alloc, 1, sizeof(struct posix_socket));
     if (!posix_socket) {
         socket->impl = NULL;
@@ -290,10 +292,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_init_poll_based(
-    struct aws_socket *socket,
-    struct aws_allocator *alloc,
-    const struct aws_socket_options *options) {
+int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     return s_socket_init(socket, alloc, options, -1);
 }
