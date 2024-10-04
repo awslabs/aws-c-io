@@ -45,7 +45,6 @@ struct aws_socket_options {
     /* If set, sets the number of keep alive probes allowed to fail before the connection is considered
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
-    enum aws_event_loop_style event_loop_style;
     bool keepalive;
 
     /**
@@ -90,7 +89,7 @@ typedef void(aws_socket_retrieve_tls_options_fn)(struct aws_tls_connection_optio
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations.
+ * performing IO operations. The user is resposnbile to releasing the socket memory after use.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -198,14 +197,6 @@ aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 
 AWS_EXTERN_C_BEGIN
 
-AWS_IO_API struct aws_socket_options aws_socket_options_default_tcp_ipv6(enum aws_event_loop_style el_style);
-AWS_IO_API struct aws_socket_options aws_socket_options_default_tcp_ipv4(enum aws_event_loop_style el_style);
-
-AWS_IO_API struct aws_socket_options aws_socket_options_default_udp_ipv6(enum aws_event_loop_style el_style);
-AWS_IO_API struct aws_socket_options aws_socket_options_default_udp_ipv4(enum aws_event_loop_style el_style);
-
-AWS_IO_API struct aws_socket_options aws_socket_options_default_local(enum aws_event_loop_style el_style);
-
 /**
  * Initializes a socket object with socket options. options will be copied.
  */
@@ -231,10 +222,15 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * In TCP, LOCAL and VSOCK this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
  *
+ * The function will failed with error if the endpoint is invalid. Except for LOCAL with AWS_USE_DISPATCH_QUEUE (with
+ * Apple Network Framework enabled). In Apple network framework, we would not know if the local endpoint is valid until
+ * we have the connection state back, Make sure to validate in `on_connection_result` for this case.
+ *
  * If an event_loop is provided for UDP sockets, a notification will be sent on
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
+ *
  */
 AWS_IO_API int aws_socket_connect(
     struct aws_socket *socket,
@@ -267,6 +263,7 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
  * connections or errors will arrive via the `on_accept_result` callback.
  *
  * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
+ *
  */
 AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,
