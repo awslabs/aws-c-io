@@ -663,6 +663,7 @@ static int s_socket_connect(
     aws_socket_on_connection_result_fn *on_connection_result,
     aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data) {
+    (void)retrieve_tls_options;
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
 

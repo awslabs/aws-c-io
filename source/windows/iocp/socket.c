@@ -436,6 +436,7 @@ int aws_socket_connect(
     aws_socket_on_connection_result_fn *on_connection_result,
     aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data) {
+    (void)retrieve_tls_options;
     struct iocp_socket *socket_impl = socket->impl;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
