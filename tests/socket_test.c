@@ -29,7 +29,6 @@ static bool s_use_dispatch_queue = true;
 static bool s_use_dispatch_queue = false;
 #endif
 
-
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
