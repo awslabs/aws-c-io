@@ -20,6 +20,9 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
 
+#include <s2n.h>
+#include <s2n/unstable/cleanup.h>
+
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
