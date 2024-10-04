@@ -853,13 +853,10 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
     nw_parameters_set_local_endpoint(nw_socket->socket_options_to_params, endpoint);
     nw_release(endpoint);
 
-    if (socket->options.type == AWS_SOCKET_STREAM) {
-        socket->state = BOUND;
-    } else {
-        /* e.g. UDP is now readable (sort, of, we'll have to lazily init it in the first read call if connect isn't
-         * called.) */
-        socket->state = CONNECTED_READ;
-    }
+    // DEBUG WIP:
+    // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on top of the UDP layer. 
+    // We should always do an abatract "connection" action for Apple Network Framework
+    socket->state = BOUND;
 
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: successfully bound", (void *)socket);
 

@@ -22,6 +22,14 @@
 #    include <linux/vm_sockets.h>
 #endif
 
+// DEBUG WIP
+#ifdef AWS_USE_DISPATCH_QUEUE
+static bool s_use_dispatch_queue = true;
+#else
+static bool s_use_dispatch_queue = false;
+#endif
+
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -244,7 +252,7 @@ static int s_test_socket_ex(
     ASSERT_INT_EQUALS(endpoint->port, bound_endpoint.port);
     ASSERT_STR_EQUALS(endpoint->address, bound_endpoint.address);
 
-    if (options->type == AWS_SOCKET_STREAM) {
+    if (options->type == AWS_SOCKET_STREAM || s_use_dispatch_queue) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
     }
@@ -259,7 +267,7 @@ static int s_test_socket_ex(
     }
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
-    if (listener.options.type == AWS_SOCKET_STREAM) {
+    if (listener.options.type == AWS_SOCKET_STREAM || s_use_dispatch_queue) {
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         ASSERT_SUCCESS(
             aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -272,7 +280,7 @@ static int s_test_socket_ex(
 
     struct aws_socket *server_sock = &listener;
 
-    if (options->type == AWS_SOCKET_STREAM) {
+    if (options->type == AWS_SOCKET_STREAM || s_use_dispatch_queue) {
         ASSERT_TRUE(listener_args.incoming_invoked);
         ASSERT_FALSE(listener_args.error_invoked);
         server_sock = listener_args.incoming;
@@ -392,6 +400,9 @@ static int s_test_socket_ex(
     aws_socket_clean_up(&listener);
 
     aws_event_loop_destroy(event_loop);
+
+    // DEBUG WIP, sleep to wait for reference release
+    aws_thread_current_sleep(3000000000);
 
     return 0;
 }
