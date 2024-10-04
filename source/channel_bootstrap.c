@@ -474,8 +474,8 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
             goto error;
         }
 
-        /* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling. 
-         * The TCP and TLS handshake are both handled by the network parameters and its options and verification block. 
+        /* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
+         * The TCP and TLS handshake are both handled by the network parameters and its options and verification block.
          * We do not need to set up a separate TLS slot in the channel for iOS. */
 #if !defined(AWS_USE_SECITEM)
         if (connection_args->channel_data.use_tls) {

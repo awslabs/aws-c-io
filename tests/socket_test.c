@@ -264,7 +264,8 @@ static int s_test_socket_ex(
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
         ASSERT_SUCCESS(aws_socket_bind(&outgoing, local));
     }
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     if (listener.options.type == AWS_SOCKET_STREAM || s_use_dispatch_queue) {
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
@@ -689,7 +690,8 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
@@ -782,7 +784,8 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     aws_event_loop_group_release(el_group);
 
@@ -1219,7 +1222,8 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     };
 
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
     aws_event_loop_schedule_task_now(event_loop, &destroy_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_ERROR(
@@ -1305,7 +1309,8 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -1431,7 +1436,8 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -1682,7 +1688,8 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    ASSERT_SUCCESS(
+        aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));

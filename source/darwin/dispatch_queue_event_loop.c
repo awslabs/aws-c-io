@@ -5,21 +5,21 @@
 
 #ifdef AWS_USE_DISPATCH_QUEUE
 
-#include <aws/io/event_loop.h>
+#    include <aws/io/event_loop.h>
 
-#include <aws/common/atomics.h>
-#include <aws/common/mutex.h>
-#include <aws/common/task_scheduler.h>
-#include <aws/common/uuid.h>
+#    include <aws/common/atomics.h>
+#    include <aws/common/mutex.h>
+#    include <aws/common/task_scheduler.h>
+#    include <aws/common/uuid.h>
 
-#include <aws/io/logging.h>
+#    include <aws/io/logging.h>
 
-#include <unistd.h>
+#    include <unistd.h>
 
-#include <Block.h>
-#include <aws/io/private/aws_apple_network_framework.h>
-#include <dispatch/dispatch.h>
-#include <dispatch/queue.h>
+#    include <Block.h>
+#    include <aws/io/private/aws_apple_network_framework.h>
+#    include <dispatch/dispatch.h>
+#    include <dispatch/queue.h>
 
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);

@@ -5,19 +5,19 @@
 
 #ifdef AWS_USE_DISPATCH_QUEUE
 
-#include <aws/io/socket.h>
+#    include <aws/io/socket.h>
 
-#include <aws/common/clock.h>
-#include <aws/common/string.h>
-#include <aws/common/uuid.h>
-#include <aws/io/logging.h>
+#    include <aws/common/clock.h>
+#    include <aws/common/string.h>
+#    include <aws/common/uuid.h>
+#    include <aws/io/logging.h>
 
-#include <Network/Network.h>
-#include <aws/io/private/aws_apple_network_framework.h>
-#include <aws/io/private/tls_channel_handler_shared.h>
+#    include <Network/Network.h>
+#    include <aws/io/private/aws_apple_network_framework.h>
+#    include <aws/io/private/tls_channel_handler_shared.h>
 
-#include <arpa/inet.h>
-#include <sys/socket.h>
+#    include <arpa/inet.h>
+#    include <sys/socket.h>
 
 const char *aws_sec_trust_result_type_to_string(SecTrustResultType trust_result) {
     switch (trust_result) {
@@ -400,9 +400,9 @@ static int s_setup_socket_params(
                     });
             }
         } else if (options->domain == AWS_SOCKET_LOCAL) {
-#if defined(TARGET_OS_OSX) && TARGET_OS_OSX
+#    if defined(TARGET_OS_OSX) && TARGET_OS_OSX
             nw_socket->nw_parameters = nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
-#else  /* TARGET_OS_OSX */
+#    else  /* TARGET_OS_OSX */
             /* AF_LOCAL is not supported on iOS with Network Framework. TCP or UDP should be used instead. */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
@@ -410,7 +410,7 @@ static int s_setup_socket_params(
                 (void *)nw_socket,
                 (void *)options);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-#endif /* !TARGET_OS_OSX */
+#    endif /* !TARGET_OS_OSX */
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->nw_parameters = nw_parameters_create_secure_udp(
@@ -1133,8 +1133,8 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
     nw_release(endpoint);
 
     // DEBUG WIP:
-    // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on top of the UDP layer. 
-    // We should always do an abatract "connection" action for Apple Network Framework
+    // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on top of
+    // the UDP layer. We should always do an abatract "connection" action for Apple Network Framework
     socket->state = BOUND;
 
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: successfully bound", (void *)socket);
@@ -1266,11 +1266,10 @@ static int s_socket_start_accept_fn(
 
       struct aws_socket_options options = socket->options;
       int error = aws_socket_init(new_socket, allocator, &options);
-      if(error)
-      {
-        aws_mem_release(allocator, new_socket);
-        s_schedule_on_listener_success(socket, aws_last_error(), NULL, user_data);
-        return;
+      if (error) {
+          aws_mem_release(allocator, new_socket);
+          s_schedule_on_listener_success(socket, aws_last_error(), NULL, user_data);
+          return;
       }
       new_socket->state = CONNECTED_READ | CONNECTED_WRITE;
       new_socket->io_handle.data.handle = connection;
