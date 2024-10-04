@@ -78,14 +78,13 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
         return aws_socket_init_completion_port_based(socket, alloc, options);
     }
 
-    /* this is logically impossible given then precondition above. */
+    /* this is logically impossible given the precondition above. */
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
 
 /* on a platform without both socket types, we need to define the symbols for that type of socket so the linker will be
  * happy. */
-#ifndef AWS_USE_DISPATCH_QUEUE
-#ifndef AWS_USE_IO_COMPLETION_PORTS
+#if !defined(AWS_USE_DISPATCH_QUEUE) && !defined(AWS_USE_IO_COMPLETION_PORTS)
 int aws_socket_init_completion_port_based(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -98,8 +97,7 @@ int aws_socket_init_completion_port_based(
                       "completion based socket, but no completion based implementation is available");
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
-#endif /* AWS_USE_DISPATCH_QUEUE */
+#endif /* !AWS_USE_DISPATCH_QUEUE && !AWS_USE_IO_COMPLETION_PORTS */
 
 void aws_socket_clean_up(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_cleanup_fn);
