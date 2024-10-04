@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/io/platform.h>
 #include <aws/io/event_loop.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
-#include <aws/io/platform.h>
 
 #ifdef __APPLE__
 // DEBUG WIP we may need to wrap this for iOS specific

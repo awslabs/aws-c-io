@@ -5,6 +5,7 @@
 
 #ifndef AWS_IO_PLATFORM_H
 #define AWS_IO_PLATFORM_H
+#include <aws/common/platform.h>
 
 /* iOS and tvOS should use both AWS_USE_DISPATCH_QUEUE and AWS_USE_SECITEM. */
 #if defined(AWS_OS_IOS) || defined(AWS_OS_TVOS)
