@@ -21,7 +21,7 @@
 #include <aws/common/thread.h>
 
 #include <s2n.h>
-#include <unstable/cleanup.h> /* s2n unstable */
+#include <s2n/unstable/cleanup.h>
 
 #include <errno.h>
 #include <inttypes.h>
