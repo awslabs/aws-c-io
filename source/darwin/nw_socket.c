@@ -5,7 +5,6 @@
 
 #ifdef AWS_USE_DISPATCH_QUEUE
 
-#include <aws/io/private/socket.h>
 #include <aws/io/socket.h>
 
 #include <aws/common/clock.h>

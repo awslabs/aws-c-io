@@ -689,7 +689,7 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
@@ -782,7 +782,7 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     aws_event_loop_group_release(el_group);
 
@@ -842,7 +842,7 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 
-    ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args));
+    ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, NULL, &args));
     ASSERT_TRUE(
         aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_ERROR_FILE_INVALID_PATH);
 
@@ -886,7 +886,7 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    int result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
+    int result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, NULL, &args);
 #ifdef __FreeBSD__
     /**
      * FreeBSD doesn't seem to respect the O_NONBLOCK or SOCK_NONBLOCK flag. It fails immediately when trying to
@@ -1219,7 +1219,7 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
     };
 
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
     aws_event_loop_schedule_task_now(event_loop, &destroy_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_ERROR(
@@ -1305,7 +1305,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -1431,7 +1431,7 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -1682,7 +1682,7 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
