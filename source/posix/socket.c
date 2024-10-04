@@ -293,11 +293,6 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
-    AWS_ASSERT(options);
-    return s_socket_init(socket, alloc, options, -1);
-}
-
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
         /* protect from double clean */
@@ -948,19 +943,6 @@ static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endp
 error:
     socket->state = ERROR;
     return AWS_OP_ERR;
-}
-
-int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
-    if (socket->local_endpoint.address[0] == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
-            (void *)socket,
-            socket->io_handle.data.fd);
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-    }
-    *out_address = socket->local_endpoint;
-    return AWS_OP_SUCCESS;
 }
 
 static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
@@ -2052,6 +2034,13 @@ static bool s_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.fd >= 0;
 }
 
+#if !defined(AWS_USE_DISPATCH_QUEUE)
+
+int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
+    AWS_ASSERT(options);
+    return s_socket_init(socket, alloc, options, -1);
+}
+
 void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
     struct aws_uuid uuid;
     AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
@@ -2060,3 +2049,18 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
 }
+
+int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
+    if (socket->local_endpoint.address[0] == 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    }
+    *out_address = socket->local_endpoint;
+    return AWS_OP_SUCCESS;
+}
+
+#endif /* !AWS_USE_DISPATCH_QUEUE */
