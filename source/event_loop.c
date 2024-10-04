@@ -9,6 +9,7 @@
 #include <aws/common/device_random.h>
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
+#include <aws/io/platform.h>
 
 #ifdef __APPLE__
 // DEBUG WIP we may need to wrap this for iOS specific
@@ -20,11 +21,11 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
     {
         .name = "WinNT IO Completion Ports",
         .event_loop_new_fn = aws_event_loop_new_iocp_with_options,
-        .is_default = true,
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
+        .is_default = true,
     },
-#endif
-#if AWS_USE_DISPATCH_QUEUE
+#endif /* AWS_USE_IO_COMPLETION_PORTS */
+#ifdef AWS_USE_DISPATCH_QUEUE
     /* use kqueue on OSX and dispatch_queues everywhere else */
     {
         .name = "Apple Dispatch Queue",
@@ -32,23 +33,23 @@ static const struct aws_event_loop_configuration s_available_configurations[] = 
         .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
         .is_default = true,
     },
-#endif
-#if AWS_USE_KQUEUE
+#endif /* AWS_USE_DISPATCH_QUEUE */
+#ifdef AWS_USE_KQUEUE
     {
         .name = "BSD Edge-Triggered KQueue",
         .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
         .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
         .is_default = true,
     },
-#endif
-#if AWS_USE_EPOLL
+#endif /* AWS_USE_KQUEUE */
+#ifdef AWS_USE_EPOLL
     {
         .name = "Linux Edge-Triggered Epoll",
         .event_loop_new_fn = aws_event_loop_new_epoll_with_options,
         .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
         .is_default = true,
     },
-#endif
+#endif /* AWS_USE_EPOLL */
 };
 
 static struct aws_event_loop_configuration_group s_available_configuration_group = {
