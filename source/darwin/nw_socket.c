@@ -299,6 +299,8 @@ static int s_setup_socket_params(
                           ^(sec_protocol_metadata_t metadata,
                             sec_trust_t trust,
                             sec_protocol_verify_complete_t complete) {
+                            (void)metadata;
+
                             /* Since we manually handle the verification of the peer, the value set using
                              * sec_protocol_options_set_peer_authentication_required is ignored and this block is
                              * run instead. We must manually skip the verification at this point if verify_peer is
