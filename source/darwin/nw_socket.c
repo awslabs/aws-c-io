@@ -305,10 +305,6 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_socket->nw_listener = NULL;
     }
 
-    if (nw_socket->timeout_args) {
-        aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
-    }
-
     aws_mem_release(nw_socket->allocator, nw_socket);
     nw_socket = NULL;
 }
@@ -316,6 +312,26 @@ static void s_socket_impl_destroy(void *sock_ptr) {
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
+
+    // Network Interface is not supported with Apple Network Framework yet
+    size_t network_interface_length = 0;
+    if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_NAME_MAX, &network_interface_length)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: network_interface_name max length must be %d length and NULL terminated",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            AWS_NETWORK_INTERFACE_NAME_MAX);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
+    if (network_interface_length != 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: network_interface_name is not supported on this platform.",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+    }
 
     struct nw_socket *nw_socket = aws_mem_calloc(alloc, 1, sizeof(struct nw_socket));
     nw_socket->allocator = alloc;
@@ -350,31 +366,33 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
     (void)task;
     (void)status;
 
-    if (status == AWS_TASK_STATUS_CANCELED) {
-        // We will clean up the task and args on socket destory.
-        return;
-    }
     struct nw_socket_timeout_args *timeout_args = args;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
-    /* successful connection will have nulled out timeout_args->socket */
-    if (timeout_args->socket) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: timed out, shutting down.",
-            (void *)timeout_args->socket,
-            timeout_args->socket->io_handle.data.handle);
+    if (status != AWS_TASK_STATUS_CANCELED) {
 
-        timeout_args->socket->state = TIMEDOUT;
-        int error_code = AWS_IO_SOCKET_TIMEOUT;
+        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
+        /* successful connection will have nulled out timeout_args->socket */
+        if (timeout_args->socket) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: timed out, shutting down.",
+                (void *)timeout_args->socket,
+                timeout_args->socket->io_handle.data.handle);
 
-        struct nw_socket *socket_impl = timeout_args->socket->impl;
+            timeout_args->socket->state = TIMEDOUT;
+            int error_code = AWS_IO_SOCKET_TIMEOUT;
 
-        aws_raise_error(error_code);
-        struct aws_socket *socket = timeout_args->socket;
-        aws_socket_close(socket);
-        socket_impl->on_connection_result_fn(socket, error_code, socket_impl->connect_accept_user_data);
+            struct nw_socket *socket_impl = timeout_args->socket->impl;
+
+            aws_raise_error(error_code);
+            struct aws_socket *socket = timeout_args->socket;
+            aws_socket_close(socket);
+            socket_impl->on_connection_result_fn(socket, error_code, socket_impl->connect_accept_user_data);
+        }
     }
+
+    aws_mem_release(timeout_args->allocator, timeout_args);
+    timeout_args = NULL;
 }
 
 static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -1058,6 +1076,11 @@ static int s_socket_stop_accept_fn(struct aws_socket *socket) {
 static int s_socket_close_fn(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", (void *)socket, socket->io_handle.data.handle);
+
+    if (nw_socket->timeout_args) {
+        // if the timeout args is not triggered, cancel it
+        s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+    }
 
     /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
     if (nw_socket->is_listener) {
