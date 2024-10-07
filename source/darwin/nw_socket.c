@@ -243,11 +243,13 @@ static int s_setup_socket_params(
                 struct dispatch_loop *dispatch_loop = nw_socket->event_loop->impl_data;
 
                 /* This check cannot be done within the TLS options block and must be handled here. */
-                if (transport_ctx->minimum_tls_version == AWS_IO_SSLv3) {
+                if (transport_ctx->minimum_tls_version == AWS_IO_SSLv3 ||
+                    transport_ctx->minimum_tls_version == AWS_IO_TLSv1 ||
+                    transport_ctx->minimum_tls_version == AWS_IO_TLSv1_1) {
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
-                        "id=%p options=%p: Apple Network Framework does not support SSLv3 due to its "
-                        "deprecated status and known security flaws.",
+                        "id=%p options=%p: Selected minimum tls version not supported by Apple Network Framework due "
+                        "to deprecated status and known security flaws.",
                         (void *)nw_socket,
                         (void *)options);
                     return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -264,14 +266,6 @@ static int s_setup_socket_params(
 
                       // Set the minimum TLS version
                       switch (transport_ctx->minimum_tls_version) {
-                          case AWS_IO_TLSv1:
-                              sec_protocol_options_set_min_tls_protocol_version(
-                                  sec_options, tls_protocol_version_TLSv10);
-                              break;
-                          case AWS_IO_TLSv1_1:
-                              sec_protocol_options_set_min_tls_protocol_version(
-                                  sec_options, tls_protocol_version_TLSv11);
-                              break;
                           case AWS_IO_TLSv1_2:
                               sec_protocol_options_set_min_tls_protocol_version(
                                   sec_options, tls_protocol_version_TLSv12);
