@@ -348,30 +348,47 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             }
 
                             SecTrustResultType trust_result;
-                            status = SecTrustEvaluate(trust_ref, &trust_result);
-                            if (status == errSecSuccess) {
-                                AWS_LOGF_DEBUG(
-                                    AWS_LS_IO_TLS,
-                                    "id=%p: nw_socket verify block SecTrustEvaluate trust result: %s",
-                                    (void *)nw_socket,
-                                    aws_sec_trust_result_type_to_string(trust_result));
 
-                                if (trust_result == kSecTrustResultProceed ||
-                                    trust_result == kSecTrustResultUnspecified) {
-                                    complete(true);
+                            CFErrorRef error = NULL;
+                            bool success = SecTrustEvaluateWithError(trust_ref, &error);
+                            if (success) {
+                                status = SecTrustGetTrustResult(trust_ref, &trust_result);
+                                if (status == errSecSuccess) {
+                                    AWS_LOGF_DEBUG(
+                                        AWS_LS_IO_TLS,
+                                        "id=%p: nw_socket verify block trust result: %s",
+                                        (void *)nw_socket,
+                                        aws_sec_trust_result_type_to_string(trust_result));
+
+                                    // Proceed based on the trust_result if necessary
+                                    if (trust_result == kSecTrustResultProceed ||
+                                        trust_result == kSecTrustResultUnspecified) {
+                                        complete(true);
+                                    } else {
+                                        complete(false);
+                                    }
                                 } else {
+                                    AWS_LOGF_DEBUG(
+                                        AWS_LS_IO_TLS,
+                                        "id=%p: nw_socket SecTrustGetTrustResult failed with OSStatus: %d",
+                                        (void *)nw_socket,
+                                        (int)status);
                                     complete(false);
                                 }
                             } else {
                                 AWS_LOGF_DEBUG(
                                     AWS_LS_IO_TLS,
-                                    "id=%p: nw_socket SecTrustEvaluate failed with OSStatus: %d",
+                                    "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %ld",
                                     (void *)nw_socket,
-                                    (int)status);
+                                    (long)CFErrorGetCode(error));
                                 complete(false);
                             }
+
                         verification_done:
                             CFRelease(trust_ref);
+                            if (error) {
+                                CFRelease(error);
+                            }
                           },
                           dispatch_loop->dispatch_queue);
                     },
