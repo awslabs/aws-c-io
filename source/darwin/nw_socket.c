@@ -259,6 +259,7 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
     // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
     aws_ref_count_release(&nw_socket->ref_count);
+    AWS_ZERO_STRUCT(*socket);
 }
 
 struct read_queue_node {
@@ -1147,6 +1148,9 @@ static void s_schedule_next_read(struct aws_socket *socket) {
         return;
     }
 
+    // Acquire nw_socket after we call connection receive, and released it when handler is called.
+    aws_ref_count_acquire(&nw_socket->ref_count);
+
     /* read and let me know when you've done it. */
     nw_connection_receive(
         socket->io_handle.data.handle,
@@ -1193,6 +1197,7 @@ static void s_schedule_next_read(struct aws_socket *socket) {
 
               s_schedule_on_readable(socket, error_code);
           }
+          aws_ref_count_release(&nw_socket->ref_count);
         });
 }
 
@@ -1317,6 +1322,8 @@ static int s_socket_write_fn(
     AWS_ASSERT(written_fn);
 
     dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+    aws_ref_count_acquire(&nw_socket->ref_count);
+
     nw_connection_send(
         socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           AWS_LOGF_TRACE(
@@ -1331,7 +1338,7 @@ static int s_socket_write_fn(
               // As the socket is not open, we no longer have access to the event loop to schedule tasks
               // directly execute the written callback instead of scheduling a task.
               written_fn(socket, 0, 0, user_data);
-              return;
+              goto nw_socket_release;
           }
 
           AWS_LOGF_ERROR(
@@ -1363,6 +1370,8 @@ static int s_socket_write_fn(
               socket->io_handle.data.handle,
               (int)written_size);
           s_schedule_write_fn(socket, error_code, !error_code ? written_size : 0, user_data, written_fn);
+    nw_socket_release:
+        aws_ref_count_release(&nw_socket->ref_count);
         });
 
     return AWS_OP_SUCCESS;
