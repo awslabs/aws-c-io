@@ -403,7 +403,7 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     struct nw_socket_readable_args *args = arg;
 
     struct nw_socket *nw_socket = args->socket->impl;
-    if (nw_socket->on_readable)
+    if (nw_socket && nw_socket->on_readable)
         nw_socket->on_readable(args->socket, args->error_code, nw_socket->on_readable_user_data);
 
     aws_mem_release(args->allocator, task);
@@ -431,7 +431,7 @@ static void s_process_connection_success_task(struct aws_task *task, void *arg, 
     struct nw_socket_readable_args *args = arg;
 
     struct nw_socket *nw_socket = args->socket->impl;
-    if (nw_socket->on_connection_result_fn)
+    if (nw_socket && nw_socket->on_connection_result_fn)
         nw_socket->on_connection_result_fn(args->socket, args->error_code, nw_socket->connect_accept_user_data);
 
     aws_mem_release(args->allocator, task);
@@ -1096,6 +1096,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
         nw_connection_cancel(socket->io_handle.data.handle);
     }
     nw_socket->currently_connected = false;
+    socket->state = CLOSED;
 
     return AWS_OP_SUCCESS;
 }

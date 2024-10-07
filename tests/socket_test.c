@@ -400,6 +400,9 @@ static int s_test_socket_ex(
 
     aws_event_loop_destroy(event_loop);
 
+    // DEBUG WIP, sleep to wait for reference release
+    aws_thread_current_sleep(1000000000);
+
     return 0;
 }
 
@@ -1532,13 +1535,14 @@ enum async_role {
     ASYNC_ROLE_COUNT
 };
 
-static struct {
+static struct async_test_args {
     struct aws_allocator *allocator;
     struct aws_event_loop *event_loop;
     struct aws_socket *write_socket;
     struct aws_socket *read_socket;
     bool currently_writing;
     enum async_role next_expected_callback;
+    int read_error;
 
     struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
@@ -1564,7 +1568,12 @@ static void s_async_read_task(struct aws_task *task, void *args, enum aws_task_s
         buf.len = 0;
         if (aws_socket_read(g_async_tester.read_socket, &buf, &amount_read)) {
             /* reschedule task to try reading more later */
-            if (AWS_IO_READ_WOULD_BLOCK == aws_last_error()) {
+            /*
+             * For Apple Network Framework (dispatch queue), the read error would not directly returned from
+             * aws_socket_read, but from the callback, therefore, we validate the g_async_tester.read_error
+             * returned from the callback
+             */
+            if (!g_async_tester.read_error && AWS_IO_READ_WOULD_BLOCK == aws_last_error()) {
                 aws_event_loop_schedule_task_now(g_async_tester.event_loop, task);
                 break;
             }
@@ -1650,6 +1659,15 @@ static void s_async_write_task(struct aws_task *task, void *args, enum aws_task_
     g_async_tester.currently_writing = false;
 }
 
+static void s_on_readable_return(struct aws_socket *socket, int error_code, void *user_data) {
+    (void)socket;
+    (void)error_code;
+    struct async_test_args *async_tester = user_data;
+    if (error_code) {
+        async_tester->read_error = error_code;
+    }
+}
+
 /**
  * aws_socket_write()'s completion callback MUST fire asynchronously.
  * Otherwise, we can get multiple write() calls in the same callstack, which
@@ -1716,7 +1734,7 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     ASSERT_INT_EQUALS(options.type, listener_args.incoming->options.type);
 
     ASSERT_SUCCESS(aws_socket_assign_to_event_loop(server_sock, event_loop));
-    aws_socket_subscribe_to_readable_events(server_sock, s_on_readable, NULL);
+    aws_socket_subscribe_to_readable_events(server_sock, s_on_readable_return, &g_async_tester);
     aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
 
     /* set up g_async_tester */
