@@ -1157,12 +1157,8 @@ static void s_schedule_next_read(struct aws_socket *socket) {
         UINT32_MAX,
         ^(dispatch_data_t data, nw_content_context_t context, bool is_complete, nw_error_t error) {
           (void)context;
-          AWS_LOGF_TRACE(
-              AWS_LS_IO_SOCKET, "id=%p handle=%p: read cb invoked", (void *)socket, socket->io_handle.data.handle);
 
           if (!nw_socket->currently_connected) {
-              AWS_LOGF_TRACE(
-                  AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, socket->io_handle.data.handle);
               aws_raise_error(AWS_IO_SOCKET_CLOSED);
           } else if (!error || nw_error_get_error_code(error) == 0) {
               if (data) {
@@ -1325,15 +1321,7 @@ static int s_socket_write_fn(
 
     nw_connection_send(
         socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
-          AWS_LOGF_TRACE(
-              AWS_LS_IO_SOCKET,
-              "id=%p handle=%p: processing write requests, called from aws_socket_write",
-              (void *)socket,
-              socket->io_handle.data.handle);
-
           if (!nw_socket->currently_connected) {
-              AWS_LOGF_TRACE(
-                  AWS_LS_IO_SOCKET, "id=%p handle=%p: socket closed", (void *)socket, socket->io_handle.data.handle);
               // As the socket is not open, we no longer have access to the event loop to schedule tasks
               // directly execute the written callback instead of scheduling a task.
               written_fn(socket, 0, 0, user_data);
@@ -1369,8 +1357,8 @@ static int s_socket_write_fn(
               socket->io_handle.data.handle,
               (int)written_size);
           s_schedule_write_fn(socket, error_code, !error_code ? written_size : 0, user_data, written_fn);
-    nw_socket_release:
-        aws_ref_count_release(&nw_socket->ref_count);
+      nw_socket_release:
+          aws_ref_count_release(&nw_socket->ref_count);
         });
 
     return AWS_OP_SUCCESS;
