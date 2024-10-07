@@ -257,10 +257,8 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
     struct nw_socket *nw_socket = socket->impl;
 
-    // The cleanup of nw_connection_t will be handled in the nw_socket destroy
+    // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
     aws_ref_count_release(&nw_socket->ref_count);
-
-    AWS_ZERO_STRUCT(*socket);
 }
 
 struct read_queue_node {
@@ -395,7 +393,7 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
 
 static void s_schedule_on_readable(struct aws_socket *socket, int error_code) {
     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
-    ;
+
     struct nw_socket_readable_args *args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_readable_args));
 
     args->socket = socket;
@@ -424,7 +422,7 @@ static void s_process_connection_success_task(struct aws_task *task, void *arg, 
 static void s_schedule_on_connection_success(struct aws_socket *socket, int error_code) {
 
     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
-    ;
+
     struct nw_socket_readable_args *args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_readable_args));
 
     args->socket = socket;
@@ -456,8 +454,8 @@ static void s_schedule_on_listener_success(
     void *user_data) {
 
     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
-    ;
-    struct nw_socket_listener_args *args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_readable_args));
+
+    struct nw_socket_listener_args *args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_listener_args));
 
     args->socket = socket;
     args->allocator = socket->allocator;
@@ -487,7 +485,7 @@ static void s_process_cancel_task(struct aws_task *task, void *arg, enum aws_tas
 static void s_schedule_cancel_task(struct aws_socket *socket, struct aws_task *task_to_cancel) {
 
     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
-    ;
+
     struct nw_socket_cancel_task_args *args =
         aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_cancel_task_args));
 
@@ -697,7 +695,8 @@ static int s_socket_connect_fn(
                   socket->local_endpoint.address,
                   port);
               // Cancel the connection timeout task
-              s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+              if (nw_socket->timeout_args)
+                  s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
               nw_socket->setup_run = true;
               aws_ref_count_acquire(&nw_socket->ref_count);
@@ -714,7 +713,8 @@ static int s_socket_connect_fn(
                   socket->io_handle.data.handle,
                   error_code);
               // Cancel the connection timeout task
-              s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+              if (nw_socket->timeout_args)
+                  s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
               /* we don't let this thing do DNS or TLS. Everything had better be a posix error. */
               //   AWS_ASSERT(nw_error_get_error_domain(error) == nw_error_domain_posix);
               // DEBUG WIP we do in fact allow this to do TLS
@@ -736,7 +736,8 @@ static int s_socket_connect_fn(
                * we uninstall this handler right before calling close on the socket so this shouldn't
                * get hit unless it was triggered remotely */
               // Cancel the connection timeout task
-              s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+              if (nw_socket->timeout_args)
+                  s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
                   "id=%p handle=%p: socket closed remotely.",
@@ -854,8 +855,8 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
     nw_release(endpoint);
 
     // DEBUG WIP:
-    // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on top of the UDP layer. 
-    // We should always do an abatract "connection" action for Apple Network Framework
+    // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on top of
+    // the UDP layer. We should always do an abatract "connection" action for Apple Network Framework
     socket->state = BOUND;
 
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: successfully bound", (void *)socket);
@@ -987,11 +988,10 @@ static int s_socket_start_accept_fn(
 
       struct aws_socket_options options = socket->options;
       int error = aws_socket_init(new_socket, allocator, &options);
-      if(error)
-      {
-        aws_mem_release(allocator, new_socket);
-        s_schedule_on_listener_success(socket, aws_last_error(), NULL, user_data);
-        return;
+      if (error) {
+          aws_mem_release(allocator, new_socket);
+          s_schedule_on_listener_success(socket, aws_last_error(), NULL, user_data);
+          return;
       }
       new_socket->state = CONNECTED_READ | CONNECTED_WRITE;
       new_socket->io_handle.data.handle = connection;
@@ -1147,9 +1147,6 @@ static void s_schedule_next_read(struct aws_socket *socket) {
         return;
     }
 
-    // Acquire nw_socket after we call connection receive, and released it when handler is called.
-    aws_ref_count_acquire(&nw_socket->ref_count);
-
     /* read and let me know when you've done it. */
     nw_connection_receive(
         socket->io_handle.data.handle,
@@ -1196,7 +1193,6 @@ static void s_schedule_next_read(struct aws_socket *socket) {
 
               s_schedule_on_readable(socket, error_code);
           }
-          aws_ref_count_release(&nw_socket->ref_count);
         });
 }
 
@@ -1317,7 +1313,6 @@ static int s_socket_write_fn(
     }
 
     struct nw_socket *nw_socket = socket->impl;
-    aws_ref_count_acquire(&nw_socket->ref_count);
 
     AWS_ASSERT(written_fn);
 
@@ -1336,7 +1331,7 @@ static int s_socket_write_fn(
               // As the socket is not open, we no longer have access to the event loop to schedule tasks
               // directly execute the written callback instead of scheduling a task.
               written_fn(socket, 0, 0, user_data);
-              goto nw_socket_release;
+              return;
           }
 
           AWS_LOGF_ERROR(
@@ -1368,8 +1363,6 @@ static int s_socket_write_fn(
               socket->io_handle.data.handle,
               (int)written_size);
           s_schedule_write_fn(socket, error_code, !error_code ? written_size : 0, user_data, written_fn);
-      nw_socket_release:
-          aws_ref_count_release(&nw_socket->ref_count);
         });
 
     return AWS_OP_SUCCESS;

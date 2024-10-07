@@ -400,9 +400,6 @@ static int s_test_socket_ex(
 
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
-    aws_thread_current_sleep(3000000000);
-
     return 0;
 }
 
