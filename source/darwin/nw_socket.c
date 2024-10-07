@@ -311,6 +311,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                 complete(true);
                             }
 
+                            CFErrorRef error = NULL;
                             SecTrustRef trust_ref = sec_trust_copy_ref(trust);
                             OSStatus status;
 
@@ -349,7 +350,6 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
 
                             SecTrustResultType trust_result;
 
-                            CFErrorRef error = NULL;
                             bool success = SecTrustEvaluateWithError(trust_ref, &error);
                             if (success) {
                                 status = SecTrustGetTrustResult(trust_ref, &trust_result);
