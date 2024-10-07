@@ -224,10 +224,7 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
     }
 }
 
-static int s_setup_socket_params(
-    struct nw_socket *nw_socket,
-    const struct aws_socket_options *options,
-    struct aws_tls_connection_options *tls_ctx_options) {
+static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
 
     /* If we already have parameters set, release them before re-establishing new parameters */
     if (nw_socket->nw_parameters != NULL) {
@@ -815,7 +812,7 @@ static int s_socket_connect_fn(
 
     nw_socket->event_loop = event_loop;
 
-    if (s_setup_socket_params(nw_socket, &socket->options, tls_connection_options)) {
+    if (s_setup_socket_params(nw_socket, &socket->options)) {
         return AWS_OP_ERR;
     }
 
