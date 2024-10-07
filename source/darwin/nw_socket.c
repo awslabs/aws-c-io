@@ -1367,8 +1367,6 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
 
     socket->options = *options;
 
-    struct nw_socket *nw_socket = socket->impl;
-
     return AWS_OP_SUCCESS;
 }
 
