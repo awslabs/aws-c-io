@@ -160,7 +160,10 @@ jobs:
     runs-on: macos-14 # latest
     strategy:
       matrix:
-        eventloop: ["-DAWS_USE_DISPATCH_QUEUE=ON", "-DAWS_USE_DISPATCH_QUEUE=OFF"]
+        cmake_options:
+          - "-DAWS_USE_DISPATCH_QUEUE=ON"
+          - "-DAWS_USE_DISPATCH_QUEUE=OFF"
+          - "-DAWS_USE_DISPATCH_QUEUE=ON -DAWS_USE_SECITEM=ON"
     steps:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
