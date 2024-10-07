@@ -814,6 +814,12 @@ static void s_null_sock_connection(struct aws_socket *socket, int error_code, vo
     aws_mutex_unlock(&error_args->mutex);
 }
 
+static bool s_outgoing_local_error_predicate(void *args) {
+    struct error_test_args *test_args = (struct error_test_args *)args;
+
+    return test_args->error_code != 0;
+}
+
 static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -839,9 +845,20 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 
-    ASSERT_FAILS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args));
-    ASSERT_TRUE(
-        aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_ERROR_FILE_INVALID_PATH);
+    int socket_connect_result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
+    // As Apple network framework has a async API design, we would not get the error back on connect
+    if (!s_use_dispatch_queue) {
+        ASSERT_FAILS(socket_connect_result);
+        ASSERT_TRUE(
+            aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_ERROR_FILE_INVALID_PATH);
+    } else {
+        ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            &args.condition_variable, &args.mutex, s_outgoing_local_error_predicate, &args));
+        ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+        ASSERT_TRUE(
+            args.error_code == AWS_IO_SOCKET_CONNECTION_REFUSED || args.error_code == AWS_ERROR_FILE_INVALID_PATH);
+    }
 
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);

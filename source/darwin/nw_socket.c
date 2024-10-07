@@ -368,27 +368,28 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
 
     struct nw_socket_timeout_args *timeout_args = args;
 
-    if (status != AWS_TASK_STATUS_CANCELED) {
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
+    /* successful connection will have nulled out timeout_args->socket */
+    if (timeout_args->socket) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: timed out, shutting down.",
+            (void *)timeout_args->socket,
+            timeout_args->socket->io_handle.data.handle);
 
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "task_id=%p: timeout task triggered, evaluating timeouts.", (void *)task);
-        /* successful connection will have nulled out timeout_args->socket */
-        if (timeout_args->socket) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: timed out, shutting down.",
-                (void *)timeout_args->socket,
-                timeout_args->socket->io_handle.data.handle);
+        timeout_args->socket->state = TIMEDOUT;
+        int error_code = AWS_IO_SOCKET_TIMEOUT;
 
-            timeout_args->socket->state = TIMEDOUT;
-            int error_code = AWS_IO_SOCKET_TIMEOUT;
-
-            struct nw_socket *socket_impl = timeout_args->socket->impl;
-
-            aws_raise_error(error_code);
-            struct aws_socket *socket = timeout_args->socket;
-            aws_socket_close(socket);
-            socket_impl->on_connection_result_fn(socket, error_code, socket_impl->connect_accept_user_data);
+        if (status != AWS_TASK_STATUS_RUN_READY) {
+            error_code = AWS_IO_EVENT_LOOP_SHUTDOWN;
         }
+
+        struct nw_socket *socket_impl = timeout_args->socket->impl;
+
+        aws_raise_error(error_code);
+        struct aws_socket *socket = timeout_args->socket;
+        aws_socket_close(socket);
+        socket_impl->on_connection_result_fn(socket, error_code, socket_impl->connect_accept_user_data);
     }
 
     aws_mem_release(timeout_args->allocator, timeout_args);
@@ -485,35 +486,35 @@ static void s_schedule_on_listener_success(
     aws_event_loop_schedule_task_now(socket->event_loop, task);
 }
 
-static void s_process_cancel_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    // TODO: WAHT IF THE TASK IS CANCELED???
+// static void s_process_cancel_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+//     // TODO: WAHT IF THE TASK IS CANCELED???
 
-    (void)status;
-    struct nw_socket_cancel_task_args *args = arg;
+//     (void)status;
+//     struct nw_socket_cancel_task_args *args = arg;
 
-    if (status == AWS_TASK_STATUS_RUN_READY)
-        aws_event_loop_cancel_task(args->socket->event_loop, args->task_to_cancel);
+//     if (status == AWS_TASK_STATUS_RUN_READY)
+//         aws_event_loop_cancel_task(args->socket->event_loop, args->task_to_cancel);
 
-    aws_mem_release(args->allocator, task);
-    aws_mem_release(args->allocator, args);
-}
+//     aws_mem_release(args->allocator, task);
+//     aws_mem_release(args->allocator, args);
+// }
 
 // As cancel task has to run on the same thread & we dont have control on dispatch queue thread,
 // we always schedule the cancel task on event loop
-static void s_schedule_cancel_task(struct aws_socket *socket, struct aws_task *task_to_cancel) {
+// static void s_schedule_cancel_task(struct aws_socket *socket, struct aws_task *task_to_cancel) {
 
-    struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
+//     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
 
-    struct nw_socket_cancel_task_args *args =
-        aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_cancel_task_args));
+//     struct nw_socket_cancel_task_args *args =
+//         aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_cancel_task_args));
 
-    args->socket = socket;
-    args->allocator = socket->allocator;
-    args->task_to_cancel = task_to_cancel;
+//     args->socket = socket;
+//     args->allocator = socket->allocator;
+//     args->task_to_cancel = task_to_cancel;
 
-    aws_task_init(task, s_process_cancel_task, args, "cancelTaskTask");
-    aws_event_loop_schedule_task_now(socket->event_loop, task);
-}
+//     aws_task_init(task, s_process_cancel_task, args, "cancelTaskTask");
+//     aws_event_loop_schedule_task_now(socket->event_loop, task);
+// }
 
 static void s_process_write_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     // TODO: WAHT IF THE TASK IS CANCELED???
@@ -713,8 +714,9 @@ static int s_socket_connect_fn(
                   socket->local_endpoint.address,
                   port);
               // Cancel the connection timeout task
-              if (nw_socket->timeout_args)
-                  s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+              if (nw_socket->timeout_args) {
+                  nw_socket->timeout_args->socket = NULL;
+              }
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
               nw_socket->setup_run = true;
               aws_ref_count_acquire(&nw_socket->ref_count);
@@ -731,8 +733,9 @@ static int s_socket_connect_fn(
                   socket->io_handle.data.handle,
                   error_code);
               // Cancel the connection timeout task
-              if (nw_socket->timeout_args)
-                  s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+              if (nw_socket->timeout_args) {
+                  nw_socket->timeout_args->socket = NULL;
+              }
               /* we don't let this thing do DNS or TLS. Everything had better be a posix error. */
               //   AWS_ASSERT(nw_error_get_error_domain(error) == nw_error_domain_posix);
               // DEBUG WIP we do in fact allow this to do TLS
@@ -754,8 +757,9 @@ static int s_socket_connect_fn(
                * we uninstall this handler right before calling close on the socket so this shouldn't
                * get hit unless it was triggered remotely */
               // Cancel the connection timeout task
-              if (nw_socket->timeout_args)
-                  s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+              if (nw_socket->timeout_args) {
+                  nw_socket->timeout_args->socket = NULL;
+              }
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
                   "id=%p handle=%p: socket closed remotely.",
@@ -1079,7 +1083,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 
     if (nw_socket->timeout_args) {
         // if the timeout args is not triggered, cancel it
-        s_schedule_cancel_task(socket, &nw_socket->timeout_args->task);
+        nw_socket->timeout_args->socket = NULL;
     }
 
     /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
