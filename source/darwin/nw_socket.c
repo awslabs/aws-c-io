@@ -25,8 +25,6 @@ const char *aws_sec_trust_result_type_to_string(SecTrustResultType trust_result)
             return "kSecTrustResultInvalid";
         case kSecTrustResultProceed:
             return "kSecTrustResultProceed";
-        case kSecTrustResultConfirm:
-            return "kSecTrustResultConfirm";
         case kSecTrustResultDeny:
             return "kSecTrustResultDeny";
         case kSecTrustResultUnspecified:
