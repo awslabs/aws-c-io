@@ -259,7 +259,6 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
     // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
     aws_ref_count_release(&nw_socket->ref_count);
-    AWS_ZERO_STRUCT(*socket);
 }
 
 struct read_queue_node {
