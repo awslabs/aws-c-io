@@ -44,6 +44,16 @@ int aws_import_public_and_private_keys_to_identity(
     const struct aws_string *keychain_path);
 
 /**
+ * Imports a PKCS#12 file into identity for use with
+ * SecurityFramework
+ */
+int aws_import_pkcs12_to_identity(
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *pkcs12_cursor,
+    const struct aws_byte_cursor *password,
+    CFArrayRef *identity);
+
+/**
  * Imports a PEM armored PKCS#7 public/private key pair
  * into protected data keychain for use with Apple Network Framework.
  * Currently only implemented for iOS.
@@ -66,16 +76,6 @@ int aws_secitem_import_pkcs12(
     const struct aws_byte_cursor *pkcs12_cursor,
     const struct aws_byte_cursor *password,
     sec_identity_t *out_identity);
-
-/**
- * Imports a PKCS#12 file into identity for use with
- * SecurityFramework
- */
-int aws_import_pkcs12_to_identity(
-    CFAllocatorRef cf_alloc,
-    const struct aws_byte_cursor *pkcs12_cursor,
-    const struct aws_byte_cursor *password,
-    CFArrayRef *identity);
 
 /**
  * Loads PRM armored PKCS#7 certificates into certs

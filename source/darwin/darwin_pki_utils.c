@@ -333,49 +333,6 @@ int aws_import_pkcs12_to_identity(
     return AWS_OP_ERR;
 }
 
-int aws_import_trusted_certificates(
-    struct aws_allocator *alloc,
-    CFAllocatorRef cf_alloc,
-    const struct aws_byte_cursor *certificates_blob,
-    CFArrayRef *certs) {
-    AWS_PRECONDITION(certificates_blob != NULL);
-
-    struct aws_array_list certificates;
-
-    if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *certificates_blob)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding CA PEM failed.");
-        aws_array_list_clean_up(&certificates);
-        return AWS_OP_ERR;
-    }
-
-    size_t cert_count = aws_array_list_length(&certificates);
-    CFMutableArrayRef temp_cert_array = CFArrayCreateMutable(cf_alloc, cert_count, &kCFTypeArrayCallBacks);
-
-    int err = AWS_OP_SUCCESS;
-    aws_mutex_lock(&s_sec_mutex);
-    for (size_t i = 0; i < cert_count; ++i) {
-        struct aws_pem_object *pem_object_ptr = NULL;
-        aws_array_list_get_at_ptr(&certificates, (void **)&pem_object_ptr, i);
-
-        CFDataRef cert_blob = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
-
-        if (cert_blob) {
-            SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
-            CFArrayAppendValue(temp_cert_array, certificate_ref);
-            CFRelease(certificate_ref);
-            CFRelease(cert_blob);
-        } else {
-            err = AWS_OP_SUCCESS;
-        }
-    }
-    aws_mutex_unlock(&s_sec_mutex);
-
-    *certs = temp_cert_array;
-    aws_pem_objects_clean_up(&certificates);
-    aws_array_list_clean_up(&certificates);
-    return err;
-}
-
 /*
  * Apple's Network framework and SecItem API use of the data protection keychain is currently only implemented
  * on iOS and tvOS. We may add support for MacOS at a later date.
@@ -906,4 +863,47 @@ done:
     if (items)
         CFRelease(items);
     return result;
+}
+
+int aws_import_trusted_certificates(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *certificates_blob,
+    CFArrayRef *certs) {
+    AWS_PRECONDITION(certificates_blob != NULL);
+
+    struct aws_array_list certificates;
+
+    if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *certificates_blob)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: decoding CA PEM failed.");
+        aws_array_list_clean_up(&certificates);
+        return AWS_OP_ERR;
+    }
+
+    size_t cert_count = aws_array_list_length(&certificates);
+    CFMutableArrayRef temp_cert_array = CFArrayCreateMutable(cf_alloc, cert_count, &kCFTypeArrayCallBacks);
+
+    int err = AWS_OP_SUCCESS;
+    aws_mutex_lock(&s_sec_mutex);
+    for (size_t i = 0; i < cert_count; ++i) {
+        struct aws_pem_object *pem_object_ptr = NULL;
+        aws_array_list_get_at_ptr(&certificates, (void **)&pem_object_ptr, i);
+
+        CFDataRef cert_blob = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
+
+        if (cert_blob) {
+            SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
+            CFArrayAppendValue(temp_cert_array, certificate_ref);
+            CFRelease(certificate_ref);
+            CFRelease(cert_blob);
+        } else {
+            err = AWS_OP_SUCCESS;
+        }
+    }
+    aws_mutex_unlock(&s_sec_mutex);
+
+    *certs = temp_cert_array;
+    aws_pem_objects_clean_up(&certificates);
+    aws_array_list_clean_up(&certificates);
+    return err;
 }
