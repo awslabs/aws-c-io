@@ -402,10 +402,11 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     (void)status;
     struct nw_socket_readable_args *args = arg;
 
-    struct nw_socket *nw_socket = args->socket->impl;
-    if (nw_socket && nw_socket->on_readable)
-        nw_socket->on_readable(args->socket, args->error_code, nw_socket->on_readable_user_data);
-
+    if (args->socket) {
+        struct nw_socket *nw_socket = args->socket->impl;
+        if (nw_socket && nw_socket->on_readable)
+            nw_socket->on_readable(args->socket, args->error_code, nw_socket->on_readable_user_data);
+    }
     aws_mem_release(args->allocator, task);
     aws_mem_release(args->allocator, args);
 }
@@ -430,9 +431,11 @@ static void s_process_connection_success_task(struct aws_task *task, void *arg, 
     (void)status;
     struct nw_socket_readable_args *args = arg;
 
-    struct nw_socket *nw_socket = args->socket->impl;
-    if (nw_socket && nw_socket->on_connection_result_fn)
-        nw_socket->on_connection_result_fn(args->socket, args->error_code, nw_socket->connect_accept_user_data);
+    if (args->socket) {
+        struct nw_socket *nw_socket = args->socket->impl;
+        if (nw_socket && nw_socket->on_connection_result_fn)
+            nw_socket->on_connection_result_fn(args->socket, args->error_code, nw_socket->connect_accept_user_data);
+    }
 
     aws_mem_release(args->allocator, task);
     aws_mem_release(args->allocator, args);
@@ -458,7 +461,7 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
     (void)status;
     struct nw_socket_listener_args *listener_args = args;
 
-    if (listener_args->socket->accept_result_fn)
+    if (listener_args->socket && listener_args->socket->accept_result_fn)
         listener_args->socket->accept_result_fn(
             listener_args->socket, listener_args->error_code, listener_args->new_socket, listener_args->user_data);
 
@@ -818,6 +821,70 @@ static int s_socket_connect_fn(
     return AWS_OP_SUCCESS;
 }
 
+/* Update socket->local_endpoint based on the results of getsockname() */
+static int s_update_local_endpoint(struct aws_socket *socket, nw_endpoint_t endpoint) {
+    const struct sockaddr *address = nw_endpoint_get_address(endpoint);
+
+    union {
+        const struct sockaddr *sa;
+        const struct sockaddr_in *sin;
+        const struct sockaddr_in6 *sin6;
+        const struct sockaddr_dl *sdl;
+    } addr;
+
+    addr.sa = address;
+
+    switch (address->sa_family) {
+        case AF_INET:
+            socket->local_endpoint.port = ntohs(addr.sin->sin_port);
+            if (inet_ntop(
+                    addr.sin->sin_family,
+                    &addr.sin->sin_addr,
+                    socket->local_endpoint.address,
+                    (socklen_t)AWS_ADDRESS_MAX_LEN) == NULL) {
+                int errno_value = errno; /* Always cache errno before potential side-effect */
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%p: inet_ntop() failed with error %d",
+                    (void *)socket,
+                    socket->io_handle.data.handle,
+                    errno_value);
+                int aws_error = s_determine_socket_error(errno_value);
+                return aws_raise_error(aws_error);
+            }
+            break;
+        case AF_INET6: {
+            socket->local_endpoint.port = ntohs(addr.sin6->sin6_port);
+            if (inet_ntop(
+                    addr.sin6->sin6_family,
+                    &addr.sin6->sin6_addr,
+                    socket->local_endpoint.address,
+                    (socklen_t)AWS_ADDRESS_MAX_LEN) == NULL) {
+                int errno_value = errno; /* Always cache errno before potential side-effect */
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%p: inet_ntop() failed with error %d",
+                    (void *)socket,
+                    socket->io_handle.data.handle,
+                    errno_value);
+                int aws_error = s_determine_socket_error(errno_value);
+                return aws_raise_error(aws_error);
+            }
+            break;
+        }
+        default:
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%p: unexpected address family.",
+                (void *)socket,
+                socket->io_handle.data.handle);
+            break;
+    }
+
+    // socket->local_endpoint.port = nw_endpoint_get_port(endpoint);
+    return AWS_OP_SUCCESS;
+}
+
 static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct nw_socket *nw_socket = socket->impl;
 
@@ -874,6 +941,7 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
     }
 
     nw_parameters_set_local_endpoint(nw_socket->socket_options_to_params, endpoint);
+    s_update_local_endpoint(socket, endpoint);
     nw_release(endpoint);
 
     // DEBUG WIP:
@@ -1084,6 +1152,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     if (nw_socket->timeout_args) {
         // if the timeout args is not triggered, cancel it
         nw_socket->timeout_args->socket = NULL;
+        nw_socket->timeout_args = NULL;
     }
 
     /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
@@ -1097,6 +1166,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     }
     nw_socket->currently_connected = false;
     socket->state = CLOSED;
+    socket->event_loop = NULL;
 
     return AWS_OP_SUCCESS;
 }
@@ -1415,6 +1485,7 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
 }
+
 int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
     if (socket->local_endpoint.address[0] == 0) {
         AWS_LOGF_ERROR(
