@@ -155,7 +155,10 @@ if (USE_S2N)
     file(GLOB AWS_IO_TLS_SRC
             "source/s2n/*.c"
             )
-    aws_use_package(s2n)
+    # NOTE: using find_package() (instead of aws_use_package() which may do an IN_SOURCE_BUILD).
+    # We do this because IN_SOURCE_BUILDS of S2N have different paths to the <s2n/unstable/*.h> headers.
+    find_package(s2n REQUIRED)
+    list(APPEND DEP_AWS_LIBS AWS::s2n)
 endif()
 
 file(GLOB IO_HEADERS
