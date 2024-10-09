@@ -1013,12 +1013,6 @@ struct nw_socket_bind_args {
     bool error_invoked;
 };
 
-static bool s_wait_for_get_port_pred(struct nw_socket_bind_args *setup_test_args) {
-    struct aws_socket_endpoint local_address;
-    aws_socket_get_bound_address(setup_test_args->listener, &local_address);
-    return local_address.port != 0;
-}
-
 static void s_local_listener_incoming_destroy_listener_bind(
     struct aws_socket *socket,
     int error_code,
