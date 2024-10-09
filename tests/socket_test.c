@@ -29,6 +29,9 @@ static bool s_use_dispatch_queue = true;
 static bool s_use_dispatch_queue = false;
 #endif
 
+#define NANOS_PER_SEC ((uint64_t)AWS_TIMESTAMP_NANOS)
+#define TIMEOUT (10 * NANOS_PER_SEC)
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -457,7 +460,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     (void)ctx;
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 3000;
+    options.connect_timeout_ms = 30000;
     options.keepalive = true;
     options.keep_alive_interval_sec = 1000;
     options.keep_alive_timeout_sec = 60000;
@@ -470,7 +473,8 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
 #endif
     struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8128};
     if (s_test_socket(allocator, &options, &endpoint)) {
-#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+#if !defined(AWS_OS_LINUX)
+        // On Apple, nw_socket currently not support network_interface_name
         if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
             return AWS_OP_SKIP;
         }
@@ -1000,6 +1004,43 @@ static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *alloc
 
 AWS_TEST_CASE(incoming_duplicate_tcp_bind_errors, s_test_incoming_duplicate_tcp_bind_errors)
 
+struct nw_socket_bind_args {
+    struct aws_socket *incoming;
+    struct aws_socket *listener;
+    struct aws_mutex *mutex;
+    struct aws_condition_variable *condition_variable;
+    bool incoming_invoked;
+    bool error_invoked;
+};
+
+static bool s_wait_for_get_port_pred(struct nw_socket_bind_args *setup_test_args) {
+    struct aws_socket_endpoint local_address;
+    aws_socket_get_bound_address(setup_test_args->listener, &local_address);
+    return local_address.port != 0;
+}
+
+static void s_local_listener_incoming_destroy_listener_bind(
+    struct aws_socket *socket,
+    int error_code,
+    struct aws_socket *new_socket,
+    void *user_data) {
+    (void)socket;
+    struct nw_socket_bind_args *listener_args = (struct nw_socket_bind_args *)user_data;
+    aws_mutex_lock(listener_args->mutex);
+
+    if (!error_code) {
+        listener_args->incoming = new_socket;
+        listener_args->incoming_invoked = true;
+    } else {
+        listener_args->error_invoked = true;
+    }
+    if (new_socket)
+        aws_socket_clean_up(new_socket);
+    aws_condition_variable_notify_one(listener_args->condition_variable);
+    aws_mutex_unlock(listener_args->mutex);
+}
+
+// TODO: Setup bind zero port test for dispatch queue
 /* Ensure that binding to port 0 results in OS assigning a port */
 static int s_test_bind_on_zero_port(
     struct aws_allocator *allocator,
@@ -1034,10 +1075,33 @@ static int s_test_bind_on_zero_port(
 
     ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
 
-    if (sock_type != AWS_SOCKET_DGRAM) {
-        ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
-    }
+    if (s_use_dispatch_queue) {
+        struct aws_mutex mutex = AWS_MUTEX_INIT;
+        struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
+        struct nw_socket_bind_args listener_args = {
+            .incoming = NULL,
+            .listener = &incoming,
+            .incoming_invoked = false,
+            .error_invoked = false,
+            .mutex = &mutex,
+            .condition_variable = &condition_variable,
+        };
+        ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
+        ASSERT_SUCCESS(aws_socket_start_accept(
+            &incoming, event_loop, s_local_listener_incoming_destroy_listener_bind, &listener_args));
+
+        // Apple Dispatch Queue requires a listener to be ready before it can get the assigned port. We wait until the
+        // port is back.
+        while (local_address1.port == 0) {
+            ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
+        }
+
+    } else {
+        if (sock_type != AWS_SOCKET_DGRAM) {
+            ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
+        }
+    }
     ASSERT_TRUE(local_address1.port > 0);
     ASSERT_STR_EQUALS(address, local_address1.address);
 

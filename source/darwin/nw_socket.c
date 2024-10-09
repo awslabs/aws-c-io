@@ -243,6 +243,8 @@ static struct aws_socket_vtable s_vtable = {
     .socket_is_open_fn = s_socket_is_open_fn,
 };
 
+static void s_schedule_next_read(struct aws_socket *socket);
+
 static void s_socket_cleanup_fn(struct aws_socket *socket) {
     if (!socket->impl) {
         /* protect from double clean */
@@ -671,6 +673,8 @@ static int s_socket_connect_fn(
 
     nw_socket->on_connection_result_fn = on_connection_result;
     nw_socket->connect_accept_user_data = user_data;
+
+    AWS_ASSERT(socket->options.connect_timeout_ms);
     nw_socket->timeout_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_timeout_args));
 
     nw_socket->timeout_args->socket = socket;
@@ -724,6 +728,7 @@ static int s_socket_connect_fn(
               nw_socket->setup_run = true;
               aws_ref_count_acquire(&nw_socket->ref_count);
               s_schedule_on_connection_success(socket, AWS_OP_SUCCESS);
+              s_schedule_next_read(socket);
               aws_ref_count_release(&nw_socket->ref_count);
 
           } else if (error) {
@@ -739,9 +744,6 @@ static int s_socket_connect_fn(
               if (nw_socket->timeout_args) {
                   nw_socket->timeout_args->socket = NULL;
               }
-              /* we don't let this thing do DNS or TLS. Everything had better be a posix error. */
-              //   AWS_ASSERT(nw_error_get_error_domain(error) == nw_error_domain_posix);
-              // DEBUG WIP we do in fact allow this to do TLS
               error_code = s_determine_socket_error(error_code);
               nw_socket->last_error = error_code;
               aws_raise_error(error_code);
@@ -995,6 +997,18 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     return AWS_OP_SUCCESS;
 }
 
+static void s_process_set_listener_endpoint_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+    struct nw_socket_readable_args *readable_args = arg;
+    struct aws_socket *socket = readable_args->socket;
+    if (socket && status == AWS_TASK_STATUS_RUN_READY) {
+        struct nw_socket *nw_socket = socket->impl;
+        if (nw_socket->is_listener)
+            socket->local_endpoint.port = nw_listener_get_port(nw_socket->nw_listener);
+    }
+    aws_mem_release(readable_args->allocator, task);
+    aws_mem_release(readable_args->allocator, arg);
+}
+
 static int s_socket_start_accept_fn(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
@@ -1058,6 +1072,18 @@ static int s_socket_start_accept_fn(
                   "id=%p handle=%p: lisnter on port ready ",
                   (void *)socket,
                   socket->io_handle.data.handle);
+
+              struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
+
+              struct nw_socket_readable_args *args =
+                  aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_readable_args));
+
+              args->socket = socket;
+              args->allocator = socket->allocator;
+
+              aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
+              aws_event_loop_schedule_task_now(socket->event_loop, task);
+
           } else if (state == nw_listener_state_cancelled) {
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
@@ -1083,7 +1109,6 @@ static int s_socket_start_accept_fn(
           s_schedule_on_listener_success(socket, aws_last_error(), NULL, user_data);
           return;
       }
-      new_socket->state = CONNECTED_READ | CONNECTED_WRITE;
       new_socket->io_handle.data.handle = connection;
       // The connection would be released in socket destroy.
       nw_retain(connection);
@@ -1119,6 +1144,7 @@ static int s_socket_start_accept_fn(
           new_socket->remote_endpoint.port,
           new_socket->io_handle.data.handle);
       s_schedule_on_listener_success(socket, AWS_OP_SUCCESS, new_socket, user_data);
+      s_schedule_next_read(new_socket);
     });
     nw_listener_start(socket->io_handle.data.handle);
     return AWS_OP_SUCCESS;
@@ -1322,15 +1348,6 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
 
-    if (!(socket->state & CONNECTED_READ)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: cannot read because it is not connected",
-            (void *)socket,
-            socket->io_handle.data.handle);
-        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
-    }
-
     __block size_t max_to_read = read_buffer->capacity - read_buffer->len;
 
     /* if empty, schedule a read and return WOULD_BLOCK */
@@ -1340,6 +1357,16 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             "id=%p handle=%p: read queue is empty, scheduling another read",
             (void *)socket,
             socket->io_handle.data.handle);
+        
+        if (!(socket->state & CONNECTED_READ)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: socket is not connected to read.",
+                (void *)socket,
+                socket->io_handle.data.handle);
+            return aws_raise_error(AWS_IO_SOCKET_CLOSED);
+        }
+
         if (!nw_socket->read_queued) {
             s_schedule_next_read(socket);
             nw_socket->read_queued = true;
@@ -1359,19 +1386,14 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
         bool read_completed = dispatch_data_apply(
             read_node->received_data,
             (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
+                (void)region;
                 (void)offset;
                 size_t to_copy = aws_min_size(max_to_read, size - read_node->current_offset);
-                aws_byte_buf_write(read_buffer, (const uint8_t *)buffer, to_copy);
-                if (to_copy < size) {
-                    dispatch_retain(region);
-                    read_node->current_offset = size - to_copy;
-                    return false;
-                }
-
+                aws_byte_buf_write(read_buffer, (const uint8_t *)buffer + read_node->current_offset, to_copy);
                 max_to_read -= to_copy;
                 *amount_read += to_copy;
-                read_node->current_offset = 0;
-                return true;
+                read_node->current_offset += to_copy;
+                return read_node->current_offset == size;
             });
 
         if (read_completed) {
