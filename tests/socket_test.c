@@ -1436,6 +1436,9 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
 
+    // DEBUG WIP, sleep to wait for reference release
+    aws_thread_current_sleep(1000000000);
+
     return 0;
 }
 AWS_TEST_CASE(cleanup_in_accept_doesnt_explode, s_cleanup_in_accept_doesnt_explode)
