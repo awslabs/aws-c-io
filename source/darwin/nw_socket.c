@@ -261,6 +261,8 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
     // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
     aws_ref_count_release(&nw_socket->ref_count);
+
+    AWS_ZERO_STRUCT(*socket);
 }
 
 struct read_queue_node {
@@ -458,8 +460,6 @@ static void s_schedule_on_connection_success(struct aws_socket *socket, int erro
 }
 
 static void s_process_listener_success_task(struct aws_task *task, void *args, enum aws_task_status status) {
-    // TODO: WAHT IF THE TASK IS CANCELED???
-
     (void)status;
     struct nw_listener_connection_args *listener_args = args;
 
