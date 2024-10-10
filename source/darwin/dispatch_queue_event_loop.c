@@ -233,9 +233,9 @@ static void s_destroy(struct aws_event_loop *event_loop) {
       aws_mutex_lock(&dispatch_loop->synced_data.lock);
       // The entry in the scheduled_services are all pushed to dispatch loop as the function context.
       // Apple does not allow NULL context here, do not destroy the entry until the block run.
-      struct aws_linked_list scheduled_list = dispatch_loop->synced_data.scheduling_state.scheduled_services;
-      for (struct aws_linked_list_node *iter = aws_linked_list_begin(&scheduled_list);
-           iter != aws_linked_list_end(&scheduled_list);
+      struct aws_linked_list_node *iter = NULL;
+      for (iter = aws_linked_list_begin(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
+           iter != aws_linked_list_end(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
            iter = aws_linked_list_next(iter)) {
           struct scheduled_service_entry *entry = AWS_CONTAINER_OF(iter, struct scheduled_service_entry, node);
           entry->cancel = true;
