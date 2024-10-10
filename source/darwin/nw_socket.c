@@ -466,61 +466,60 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
 
         struct aws_allocator *allocator = listener_args->allocator;
         struct aws_socket *listener = listener_args->socket;
-        struct aws_socket *new_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
-
-        struct aws_socket_options options = listener->options;
-        int error = aws_socket_init(new_socket, allocator, &options);
-        if (error) {
-            aws_mem_release(allocator, new_socket);
-            if (listener_args->socket && listener_args->socket->accept_result_fn) {
-                listener_args->socket->accept_result_fn(
-                    listener_args->socket, aws_last_error(), NULL, listener_args->user_data);
+        if (listener) {
+            struct aws_socket *new_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
+            struct aws_socket_options options = listener->options;
+            int error = aws_socket_init(new_socket, allocator, &options);
+            if (error) {
+                aws_mem_release(allocator, new_socket);
+                if (listener->accept_result_fn) {
+                    listener->accept_result_fn(listener, aws_last_error(), NULL, listener_args->user_data);
+                }
+                return;
             }
-            return;
-        }
-        new_socket->io_handle.data.handle = listener_args->new_connection;
+            new_socket->io_handle.data.handle = listener_args->new_connection;
 
-        new_socket->io_handle.set_queue = s_client_set_dispatch_queue;
-        new_socket->io_handle.clear_queue = s_client_clear_dispatch_queue;
+            new_socket->io_handle.set_queue = s_client_set_dispatch_queue;
+            new_socket->io_handle.clear_queue = s_client_clear_dispatch_queue;
 
-        nw_endpoint_t endpoint = nw_connection_copy_endpoint(listener_args->new_connection);
-        const char *hostname = nw_endpoint_get_hostname(endpoint);
-        uint16_t port = nw_endpoint_get_port(endpoint);
+            nw_endpoint_t endpoint = nw_connection_copy_endpoint(listener_args->new_connection);
+            const char *hostname = nw_endpoint_get_hostname(endpoint);
+            uint16_t port = nw_endpoint_get_port(endpoint);
 
-        if (hostname != NULL) {
-            size_t hostname_len = strlen(hostname);
-            size_t buffer_size = AWS_ARRAY_SIZE(new_socket->remote_endpoint.address);
-            size_t to_copy = aws_min_size(hostname_len, buffer_size);
-            memcpy(new_socket->remote_endpoint.address, hostname, to_copy);
-            new_socket->remote_endpoint.port = port;
-        }
-        nw_release(endpoint);
+            if (hostname != NULL) {
+                size_t hostname_len = strlen(hostname);
+                size_t buffer_size = AWS_ARRAY_SIZE(new_socket->remote_endpoint.address);
+                size_t to_copy = aws_min_size(hostname_len, buffer_size);
+                memcpy(new_socket->remote_endpoint.address, hostname, to_copy);
+                new_socket->remote_endpoint.port = port;
+            }
+            nw_release(endpoint);
 
-        // Setup socket state to start read/write operations.
-        new_socket->state = CONNECTED_READ | CONNECTED_WRITE;
-        struct nw_socket *new_nw_socket = new_socket->impl;
-        new_nw_socket->nw_connection = listener_args->new_connection;
-        new_nw_socket->setup_run = true;
-        new_nw_socket->currently_connected = true;
+            // Setup socket state to start read/write operations.
+            new_socket->state = CONNECTED_READ | CONNECTED_WRITE;
+            struct nw_socket *new_nw_socket = new_socket->impl;
+            new_nw_socket->nw_connection = listener_args->new_connection;
+            new_nw_socket->setup_run = true;
+            new_nw_socket->currently_connected = true;
 
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: incoming connection",
-            (void *)listener,
-            listener->io_handle.data.handle);
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: incoming connection",
+                (void *)listener,
+                listener->io_handle.data.handle);
 
-        AWS_LOGF_INFO(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: connected to %s:%d, incoming handle %p",
-            (void *)listener,
-            listener->io_handle.data.handle,
-            new_socket->remote_endpoint.address,
-            new_socket->remote_endpoint.port,
-            new_socket->io_handle.data.handle);
+            AWS_LOGF_INFO(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: connected to %s:%d, incoming handle %p",
+                (void *)listener,
+                listener->io_handle.data.handle,
+                new_socket->remote_endpoint.address,
+                new_socket->remote_endpoint.port,
+                new_socket->io_handle.data.handle);
 
-        if (listener_args->socket && listener_args->socket->accept_result_fn) {
-            listener_args->socket->accept_result_fn(
-                listener_args->socket, listener_args->error_code, new_socket, listener_args->user_data);
+            if (listener->accept_result_fn) {
+                listener->accept_result_fn(listener, listener_args->error_code, new_socket, listener_args->user_data);
+            }
         }
     }
 

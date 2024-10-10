@@ -198,8 +198,12 @@ clean_up_loop:
 
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
-
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
+
+    if (dispatch_loop->is_destroying) {
+        return;
+    }
+    dispatch_loop->is_destroying = true;
 
     /* make sure the loop is running so we can schedule a last task. */
     s_run(event_loop);
