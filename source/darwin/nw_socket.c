@@ -176,7 +176,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->socket_options_to_params =
-            nw_parameters_create_secure_udp(NW_PARAMETERS_DEFAULT_CONFIGURATION, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+            nw_parameters_create_secure_udp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
     }
 
     if (!nw_socket->socket_options_to_params) {
@@ -401,7 +401,6 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
 }
 
 static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    // TODO: WAHT IF THE TASK IS CANCELED???
 
     (void)status;
     struct nw_socket_readable_args *args = arg;
@@ -430,8 +429,6 @@ static void s_schedule_on_readable(struct aws_socket *socket, int error_code) {
 }
 
 static void s_process_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    // TODO: WAHT IF THE TASK IS CANCELED???
-
     (void)status;
     struct nw_socket_readable_args *args = arg;
 
@@ -552,38 +549,7 @@ static void s_schedule_on_listener_success(
     aws_event_loop_schedule_task_now(socket->event_loop, task);
 }
 
-// static void s_process_cancel_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-//     // TODO: WAHT IF THE TASK IS CANCELED???
-
-//     (void)status;
-//     struct nw_socket_cancel_task_args *args = arg;
-
-//     if (status == AWS_TASK_STATUS_RUN_READY)
-//         aws_event_loop_cancel_task(args->socket->event_loop, args->task_to_cancel);
-
-//     aws_mem_release(args->allocator, task);
-//     aws_mem_release(args->allocator, args);
-// }
-
-// As cancel task has to run on the same thread & we dont have control on dispatch queue thread,
-// we always schedule the cancel task on event loop
-// static void s_schedule_cancel_task(struct aws_socket *socket, struct aws_task *task_to_cancel) {
-
-//     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
-
-//     struct nw_socket_cancel_task_args *args =
-//         aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_cancel_task_args));
-
-//     args->socket = socket;
-//     args->allocator = socket->allocator;
-//     args->task_to_cancel = task_to_cancel;
-
-//     aws_task_init(task, s_process_cancel_task, args, "cancelTaskTask");
-//     aws_event_loop_schedule_task_now(socket->event_loop, task);
-// }
-
 static void s_process_write_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    // TODO: WAHT IF THE TASK IS CANCELED???
 
     (void)status;
     struct nw_socket_written_args *args = arg;
@@ -641,7 +607,8 @@ static int s_socket_connect_fn(
             return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
         }
     } else { /* UDP socket */
-        /* UDP sockets jump to CONNECT_READ if bind is called first */
+        // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on
+        // top of the UDP layer. We should always do an "connect" action for Apple Network Framework.
         if (socket->state != CONNECTED_READ && socket->state != INIT) {
             return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
         }
@@ -658,12 +625,12 @@ static int s_socket_connect_fn(
     int pton_err = 1;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
         pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-        address.sock_addr_types.addr_in.sin_port = htons(remote_endpoint->port);
+        address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
         pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-        address.sock_addr_types.addr_in6.sin6_port = htons(remote_endpoint->port);
+        address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
         address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
     } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
@@ -884,70 +851,6 @@ static int s_socket_connect_fn(
     return AWS_OP_SUCCESS;
 }
 
-/* Update socket->local_endpoint based on the results of getsockname() */
-static int s_update_local_endpoint(struct aws_socket *socket, nw_endpoint_t endpoint) {
-    const struct sockaddr *address = nw_endpoint_get_address(endpoint);
-
-    union {
-        const struct sockaddr *sa;
-        const struct sockaddr_in *sin;
-        const struct sockaddr_in6 *sin6;
-        const struct sockaddr_dl *sdl;
-    } addr;
-
-    addr.sa = address;
-
-    switch (address->sa_family) {
-        case AF_INET:
-            socket->local_endpoint.port = ntohs(addr.sin->sin_port);
-            if (inet_ntop(
-                    addr.sin->sin_family,
-                    &addr.sin->sin_addr,
-                    socket->local_endpoint.address,
-                    (socklen_t)AWS_ADDRESS_MAX_LEN) == NULL) {
-                int errno_value = errno; /* Always cache errno before potential side-effect */
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p fd=%p: inet_ntop() failed with error %d",
-                    (void *)socket,
-                    socket->io_handle.data.handle,
-                    errno_value);
-                int aws_error = s_determine_socket_error(errno_value);
-                return aws_raise_error(aws_error);
-            }
-            break;
-        case AF_INET6: {
-            socket->local_endpoint.port = ntohs(addr.sin6->sin6_port);
-            if (inet_ntop(
-                    addr.sin6->sin6_family,
-                    &addr.sin6->sin6_addr,
-                    socket->local_endpoint.address,
-                    (socklen_t)AWS_ADDRESS_MAX_LEN) == NULL) {
-                int errno_value = errno; /* Always cache errno before potential side-effect */
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p fd=%p: inet_ntop() failed with error %d",
-                    (void *)socket,
-                    socket->io_handle.data.handle,
-                    errno_value);
-                int aws_error = s_determine_socket_error(errno_value);
-                return aws_raise_error(aws_error);
-            }
-            break;
-        }
-        default:
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p fd=%p: unexpected address family.",
-                (void *)socket,
-                socket->io_handle.data.handle);
-            break;
-    }
-
-    // socket->local_endpoint.port = nw_endpoint_get_port(endpoint);
-    return AWS_OP_SUCCESS;
-}
-
 static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct nw_socket *nw_socket = socket->impl;
 
@@ -969,12 +872,12 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
     int pton_err = 1;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
         pton_err = inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-        address.sock_addr_types.addr_in.sin_port = htons(local_endpoint->port);
+        address.sock_addr_types.addr_in.sin_port = htons((uint16_t)local_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
         pton_err = inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-        address.sock_addr_types.addr_in6.sin6_port = htons(local_endpoint->port);
+        address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
         address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
         address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
     } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
@@ -1004,12 +907,9 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
     }
 
     nw_parameters_set_local_endpoint(nw_socket->socket_options_to_params, endpoint);
-    s_update_local_endpoint(socket, endpoint);
     nw_release(endpoint);
 
-    // DEBUG WIP:
-    // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on top of
-    // the UDP layer. We should always do an abatract "connection" action for Apple Network Framework
+    // Apple network framework requires connection besides bind.
     socket->state = BOUND;
 
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: successfully bound", (void *)socket);
@@ -1063,8 +963,9 @@ static void s_process_set_listener_endpoint_task(struct aws_task *task, void *ar
     struct aws_socket *socket = readable_args->socket;
     if (socket && status == AWS_TASK_STATUS_RUN_READY) {
         struct nw_socket *nw_socket = socket->impl;
-        if (nw_socket->is_listener)
+        if (nw_socket->is_listener) {
             socket->local_endpoint.port = nw_listener_get_port(nw_socket->nw_listener);
+        }
     }
     aws_mem_release(readable_args->allocator, task);
     aws_mem_release(readable_args->allocator, arg);

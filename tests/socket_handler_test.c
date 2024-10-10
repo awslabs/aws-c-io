@@ -366,6 +366,13 @@ static int s_local_server_tester_init(
     /* find out which port the socket is bound to */
     ASSERT_SUCCESS(aws_socket_get_bound_address(tester->listener, &tester->endpoint));
 
+    // Apple Dispatch Queue requires a listener to be ready before it can get the assigned port. We wait until the
+    // port is back. Not sure if there is a better way to work around it. Probably start_listener need a callback
+    // function to process the updated the endpoint and host.
+    while (tester->endpoint.port == 0 && tester->socket_options.domain != AWS_SOCKET_LOCAL) {
+        ASSERT_SUCCESS(aws_socket_get_bound_address(tester->listener, &tester->endpoint));
+    }
+
     return AWS_OP_SUCCESS;
 }
 
