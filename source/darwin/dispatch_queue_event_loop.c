@@ -77,6 +77,7 @@ void scheduled_service_entry_destroy(struct scheduled_service_entry *entry) {
     aws_ref_count_release(&dispatch_loop->ref_count);
 
     aws_mem_release(entry->allocator, entry);
+    entry = NULL;
 }
 
 // checks to see if another scheduled iteration already exists that will either
@@ -340,13 +341,14 @@ void end_iteration(struct scheduled_service_entry *entry) {
             }
         }
     }
-
-    aws_mutex_unlock(&loop->synced_data.lock);
+    
     scheduled_service_entry_destroy(entry);
+    aws_mutex_unlock(&loop->synced_data.lock);
 }
 
 // this function is what gets scheduled and executed by the Dispatch Queue API
 void run_iteration(void *context) {
+    AWS_ASSERT(context);
     struct scheduled_service_entry *entry = context;
     struct aws_event_loop *event_loop = entry->loop;
     if (event_loop == NULL)
