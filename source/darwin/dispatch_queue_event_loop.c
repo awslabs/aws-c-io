@@ -355,16 +355,12 @@ void run_iteration(void *context) {
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
     AWS_ASSERT(event_loop && dispatch_loop);
     if (entry->cancel) {
-        aws_mutex_lock(&dispatch_loop->synced_data.lock);
         scheduled_service_entry_destroy(entry);
-        aws_mutex_unlock(&dispatch_loop->synced_data.lock);
         return;
     }
 
     if (!begin_iteration(entry)) {
-        aws_mutex_lock(&dispatch_loop->synced_data.lock);
         scheduled_service_entry_destroy(entry);
-        aws_mutex_unlock(&dispatch_loop->synced_data.lock);
         return;
     }
 
