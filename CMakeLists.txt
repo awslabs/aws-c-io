@@ -160,11 +160,11 @@ if (USE_S2N)
         find_package(s2n QUIET)
 
         if (NOT s2n_FOUND)
-                # Check if s2n was not found, try to do the IN_SOURCE_BUILD.
-                # If not IN_SOURCE_BUILD, s2n will be required to be found and fail from aws_use_package
+                # If s2n was not found, try to fallback to the IN_SOURCE_BUILD.
+                # If not IN_SOURCE_BUILD, s2n will be required to be found and fail from aws_use_package.
                 # If secceed from aws_use_package set the flag to use the insource path to the <s2n/unstable/*.h> headers.
                 aws_use_package(s2n)
-                option(AWS_S2N_INSOURCE_PATH "Use the insource path for S2N" ON)
+                add_definitions(-DAWS_S2N_INSOURCE_PATH)
         else()
                 # Found s2n, use the install path
                 list(APPEND DEP_AWS_LIBS AWS::s2n)
