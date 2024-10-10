@@ -237,9 +237,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
       for (struct aws_linked_list_node *iter = aws_linked_list_begin(&scheduled_list);
            iter != aws_linked_list_end(&scheduled_list);
            iter = aws_linked_list_next(iter)) {
-          struct aws_linked_list_node *node =
-              aws_linked_list_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
-          struct scheduled_service_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_service_entry, node);
+          struct scheduled_service_entry *entry = AWS_CONTAINER_OF(iter, struct scheduled_service_entry, node);
           entry->cancel = true;
       }
       dispatch_loop->synced_data.suspended = true;
