@@ -1363,7 +1363,7 @@ static int s_socket_write_fn(
           if (!nw_socket->currently_connected) {
               // As the socket is not open, we no longer have access to the event loop to schedule tasks
               // directly execute the written callback instead of scheduling a task.
-              written_fn(socket, 0, 0, user_data);
+              s_schedule_write_fn(socket, 0, 0 , user_data, written_fn);
               goto nw_socket_release;
           }
 
