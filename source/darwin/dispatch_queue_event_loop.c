@@ -229,17 +229,17 @@ static void s_destroy(struct aws_event_loop *event_loop) {
           task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
       }
 
+      aws_mutex_lock(&dispatch_loop->synced_data.lock);
       while (!aws_linked_list_empty(&dispatch_loop->synced_data.scheduling_state.scheduled_services)) {
           struct aws_linked_list_node *node =
               aws_linked_list_pop_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
           struct scheduled_service_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_service_entry, node);
           scheduled_service_entry_destroy(entry);
       }
-
-      aws_mutex_lock(&dispatch_loop->synced_data.lock);
       dispatch_loop->synced_data.suspended = true;
       dispatch_loop->synced_data.is_executing = false;
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
+      
     });
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)event_loop);
