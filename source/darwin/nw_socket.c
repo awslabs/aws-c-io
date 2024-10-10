@@ -579,7 +579,8 @@ static void s_schedule_write_fn(
     args->bytes_written = bytes_written;
 
     aws_task_init(task, s_process_write_task, args, "writtenTask");
-    aws_event_loop_schedule_task_now(socket->event_loop, task);
+    if(socket && socket->event_loop)
+        aws_event_loop_schedule_task_now(socket->event_loop, task);
 }
 
 static int s_socket_connect_fn(
@@ -1363,9 +1364,7 @@ static int s_socket_write_fn(
           if (!nw_socket->currently_connected) {
               // As the socket is not open, we no longer have access to the event loop to schedule tasks
               // directly execute the written callback instead of scheduling a task.
-              if (socket) {
-                  written_fn(socket, 0, 0, user_data);
-              }
+              s_schedule_write_fn(socket, 0, 0, user_data, written_fn);
               goto nw_socket_release;
           }
 
