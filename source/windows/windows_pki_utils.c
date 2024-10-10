@@ -536,6 +536,7 @@ enum aws_certificate_type {
     AWS_CT_X509_UNKNOWN,
     AWS_CT_X509_RSA,
     AWS_CT_X509_ECC,
+    AWS_CT_PKCS8,
 };
 
 int aws_import_key_pair_to_cert_context(
@@ -559,6 +560,9 @@ int aws_import_key_pair_to_cert_context(
 
     int result = AWS_OP_ERR;
     BYTE *key = NULL;
+
+    BYTE *key_next = NULL;
+    DWORD decoded_len_next = 0;
 
     if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *public_cert_chain)) {
         AWS_LOGF_ERROR(
@@ -644,6 +648,7 @@ int aws_import_key_pair_to_cert_context(
     size_t private_key_count = aws_array_list_length(&private_keys);
     for (size_t i = 0; i < private_key_count; ++i) {
         aws_array_list_get_at_ptr(&private_keys, (void **)&private_key_ptr, i);
+        printf("\nDEBUG TEST\n\n");
 
         if (CryptDecodeObjectEx(
                 X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
@@ -654,28 +659,66 @@ int aws_import_key_pair_to_cert_context(
                 0,
                 &key,
                 &decoded_len)) {
+            printf("\ncert_type = AWS_CT_X509_RSA\n\n");
             cert_type = AWS_CT_X509_RSA;
         }
+
+        if (cert_type == AWS_CT_X509_UNKNOWN) {
+            printf("\nTrying next\n\n");
+            if (CryptDecodeObjectEx(
+                    X509_ASN_ENCODING,
+                    PKCS_PRIVATE_KEY_INFO,
+                    private_key_ptr->data.buffer,
+                    (DWORD)private_key_ptr->data.len,
+                    CRYPT_DECODE_ALLOC_FLAG,
+                    0,
+                    &key,
+                    &decoded_len)) {
+                CRYPT_PRIVATE_KEY_INFO *pPrivateKeyInfoStruct = (CRYPT_PRIVATE_KEY_INFO *)key;
+
+                if (CryptDecodeObjectEx(
+                        X509_ASN_ENCODING,
+                        PKCS_RSA_PRIVATE_KEY,
+                        pPrivateKeyInfoStruct->PrivateKey.pbData,
+                        pPrivateKeyInfoStruct->PrivateKey.cbData,
+                        CRYPT_DECODE_ALLOC_FLAG,
+                        0,
+                        &key_next,
+                        &decoded_len_next)) {
+                    printf("\nSecondary CryptDecodeObjectEx successful\n\n");
+                } else {
+                    printf("\nSecondary CryptDecodeObjectEx unsuccessful\n\n");
+                }
+
+                printf("\ncert_type = AWS_CT_PKCS8\n\n");
+                cert_type = AWS_CT_PKCS8;
+            }
+        }
 #ifndef AWS_SUPPORT_WIN7
-        else if (CryptDecodeObjectEx(
-                     X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
-                     X509_ECC_PRIVATE_KEY,
-                     private_key_ptr->data.buffer,
-                     (DWORD)private_key_ptr->data.len,
-                     CRYPT_DECODE_ALLOC_FLAG,
-                     NULL,
-                     &key,
-                     &decoded_len)) {
-            cert_type = AWS_CT_X509_ECC;
+        if (cert_type == AWS_CT_X509_UNKNOWN) {
+            printf("\nTrying third\n\n");
+            if (CryptDecodeObjectEx(
+                    X509_ASN_ENCODING | PKCS_7_ASN_ENCODING,
+                    X509_ECC_PRIVATE_KEY,
+                    private_key_ptr->data.buffer,
+                    (DWORD)private_key_ptr->data.len,
+                    CRYPT_DECODE_ALLOC_FLAG,
+                    NULL,
+                    &key,
+                    &decoded_len)) {
+                cert_type = AWS_CT_X509_ECC;
+            }
         }
 #endif /* AWS_SUPPORT_WIN7 */
-
+        printf("\nChecking cert\n\n");
         if (cert_type != AWS_CT_X509_UNKNOWN) {
+            printf("\ncert_type != AWS_CT_X509_UNKNOWN breaking\n\n");
             break;
         }
     }
 
     if (cert_type == AWS_CT_X509_UNKNOWN) {
+        printf("\ncert_type == AWS_CT_X509_UNKNOWN failing \n\n");
         aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "static: no acceptable private key found, error %s", aws_error_name(aws_last_error()));
@@ -702,6 +745,10 @@ int aws_import_key_pair_to_cert_context(
         case AWS_CT_X509_RSA:
             result = s_cert_context_import_rsa_private_key(
                 *certs, key, decoded_len, is_client_mode, uuid_wstr, crypto_provider, private_key_handle);
+            break;
+        case AWS_CT_PKCS8:
+            result = s_cert_context_import_rsa_private_key(
+                *certs, key_next, decoded_len_next, is_client_mode, uuid_wstr, crypto_provider, private_key_handle);
             break;
 
 #ifndef AWS_SUPPORT_WIN7
