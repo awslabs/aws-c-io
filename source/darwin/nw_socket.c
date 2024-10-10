@@ -567,20 +567,21 @@ static void s_schedule_write_fn(
     void *user_data,
     aws_socket_on_write_completed_fn *written_fn) {
 
-    struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
-    ;
-    struct nw_socket_written_args *args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_written_args));
+    if (socket && socket->event_loop) {
+        struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
+        struct nw_socket_written_args *args =
+            aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_written_args));
 
-    args->socket = socket;
-    args->allocator = socket->allocator;
-    args->error_code = error_code;
-    args->written_fn = written_fn;
-    args->user_data = user_data;
-    args->bytes_written = bytes_written;
+        args->socket = socket;
+        args->allocator = socket->allocator;
+        args->error_code = error_code;
+        args->written_fn = written_fn;
+        args->user_data = user_data;
+        args->bytes_written = bytes_written;
 
-    aws_task_init(task, s_process_write_task, args, "writtenTask");
-    if(socket && socket->event_loop)
+        aws_task_init(task, s_process_write_task, args, "writtenTask");
         aws_event_loop_schedule_task_now(socket->event_loop, task);
+    }
 }
 
 static int s_socket_connect_fn(
