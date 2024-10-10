@@ -54,6 +54,7 @@ struct scheduled_service_entry {
     uint64_t timestamp;
     struct aws_linked_list_node node;
     struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
+    bool cancel;
 };
 
 struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
@@ -234,12 +235,14 @@ static void s_destroy(struct aws_event_loop *event_loop) {
           struct aws_linked_list_node *node =
               aws_linked_list_pop_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
           struct scheduled_service_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_service_entry, node);
-          scheduled_service_entry_destroy(entry);
+          // The entry in the scheduled_services are all pushed to dispatch loop as the function context. 
+          // Apple does not allow NULL context here, do not destroy the entry until the block run.
+          entry->cancel = true;
       }
       dispatch_loop->synced_data.suspended = true;
       dispatch_loop->synced_data.is_executing = false;
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
-      
+
     });
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)event_loop);
@@ -348,15 +351,15 @@ void end_iteration(struct scheduled_service_entry *entry) {
 // this function is what gets scheduled and executed by the Dispatch Queue API
 void run_iteration(void *context) {
     struct scheduled_service_entry *entry = context;
-    if(!entry)
-    {
-        // Then entry might be destroyed on event loop destroy.
+    struct aws_event_loop *event_loop = entry->loop;
+    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
+    AWS_ASSERT(event_loop && dispatch_loop);
+    if (entry->cancel) {
+        aws_mutex_lock(&dispatch_loop->synced_data.lock);
+        scheduled_service_entry_destroy(entry);
+        aws_mutex_unlock(&dispatch_loop->synced_data.lock);
         return;
     }
-    struct aws_event_loop *event_loop = entry->loop;
-    if (event_loop == NULL)
-        return;
-    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     if (!begin_iteration(entry)) {
         return;
