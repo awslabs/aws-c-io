@@ -416,17 +416,20 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
 
 static void s_schedule_on_readable(struct aws_socket *socket, int error_code) {
 
-    struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
+    if (socket && socket->event_loop) {
+        struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
 
-    struct nw_socket_readable_args *args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_readable_args));
+        struct nw_socket_readable_args *args =
+            aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_readable_args));
 
-    args->socket = socket;
-    args->allocator = socket->allocator;
-    args->error_code = error_code;
+        args->socket = socket;
+        args->allocator = socket->allocator;
+        args->error_code = error_code;
 
-    aws_task_init(task, s_process_readable_task, args, "readableTask");
+        aws_task_init(task, s_process_readable_task, args, "readableTask");
 
-    aws_event_loop_schedule_task_now(socket->event_loop, task);
+        aws_event_loop_schedule_task_now(socket->event_loop, task);
+    }
 }
 
 static void s_process_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -1079,7 +1082,6 @@ static int s_socket_stop_accept_fn(struct aws_socket *socket) {
         "id=%p handle=%p: stopping accepting new connections",
         (void *)socket,
         socket->io_handle.data.handle);
-    nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
     nw_listener_cancel(socket->io_handle.data.handle);
     aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
     socket->state = CLOSED;
@@ -1099,7 +1101,8 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 
     /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
     if (nw_socket->is_listener) {
-        s_socket_stop_accept_fn(socket);
+        nw_listener_set_state_changed_handler(socket->io_handle.data.handle, NULL);
+        nw_listener_cancel(socket->io_handle.data.handle);
     } else {
         /* Setting to NULL removes previously set handler from nw_connection_t */
         nw_connection_set_state_changed_handler(socket->io_handle.data.handle, NULL);
@@ -1107,9 +1110,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     }
     nw_socket->currently_connected = false;
     socket->state = CLOSED;
-    if (socket->event_loop) {
-        socket->event_loop = NULL;
-    }
+    
     return AWS_OP_SUCCESS;
 }
 
