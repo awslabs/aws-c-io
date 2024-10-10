@@ -155,18 +155,15 @@ if (USE_S2N)
         file(GLOB AWS_IO_TLS_SRC
                 "source/s2n/*.c"
                 )
-        # Try to find s2n directly first. In case of s2n already built.
-        find_package(s2n QUIET)
-
-        if (NOT s2n_FOUND)
-                # If s2n was not found, try to do the IN_SOURCE_BUILD.
-                # If not IN_SOURCE_BUILD, s2n will be required to be found and fail from aws_use_package
-                # If in source build, set the flag to use the insource path to the <s2n/unstable/*.h> headers.
-                aws_use_package(s2n)
-                add_definitions(-DAWS_S2N_INSOURCE_PATH)
+        # Prefer find_package() because it's the normal CMake way to do dependencies.
+        # But fall back on aws_use_package() because some projects still need to do an IN_SOURCE_BUILD of S2N.
+        # (e.g. aws-crt-java until this is resolved: https://github.com/awslabs/aws-crt-java/pull/817)
+        if (s2n_FOUND)
+            list(APPEND DEP_AWS_LIBS AWS::s2n)
         else()
-                # Found s2n, use the install path
-                list(APPEND DEP_AWS_LIBS AWS::s2n)
+            # Set flag to use in-source path to  <s2n/unstable/*.h> headers if we do an IN_SOURCE_BUILD.
+            aws_use_package(s2n)
+            add_definitions(-DAWS_S2N_INSOURCE_PATH)
         endif()
 endif()
 
