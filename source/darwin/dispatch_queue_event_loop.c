@@ -231,18 +231,20 @@ static void s_destroy(struct aws_event_loop *event_loop) {
       }
 
       aws_mutex_lock(&dispatch_loop->synced_data.lock);
-      while (!aws_linked_list_empty(&dispatch_loop->synced_data.scheduling_state.scheduled_services)) {
+      // The entry in the scheduled_services are all pushed to dispatch loop as the function context.
+      // Apple does not allow NULL context here, do not destroy the entry until the block run.
+      struct aws_linked_list scheduled_list = dispatch_loop->synced_data.scheduling_state.scheduled_services;
+      for (struct aws_linked_list_node *iter = aws_linked_list_begin(&scheduled_list);
+           iter != aws_linked_list_end(&scheduled_list);
+           iter = aws_linked_list_next(iter)) {
           struct aws_linked_list_node *node =
-              aws_linked_list_pop_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
+              aws_linked_list_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
           struct scheduled_service_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_service_entry, node);
-          // The entry in the scheduled_services are all pushed to dispatch loop as the function context. 
-          // Apple does not allow NULL context here, do not destroy the entry until the block run.
           entry->cancel = true;
       }
       dispatch_loop->synced_data.suspended = true;
       dispatch_loop->synced_data.is_executing = false;
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
-
     });
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)event_loop);
@@ -343,7 +345,7 @@ void end_iteration(struct scheduled_service_entry *entry) {
             }
         }
     }
-    
+
     scheduled_service_entry_destroy(entry);
     aws_mutex_unlock(&loop->synced_data.lock);
 }
@@ -362,6 +364,9 @@ void run_iteration(void *context) {
     }
 
     if (!begin_iteration(entry)) {
+        aws_mutex_lock(&dispatch_loop->synced_data.lock);
+        scheduled_service_entry_destroy(entry);
+        aws_mutex_unlock(&dispatch_loop->synced_data.lock);
         return;
     }
 
