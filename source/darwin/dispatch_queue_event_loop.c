@@ -100,14 +100,13 @@ static void s_dispatch_event_loop_destroy(void *context) {
     struct aws_event_loop *event_loop = context;
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroy Dispatch Queue Event Loop.", (void *)event_loop);
-
     aws_mutex_clean_up(&dispatch_loop->synced_data.lock);
     aws_string_destroy(dispatch_loop->dispatch_queue_id);
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
     aws_thread_decrement_unjoined_count();
 }
 
@@ -348,8 +347,12 @@ void end_iteration(struct scheduled_service_entry *entry) {
 
 // this function is what gets scheduled and executed by the Dispatch Queue API
 void run_iteration(void *context) {
-    AWS_ASSERT(context);
     struct scheduled_service_entry *entry = context;
+    if(!entry)
+    {
+        // Then entry might be destroyed on event loop destroy.
+        return;
+    }
     struct aws_event_loop *event_loop = entry->loop;
     if (event_loop == NULL)
         return;
