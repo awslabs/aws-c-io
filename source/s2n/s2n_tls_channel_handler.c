@@ -1253,7 +1253,7 @@ static struct aws_event_loop_local_object s_tl_cleanup_object = {
 static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
     (void)user_data;
 
-    s2n_cleanup();
+    s2n_cleanup_thread();
 }
 
 /* s2n allocates thread-local data structures. We need to clean these up when the event loop's thread exits. */
