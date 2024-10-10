@@ -155,11 +155,19 @@ if (USE_S2N)
         file(GLOB AWS_IO_TLS_SRC
                 "source/s2n/*.c"
                 )
-        if (IN_SOURCE_BUILD)
-           # We do in source build, set the flag to use the insource path to the <s2n/unstable/*.h> headers.
-           add_definitions(-DAWS_S2N_INSOURCE_PATH)
+        # Try to find s2n directly first. In case of s2n already built.
+        find_package(s2n QUIET)
+
+        if (NOT s2n_FOUND)
+                # If s2n was not found, try to do the IN_SOURCE_BUILD.
+                # If not IN_SOURCE_BUILD, s2n will be required to be found and fail from aws_use_package
+                # If in source build, set the flag to use the insource path to the <s2n/unstable/*.h> headers.
+                aws_use_package(s2n)
+                add_definitions(-DAWS_S2N_INSOURCE_PATH)
+        else()
+                # Found s2n, use the install path
+                list(APPEND DEP_AWS_LIBS AWS::s2n)
         endif()
-        aws_use_package(s2n)
 endif()
 
 file(GLOB IO_HEADERS
