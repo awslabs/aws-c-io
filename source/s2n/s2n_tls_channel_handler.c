@@ -21,12 +21,15 @@
 #include <aws/common/thread.h>
 
 #include <s2n.h>
-#include <s2n/unstable/cleanup.h>
+#ifdef AWS_S2N_INSOURCE_PATH
+#    include <api/unstable/cleanup.h>
+#else
+#    include <s2n/unstable/cleanup.h>
+#endif
 
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
-#include <s2n.h>
 #include <stdio.h>
 #include <stdlib.h>
 
