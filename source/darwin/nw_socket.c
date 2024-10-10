@@ -415,6 +415,7 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
 }
 
 static void s_schedule_on_readable(struct aws_socket *socket, int error_code) {
+
     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
 
     struct nw_socket_readable_args *args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_readable_args));
@@ -1088,7 +1089,23 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", (void *)socket, socket->io_handle.data.handle);
 
-    if (nw_socket->timeout_args) {
+    if (socket->event_loop) {
+        if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+            AWS_LOGF_INFO(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: closing from a different thread than "
+                "the socket is running from. Blocking until it closes down.",
+                (void *)socket,
+                socket->io_handle.data.fd);
+            /* the only time we allow this kind of thing is when you're a listener.*/
+            if (socket->state != LISTENING) {
+                return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+            }
+        }
+    }
+
+    // The timeout_args only setup for connections.
+    if (!nw_socket->is_listener && nw_socket->timeout_args) {
         // if the timeout args is not triggered, cancel it
         nw_socket->timeout_args->socket = NULL;
         nw_socket->timeout_args = NULL;
@@ -1105,7 +1122,6 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     }
     nw_socket->currently_connected = false;
     socket->state = CLOSED;
-    socket->event_loop = NULL;
 
     return AWS_OP_SUCCESS;
 }
@@ -1113,7 +1129,10 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_direction dir) {
     // DEBUG WIP does this need implementation?
     (void)dir;
-    return s_socket_close_fn(socket);
+    AWS_ASSERT(true);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET, "id=%p: shutdown by direction is not support for Apple network framework.", (void *)socket);
+    return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
 }
 
 static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_socket_options *options) {
@@ -1226,7 +1245,6 @@ static void s_schedule_next_read(struct aws_socket *socket) {
                   (void *)socket,
                   socket->io_handle.data.handle,
                   error_code);
-
               s_schedule_on_readable(socket, error_code);
           }
           aws_ref_count_release(&nw_socket->ref_count);
@@ -1363,10 +1381,10 @@ static int s_socket_write_fn(
     nw_connection_send(
         socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           if (!nw_socket->currently_connected) {
-              // As the socket is not open, we no longer have access to the event loop to schedule tasks
-              // directly execute the written callback instead of scheduling a task.
-              // At this moment, we no longer has access to socket.
-              written_fn(NULL, 0, 0, user_data);
+              // As the socket is closed, we dont put the callback on event loop to schedule tasks.
+              // Directly execute the written callback instead of scheduling a task. At this moment,
+              // we no longer has access to socket.
+              written_fn(socket, 0, 0, user_data);
               goto nw_socket_release;
           }
 
