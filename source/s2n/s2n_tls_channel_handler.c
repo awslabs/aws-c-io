@@ -22,7 +22,7 @@
 
 #include <s2n.h>
 #ifdef AWS_S2N_INSOURCE_PATH
-#    include <api/unstable/cleanup.h>
+#    include <unstable/cleanup.h>
 #else
 #    include <s2n/unstable/cleanup.h>
 #endif
