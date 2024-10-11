@@ -678,7 +678,6 @@ int aws_import_key_pair_to_cert_context(
                     &decoded_len)) {
                 cert_type = AWS_CT_X509_RSA;
             }
-            LocalFree(key_wrapper);
         }
 #ifndef AWS_SUPPORT_WIN7
         else if (CryptDecodeObjectEx(
@@ -745,6 +744,7 @@ clean_up:
     aws_pem_objects_clean_up(&private_keys);
 
     LocalFree(key);
+    LocalFree(key_wrapper);
 
     if (result == AWS_OP_ERR) {
         if (*store != NULL) {
