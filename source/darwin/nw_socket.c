@@ -267,9 +267,7 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
 
     // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
-    aws_mutex_lock(&nw_socket->synced_data.lock);
     nw_socket->synced_data.base_socket = NULL;
-    aws_mutex_unlock(&nw_socket->synced_data.lock);
     aws_ref_count_release(&nw_socket->ref_count);
     socket->impl = NULL;
     AWS_ZERO_STRUCT(*socket);
@@ -395,7 +393,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
     aws_mutex_lock(&nw_socket->synced_data.lock);
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
     /* successful connection will have nulled out timeout_args->socket */
-    if (!timeout_args->connection_succeed) {
+    if (!timeout_args->connection_succeed && socket) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: timed out, shutting down.",
@@ -667,7 +665,7 @@ static void s_process_write_task(struct aws_task *task, void *args, enum aws_tas
     if (status != AWS_TASK_STATUS_CANCELED) {
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        if (socket && task_args->written_fn)
+        if (task_args->written_fn)
             task_args->written_fn(socket, task_args->error_code, task_args->bytes_written, task_args->user_data);
         aws_mutex_unlock(&nw_socket->synced_data.lock);
     }
@@ -685,7 +683,7 @@ static void s_schedule_write_fn(
     aws_socket_on_write_completed_fn *written_fn) {
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
-    if (nw_socket->synced_data.base_socket && nw_socket->synced_data.event_loop) {
+    if (nw_socket->synced_data.event_loop) {
         struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
 
         struct nw_socket_written_args *args =
@@ -1518,7 +1516,8 @@ static int s_socket_write_fn(
               // As the socket is closed, we dont put the callback on event loop to schedule tasks.
               // Directly execute the written callback instead of scheduling a task. At this moment,
               // we no longer has access to socket either.
-              written_fn(NULL, 0, 0, user_data);
+
+              s_schedule_write_fn(nw_socket, 0, 0, user_data, written_fn);
               goto nw_socket_release;
           }
 
