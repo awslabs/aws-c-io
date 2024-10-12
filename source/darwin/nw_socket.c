@@ -267,9 +267,11 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
 
     // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
+    aws_mutex_lock(&nw_socket->synced_data.lock);
+    nw_socket->synced_data.base_socket = NULL;
+    aws_mutex_unlock(&nw_socket->synced_data.lock);
     aws_ref_count_release(&nw_socket->ref_count);
     socket->impl = NULL;
-
     AWS_ZERO_STRUCT(*socket);
 }
 
@@ -1402,7 +1404,7 @@ static int s_socket_subscribe_to_readable_events_fn(
     return AWS_OP_SUCCESS;
 }
 
-// WARNING: This function should never lock!!!! aws_socket_read() should always called on event loop thread, 
+// WARNING: This function should never lock!!!! aws_socket_read() should always called on event loop thread,
 // which means we already acquire a necessary lock there.
 static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read_buffer, size_t *amount_read) {
     struct nw_socket *nw_socket = socket->impl;
@@ -1485,8 +1487,6 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
     return AWS_OP_SUCCESS;
 }
 
-// WARNING: This function should never lock!!!! aws_socket_write() should always called on event loop thread, 
-// which means we already acquire a necessary lock there.
 static int s_socket_write_fn(
     struct aws_socket *socket,
     const struct aws_byte_cursor *cursor,
@@ -1517,8 +1517,8 @@ static int s_socket_write_fn(
           if (!nw_socket->currently_connected) {
               // As the socket is closed, we dont put the callback on event loop to schedule tasks.
               // Directly execute the written callback instead of scheduling a task. At this moment,
-              // we no longer has access to socket.
-              written_fn(socket, 0, 0, user_data);
+              // we no longer has access to socket either.
+              written_fn(NULL, 0, 0, user_data);
               goto nw_socket_release;
           }
 
