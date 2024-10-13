@@ -433,6 +433,9 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     if (status != AWS_TASK_STATUS_CANCELED) {
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
+        if(readable_args->error_code == AWS_IO_SOCKET_CLOSED){
+            aws_socket_close(socket);
+        }
         if (socket && nw_socket->on_readable)
             nw_socket->on_readable(socket, readable_args->error_code, nw_socket->on_readable_user_data);
         aws_mutex_unlock(&nw_socket->synced_data.lock);
@@ -902,15 +905,12 @@ static int s_socket_connect_fn(
               nw_socket->last_error = error_code;
               aws_raise_error(error_code);
               socket->state = ERROR;
-              aws_ref_count_acquire(&nw_socket->ref_count);
               if (!nw_socket->setup_run) {
                   s_schedule_on_connection_success(nw_socket, error_code);
                   nw_socket->setup_run = true;
               } else if (socket->readable_fn) {
                   s_schedule_on_readable(nw_socket, nw_socket->last_error);
               }
-
-              aws_ref_count_release(&nw_socket->ref_count);
           } else if (state == nw_connection_state_cancelled || state == nw_connection_state_failed) {
               /* this should only hit when the socket was closed by not us. Note,
                * we uninstall this handler right before calling close on the socket so this shouldn't
@@ -926,7 +926,6 @@ static int s_socket_connect_fn(
                   (void *)socket,
                   socket->io_handle.data.handle);
               socket->state = CLOSED;
-              aws_ref_count_acquire(&nw_socket->ref_count);
               aws_raise_error(AWS_IO_SOCKET_CLOSED);
               if (!nw_socket->setup_run) {
                   s_schedule_on_connection_success(nw_socket, AWS_IO_SOCKET_CLOSED);
@@ -934,7 +933,6 @@ static int s_socket_connect_fn(
               } else if (socket->readable_fn) {
                   s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED);
               }
-              aws_ref_count_release(&nw_socket->ref_count);
           } else if (state == nw_connection_state_waiting) {
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
@@ -1364,6 +1362,18 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
               }
               if (!is_complete) {
                   s_schedule_next_read(nw_socket);
+              }
+              else{     
+                if (socket->options.type != AWS_SOCKET_DGRAM) {
+                // the message is complete socket the socket
+                AWS_LOGF_TRACE(
+                  AWS_LS_IO_SOCKET,
+                  "id=%p handle=%p:complete hange up ",
+                  (void *)socket,
+                  socket->io_handle.data.handle);
+                  aws_raise_error(AWS_IO_SOCKET_CLOSED);
+                  s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED);
+                }
               }
           } else {
               int error_code = s_determine_socket_error(nw_error_get_error_code(error));
