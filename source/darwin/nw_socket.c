@@ -1494,7 +1494,11 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
                     read_node->current_offset,
                     size,
                     buffer);
-                return read_node->current_offset == size;
+                bool should_continue = read_node->current_offset == size;
+                if(should_continue){
+                    read_node->current_offset = 0;
+                }
+                return should_continue;
             });
 
         if (read_completed) {
