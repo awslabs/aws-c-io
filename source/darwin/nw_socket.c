@@ -1484,21 +1484,11 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
                 max_to_read -= to_copy;
                 *amount_read += to_copy;
                 read_node->current_offset += to_copy;
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p, [DEBUG READ DATA] max_to_read %zu, amount_read %zu, tocopy_size %zu, offset %zu,size %zu, buffer=%p",
-                    (void *)node,
-                    max_to_read,
-                    *amount_read,
-                    to_copy,
-                    read_node->current_offset,
-                    size,
-                    buffer);
-                bool should_continue = read_node->current_offset == size;
-                if(should_continue){
+                if (read_node->current_offset == size) {
                     read_node->current_offset = 0;
+                    return true;
                 }
-                return should_continue;
+                return false;
             });
 
         if (read_completed) {
