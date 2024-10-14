@@ -468,8 +468,11 @@ static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code, 
         args->nw_socket = nw_socket;
         args->allocator = nw_socket->allocator;
         args->error_code = error_code;
-        args->data = data;
-        dispatch_retain(data);
+       
+        if(data){
+            dispatch_retain(data);
+            args->data = data;
+        }
         aws_ref_count_acquire(&nw_socket->ref_count);
 
         aws_task_init(task, s_process_readable_task, args, "readableTask");
