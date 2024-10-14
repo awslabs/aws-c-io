@@ -95,6 +95,7 @@ struct nw_socket_scheduled_task_args {
     int error_code;
     struct aws_allocator *allocator;
     struct nw_socket *nw_socket;
+    dispatch_data_t data;
 };
 
 struct nw_socket_written_args {
@@ -433,11 +434,19 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     if (status != AWS_TASK_STATUS_CANCELED) {
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        if(readable_args->error_code == AWS_IO_SOCKET_CLOSED){
+        if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
             aws_socket_close(socket);
         }
-        if (socket && nw_socket->on_readable)
+
+        if (socket && nw_socket->on_readable) {
+            if (readable_args->data) {
+                struct read_queue_node *node = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct read_queue_node));
+                node->allocator = nw_socket->allocator;
+                node->received_data = readable_args->data;
+                aws_linked_list_push_back(&nw_socket->read_queue, &node->node);
+            }
             nw_socket->on_readable(socket, readable_args->error_code, nw_socket->on_readable_user_data);
+        }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
     }
 
@@ -446,7 +455,7 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     aws_mem_release(readable_args->allocator, readable_args);
 }
 
-static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code) {
+static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code, dispatch_data_t data) {
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
@@ -459,6 +468,8 @@ static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code) 
         args->nw_socket = nw_socket;
         args->allocator = nw_socket->allocator;
         args->error_code = error_code;
+        args->data = data;
+        dispatch_retain(data);
         aws_ref_count_acquire(&nw_socket->ref_count);
 
         aws_task_init(task, s_process_readable_task, args, "readableTask");
@@ -909,7 +920,7 @@ static int s_socket_connect_fn(
                   s_schedule_on_connection_success(nw_socket, error_code);
                   nw_socket->setup_run = true;
               } else if (socket->readable_fn) {
-                  s_schedule_on_readable(nw_socket, nw_socket->last_error);
+                  s_schedule_on_readable(nw_socket, nw_socket->last_error, NULL);
               }
           } else if (state == nw_connection_state_cancelled || state == nw_connection_state_failed) {
               /* this should only hit when the socket was closed by not us. Note,
@@ -931,7 +942,7 @@ static int s_socket_connect_fn(
                   s_schedule_on_connection_success(nw_socket, AWS_IO_SOCKET_CLOSED);
                   nw_socket->setup_run = true;
               } else if (socket->readable_fn) {
-                  s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED);
+                  s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED, NULL);
               }
           } else if (state == nw_connection_state_waiting) {
               AWS_LOGF_DEBUG(
@@ -1317,9 +1328,6 @@ static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aw
  * buffer to then be vended upon a call to aws_socket_read() */
 static void s_schedule_next_read(struct nw_socket *nw_socket) {
 
-    struct aws_allocator *allocator = nw_socket->allocator;
-    struct aws_linked_list *list = &nw_socket->read_queue;
-
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
     if (!(socket->state & CONNECTED_READ)) {
         AWS_LOGF_ERROR(
@@ -1346,11 +1354,10 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
               aws_raise_error(AWS_IO_SOCKET_CLOSED);
           } else if (!error || nw_error_get_error_code(error) == 0) {
               if (data) {
-                  struct read_queue_node *node = aws_mem_calloc(allocator, 1, sizeof(struct read_queue_node));
-                  node->allocator = allocator;
-                  node->received_data = data;
-                  dispatch_retain(data);
-                  aws_linked_list_push_back(list, &node->node);
+                  //   struct read_queue_node *node = aws_mem_calloc(allocator, 1, sizeof(struct read_queue_node));
+                  //   node->allocator = allocator;
+                  //   node->received_data = data;
+                  //   aws_linked_list_push_back(list, &node->node);
                   AWS_LOGF_TRACE(
                       AWS_LS_IO_SOCKET,
                       "id=%p handle=%p: queued read buffer of size %d",
@@ -1358,22 +1365,21 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                       (void *)nw_socket->nw_connection,
                       (int)dispatch_data_get_size(data));
 
-                  s_schedule_on_readable(nw_socket, AWS_ERROR_SUCCESS);
+                  s_schedule_on_readable(nw_socket, AWS_ERROR_SUCCESS, data);
               }
               if (!is_complete) {
                   s_schedule_next_read(nw_socket);
-              }
-              else{     
-                if (socket->options.type != AWS_SOCKET_DGRAM) {
-                // the message is complete socket the socket
-                AWS_LOGF_TRACE(
-                  AWS_LS_IO_SOCKET,
-                  "id=%p handle=%p:complete hange up ",
-                  (void *)socket,
-                  socket->io_handle.data.handle);
-                  aws_raise_error(AWS_IO_SOCKET_CLOSED);
-                  s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED);
-                }
+              } else {
+                  if (socket->options.type != AWS_SOCKET_DGRAM) {
+                      // the message is complete socket the socket
+                      AWS_LOGF_TRACE(
+                          AWS_LS_IO_SOCKET,
+                          "id=%p handle=%p:complete hange up ",
+                          (void *)socket,
+                          socket->io_handle.data.handle);
+                      aws_raise_error(AWS_IO_SOCKET_CLOSED);
+                      s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED, NULL);
+                  }
               }
           } else {
               int error_code = s_determine_socket_error(nw_error_get_error_code(error));
@@ -1385,7 +1391,7 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                   (void *)socket,
                   socket->io_handle.data.handle,
                   error_code);
-              s_schedule_on_readable(nw_socket, error_code);
+              s_schedule_on_readable(nw_socket, error_code, NULL);
           }
           aws_ref_count_release(&nw_socket->ref_count);
         });
@@ -1531,12 +1537,6 @@ static int s_socket_write_fn(
               goto nw_socket_release;
           }
 
-          AWS_LOGF_ERROR(
-              AWS_LS_IO_SOCKET,
-              "id=%p handle=%p: DEBUG:: callback writing message: %p",
-              (void *)socket,
-              socket->io_handle.data.handle,
-              user_data);
           int error_code = !error || nw_error_get_error_code(error) == 0
                                ? AWS_OP_SUCCESS
                                : s_determine_socket_error(nw_error_get_error_code(error));
