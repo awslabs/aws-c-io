@@ -468,8 +468,8 @@ static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code, 
         args->nw_socket = nw_socket;
         args->allocator = nw_socket->allocator;
         args->error_code = error_code;
-       
-        if(data){
+
+        if (data) {
             dispatch_retain(data);
             args->data = data;
         }
@@ -1473,6 +1473,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
         struct aws_linked_list_node *node = aws_linked_list_front(&nw_socket->read_queue);
         struct read_queue_node *read_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
 
+        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p, [DEBUG READ DATA] start processing node ", (void *)node);
         bool read_completed = dispatch_data_apply(
             read_node->received_data,
             (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
@@ -1483,10 +1484,18 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
                 max_to_read -= to_copy;
                 *amount_read += to_copy;
                 read_node->current_offset += to_copy;
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p, [DEBUG READ DATA] offset %zu,size %zu, buffer %s",
+                    (void *)node,
+                    offset,
+                    size,
+                    (char *)buffer);
                 return read_node->current_offset == size;
             });
 
         if (read_completed) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p, [DEBUG READ DATA] clean up the node", (void *)node);
             aws_linked_list_remove(node);
             s_clean_up_read_queue_node(read_node);
         }
