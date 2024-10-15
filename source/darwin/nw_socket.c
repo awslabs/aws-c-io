@@ -244,7 +244,10 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
             /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
             if (nw_socket->tls_ctx) {
                 struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
-                struct dispatch_loop *dispatch_loop = nw_socket->event_loop->impl_data;
+
+                aws_mutex_lock(&nw_socket->synced_data.lock);
+                struct dispatch_loop *dispatch_loop = nw_socket->synced_data.event_loop->impl_data;
+                aws_mutex_unlock(&nw_socket->synced_data.lock);
 
                 /* This check cannot be done within the TLS options block and must be handled here. */
                 if (transport_ctx->minimum_tls_version == AWS_IO_SSLv3 ||
@@ -988,6 +991,10 @@ static int s_socket_connect_fn(
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
 
+    if (socket->event_loop) {
+        return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
+    }
+
     struct aws_tls_connection_options *tls_connection_options = NULL;
     retrieve_tls_options(&tls_connection_options, user_data);
 
@@ -1012,7 +1019,9 @@ static int s_socket_connect_fn(
         aws_tls_ctx_acquire(nw_socket->tls_ctx);
     }
 
-    nw_socket->event_loop = event_loop;
+    aws_mutex_lock(&nw_socket->synced_data.lock);
+    nw_socket->synced_data.event_loop = event_loop;
+    aws_mutex_unlock(&nw_socket->synced_data.lock);
 
     if (s_setup_socket_params(nw_socket, &socket->options)) {
         return AWS_OP_ERR;
@@ -1137,10 +1146,6 @@ static int s_socket_connect_fn(
         s_handle_socket_timeout,
         nw_socket->timeout_args,
         "NWSocketConnectionTimeoutTask");
-
-    aws_mutex_lock(&nw_socket->synced_data.lock);
-    nw_socket->synced_data.event_loop = event_loop;
-    aws_mutex_unlock(&nw_socket->synced_data.lock);
 
     /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
      * was disconnected etc .... */
