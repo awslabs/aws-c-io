@@ -698,21 +698,21 @@ static void s_schedule_write_fn(
     void *user_data,
     aws_socket_on_write_completed_fn *written_fn) {
 
+    struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
+
+    struct nw_socket_written_args *args =
+        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
+
+    args->nw_socket = nw_socket;
+    args->allocator = nw_socket->allocator;
+    args->error_code = error_code;
+    args->written_fn = written_fn;
+    args->user_data = user_data;
+    args->bytes_written = bytes_written;
+    aws_ref_count_acquire(&nw_socket->ref_count);
+    aws_task_init(task, s_process_write_task, args, "writtenTask");
     aws_mutex_lock(&nw_socket->synced_data.lock);
     if (nw_socket->synced_data.event_loop) {
-        struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
-
-        struct nw_socket_written_args *args =
-            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
-
-        args->nw_socket = nw_socket;
-        args->allocator = nw_socket->allocator;
-        args->error_code = error_code;
-        args->written_fn = written_fn;
-        args->user_data = user_data;
-        args->bytes_written = bytes_written;
-        aws_ref_count_acquire(&nw_socket->ref_count);
-        aws_task_init(task, s_process_write_task, args, "writtenTask");
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
