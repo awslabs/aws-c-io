@@ -559,6 +559,7 @@ int aws_import_key_pair_to_cert_context(
 
     int result = AWS_OP_ERR;
     BYTE *key = NULL;
+    BYTE *key_wrapper = NULL;
 
     if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *public_cert_chain)) {
         AWS_LOGF_ERROR(
@@ -640,6 +641,7 @@ int aws_import_key_pair_to_cert_context(
 
     struct aws_pem_object *private_key_ptr = NULL;
     DWORD decoded_len = 0;
+    DWORD decoded_wrapper_len = 0;
     enum aws_certificate_type cert_type = AWS_CT_X509_UNKNOWN;
     size_t private_key_count = aws_array_list_length(&private_keys);
     for (size_t i = 0; i < private_key_count; ++i) {
@@ -655,6 +657,27 @@ int aws_import_key_pair_to_cert_context(
                 &key,
                 &decoded_len)) {
             cert_type = AWS_CT_X509_RSA;
+        } else if (CryptDecodeObjectEx(
+                       X509_ASN_ENCODING,
+                       PKCS_PRIVATE_KEY_INFO,
+                       private_key_ptr->data.buffer,
+                       (DWORD)private_key_ptr->data.len,
+                       CRYPT_DECODE_ALLOC_FLAG,
+                       0,
+                       &key_wrapper,
+                       &decoded_wrapper_len)) {
+            CRYPT_PRIVATE_KEY_INFO *pPrivateKeyInfoStruct = (CRYPT_PRIVATE_KEY_INFO *)key_wrapper;
+            if (CryptDecodeObjectEx(
+                    X509_ASN_ENCODING,
+                    PKCS_RSA_PRIVATE_KEY,
+                    pPrivateKeyInfoStruct->PrivateKey.pbData,
+                    pPrivateKeyInfoStruct->PrivateKey.cbData,
+                    CRYPT_DECODE_ALLOC_FLAG,
+                    0,
+                    &key,
+                    &decoded_len)) {
+                cert_type = AWS_CT_X509_RSA;
+            }
         }
 #ifndef AWS_SUPPORT_WIN7
         else if (CryptDecodeObjectEx(
@@ -721,6 +744,7 @@ clean_up:
     aws_pem_objects_clean_up(&private_keys);
 
     LocalFree(key);
+    LocalFree(key_wrapper);
 
     if (result == AWS_OP_ERR) {
         if (*store != NULL) {

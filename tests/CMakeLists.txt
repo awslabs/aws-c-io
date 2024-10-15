@@ -251,6 +251,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
+    add_net_test_case(test_pkcs8_import)
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)
