@@ -39,8 +39,6 @@ option(BUILD_RELOCATABLE_BINARIES
         OFF)
 option(BYO_CRYPTO "Don't build a tls implementation or link against a crypto interface. This feature is only for unix builds currently."
         OFF)
-# DEBUG: directly set AWS_USE_DISPATCH_QUEUE
-set (AWS_USE_DISPATCH_QUEUE ON)
 
 file(GLOB AWS_IO_HEADERS
         "include/aws/io/*.h"
