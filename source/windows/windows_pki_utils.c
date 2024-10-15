@@ -559,6 +559,7 @@ int aws_import_key_pair_to_cert_context(
 
     int result = AWS_OP_ERR;
     BYTE *key = NULL;
+    BYTE *key_wrapper = NULL;
 
     if (aws_pem_objects_init_from_file_contents(&certificates, alloc, *public_cert_chain)) {
         AWS_LOGF_ERROR(
@@ -640,7 +641,6 @@ int aws_import_key_pair_to_cert_context(
 
     struct aws_pem_object *private_key_ptr = NULL;
     DWORD decoded_len = 0;
-    BYTE *key_wrapper = NULL;
     DWORD decoded_wrapper_len = 0;
     enum aws_certificate_type cert_type = AWS_CT_X509_UNKNOWN;
     size_t private_key_count = aws_array_list_length(&private_keys);
