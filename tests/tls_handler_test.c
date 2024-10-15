@@ -196,6 +196,9 @@ static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
 
     aws_condition_variable_clean_up(&tester->condition_variable);
     aws_mutex_clean_up(&tester->mutex);
+    // DEBUG WIP, sleep to wait for reference release
+    aws_thread_current_sleep(1000000000);
+
     return AWS_OP_SUCCESS;
 }
 

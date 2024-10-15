@@ -57,6 +57,7 @@ struct dispatch_loop {
     } synced_data;
 
     bool wakeup_schedule_needed;
+    bool is_destroying;
 };
 
 #endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H */
