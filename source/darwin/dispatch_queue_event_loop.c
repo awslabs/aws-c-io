@@ -55,6 +55,7 @@ struct scheduled_service_entry {
     uint64_t timestamp;
     struct aws_linked_list_node node;
     struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
+    bool cancel;
 };
 
 struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
@@ -78,6 +79,7 @@ void scheduled_service_entry_destroy(struct scheduled_service_entry *entry) {
     aws_ref_count_release(&dispatch_loop->ref_count);
 
     aws_mem_release(entry->allocator, entry);
+    entry = NULL;
 }
 
 // checks to see if another scheduled iteration already exists that will either
@@ -100,14 +102,13 @@ static void s_dispatch_event_loop_destroy(void *context) {
     struct aws_event_loop *event_loop = context;
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroy Dispatch Queue Event Loop.", (void *)event_loop);
-
     aws_mutex_clean_up(&dispatch_loop->synced_data.lock);
     aws_string_destroy(dispatch_loop->dispatch_queue_id);
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
     aws_thread_decrement_unjoined_count();
 }
 
@@ -199,8 +200,12 @@ clean_up_loop:
 
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
-
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
+
+    if (dispatch_loop->is_destroying) {
+        return;
+    }
+    dispatch_loop->is_destroying = true;
 
     /* make sure the loop is running so we can schedule a last task. */
     s_run(event_loop);
@@ -226,14 +231,16 @@ static void s_destroy(struct aws_event_loop *event_loop) {
           task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
       }
 
-      while (!aws_linked_list_empty(&dispatch_loop->synced_data.scheduling_state.scheduled_services)) {
-          struct aws_linked_list_node *node =
-              aws_linked_list_pop_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
-          struct scheduled_service_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_service_entry, node);
-          scheduled_service_entry_destroy(entry);
-      }
-
       aws_mutex_lock(&dispatch_loop->synced_data.lock);
+      // The entry in the scheduled_services are all pushed to dispatch loop as the function context.
+      // Apple does not allow NULL context here, do not destroy the entry until the block run.
+      struct aws_linked_list_node *iter = NULL;
+      for (iter = aws_linked_list_begin(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
+           iter != aws_linked_list_end(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
+           iter = aws_linked_list_next(iter)) {
+          struct scheduled_service_entry *entry = AWS_CONTAINER_OF(iter, struct scheduled_service_entry, node);
+          entry->cancel = true;
+      }
       dispatch_loop->synced_data.suspended = true;
       dispatch_loop->synced_data.is_executing = false;
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
@@ -338,19 +345,23 @@ void end_iteration(struct scheduled_service_entry *entry) {
         }
     }
 
-    aws_mutex_unlock(&loop->synced_data.lock);
     scheduled_service_entry_destroy(entry);
+    aws_mutex_unlock(&loop->synced_data.lock);
 }
 
 // this function is what gets scheduled and executed by the Dispatch Queue API
 void run_iteration(void *context) {
     struct scheduled_service_entry *entry = context;
     struct aws_event_loop *event_loop = entry->loop;
-    if (event_loop == NULL)
-        return;
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
+    AWS_ASSERT(event_loop && dispatch_loop);
+    if (entry->cancel) {
+        scheduled_service_entry_destroy(entry);
+        return;
+    }
 
     if (!begin_iteration(entry)) {
+        scheduled_service_entry_destroy(entry);
         return;
     }
 

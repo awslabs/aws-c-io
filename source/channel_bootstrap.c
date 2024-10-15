@@ -655,7 +655,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto task_cancelled;
     }
 
-    struct aws_socket *outgoing_socket = aws_mem_acquire(allocator, sizeof(struct aws_socket));
+    struct aws_socket *outgoing_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
     if (aws_socket_init(outgoing_socket, allocator, &task_data->options)) {
         goto socket_init_failed;
     }

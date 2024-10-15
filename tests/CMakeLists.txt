@@ -62,7 +62,6 @@ add_net_test_case(tcp_socket_communication)
 add_net_test_case(udp_socket_communication)
 add_net_test_case(test_socket_with_bind_to_interface)
 add_net_test_case(test_socket_with_bind_to_invalid_interface)
-add_test_case(udp_bind_connect_communication)
 add_net_test_case(connect_timeout)
 add_net_test_case(connect_timeout_cancelation)
 
@@ -74,16 +73,23 @@ endif()
 add_test_case(outgoing_local_sock_errors)
 add_test_case(outgoing_tcp_sock_error)
 add_test_case(incoming_tcp_sock_errors)
-add_test_case(incoming_duplicate_tcp_bind_errors)
 add_net_test_case(bind_on_zero_port_tcp_ipv4)
 add_net_test_case(bind_on_zero_port_udp_ipv4)
 add_test_case(incoming_udp_sock_errors)
-add_test_case(wrong_thread_read_write_fails)
 add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 add_test_case(cleanup_in_accept_doesnt_explode)
 add_test_case(cleanup_in_write_cb_doesnt_explode)
 add_test_case(sock_write_cb_is_async)
 add_test_case(socket_validate_port)
+
+if(NOT AWS_USE_DISPATCH_QUEUE)
+# The read/write will always run a different thread for Apple Network Framework
+add_test_case(wrong_thread_read_write_fails)
+# Apple Network Framework does not support bind+connect
+add_test_case(udp_bind_connect_communication)
+add_test_case(incoming_duplicate_tcp_bind_errors)
+endif()
+
 
 if(WIN32)
     add_test_case(local_socket_pipe_connected_race)

@@ -64,6 +64,7 @@ struct dispatch_loop {
     } synced_data;
 
     bool wakeup_schedule_needed;
+    bool is_destroying;
 };
 #endif /* AWS_USE_DISPATCH_QUEUE */
 

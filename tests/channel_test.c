@@ -837,6 +837,9 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     aws_io_library_clean_up();
 
+    // DEBUG WIP, sleep to wait for reference release
+    aws_thread_current_sleep(1000000000);
+
     return 0;
 }
 
