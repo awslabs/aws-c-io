@@ -1220,7 +1220,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, keep-alive probe "
+        "id=%p fd=%d: setting socket options to: keep-alive %d, keep-alive timeout %d, keep-alive interval %d, "
+        "keep-alive probe "
         "count %d.",
         (void *)socket,
         socket->io_handle.data.fd,
