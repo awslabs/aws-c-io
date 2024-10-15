@@ -434,11 +434,11 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     if (status != AWS_TASK_STATUS_CANCELED) {
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
-            aws_socket_close(socket);
-        }
 
         if (socket && nw_socket->on_readable) {
+            if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
+                aws_socket_close(socket);
+            }
             if (readable_args->data) {
                 struct read_queue_node *node = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct read_queue_node));
                 node->allocator = nw_socket->allocator;
@@ -1473,7 +1473,6 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
         struct aws_linked_list_node *node = aws_linked_list_front(&nw_socket->read_queue);
         struct read_queue_node *read_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
 
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p, [DEBUG READ DATA] start processing node ", (void *)node);
         bool read_completed = dispatch_data_apply(
             read_node->received_data,
             (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
@@ -1492,7 +1491,6 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             });
 
         if (read_completed) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p, [DEBUG READ DATA] clean up the node", (void *)node);
             aws_linked_list_remove(node);
             s_clean_up_read_queue_node(read_node);
         }

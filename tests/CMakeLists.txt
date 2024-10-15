@@ -83,10 +83,12 @@ add_test_case(sock_write_cb_is_async)
 add_test_case(socket_validate_port)
 
 if(NOT AWS_USE_DISPATCH_QUEUE)
-# The read/write will always run a different thread for Apple Network Framework
-add_test_case(wrong_thread_read_write_fails)
 # Apple Network Framework does not support bind+connect
 add_test_case(udp_bind_connect_communication)
+# The read/write will always run a different thread for Apple Network Framework
+add_test_case(wrong_thread_read_write_fails)
+# Apple Network Framework would not validate the binding endpoint until we start the
+# listen. The test does not apply here.
 add_test_case(incoming_duplicate_tcp_bind_errors)
 endif()
 

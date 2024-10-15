@@ -29,9 +29,6 @@ static bool s_use_dispatch_queue = true;
 static bool s_use_dispatch_queue = false;
 #endif
 
-#define NANOS_PER_SEC ((uint64_t)AWS_TIMESTAMP_NANOS)
-#define TIMEOUT (10 * NANOS_PER_SEC)
-
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -642,7 +639,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     (void)ctx;
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 30000;
+    options.connect_timeout_ms = 3000;
     options.keepalive = true;
     options.keep_alive_interval_sec = 1000;
     options.keep_alive_timeout_sec = 60000;
