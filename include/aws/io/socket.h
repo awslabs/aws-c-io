@@ -96,7 +96,7 @@ typedef void(aws_socket_on_accept_result_fn)(
 /**
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
- * 
+ *
  * socket is possible to be a NULL pointer in the callback.
  */
 typedef void(
