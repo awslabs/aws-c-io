@@ -251,6 +251,8 @@ static int s_test_socket_ex(
     ASSERT_INT_EQUALS(endpoint->port, bound_endpoint.port);
     ASSERT_STR_EQUALS(endpoint->address, bound_endpoint.address);
 
+    // The Apple Network Framework always require a "start listener/start connection"
+    // for setup a server socket
     if (options->type == AWS_SOCKET_STREAM || s_use_dispatch_queue) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
