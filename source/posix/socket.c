@@ -2058,3 +2058,11 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
 }
+
+bool aws_is_network_interface_name_valid(const char *interface_name) {
+    if (if_nametoindex(interface_name) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_name(%s) is invalid with errno: %d", interface_name, errno);
+        return false;
+    }
+    return true;
+}
