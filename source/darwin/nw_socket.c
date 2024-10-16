@@ -430,17 +430,12 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                 });
 #    endif // AWS_USE_SECITEM
         } else if (options->domain == AWS_SOCKET_LOCAL) {
-#    if defined(TARGET_OS_OSX) && TARGET_OS_OSX
-            nw_socket->nw_parameters = nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
-#    else  /* TARGET_OS_OSX */
-            /* AF_LOCAL is not supported on iOS with Network Framework. TCP or UDP should be used instead. */
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p options=%p: failed to create nw_parameters_t for nw_socket. AF_LOCAL is not supported on iOS.",
-                (void *)nw_socket,
-                (void *)options);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-#    endif /* !TARGET_OS_OSX */
+            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                NW_PARAMETERS_DISABLE_PROTOCOL,
+                // TCP options Block
+                ^(nw_protocol_options_t tcp_options) {
+                  s_setup_tcp_options(tcp_options, options);
+                });
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->nw_parameters = nw_parameters_create_secure_udp(
@@ -1314,9 +1309,7 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
         (int)local_endpoint->port);
 
     if (nw_socket->nw_parameters == NULL) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET, "id=%p: socket nw_parameters needs to be set before binding socket.", (void *)socket);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        s_setup_socket_params(nw_socket, &socket->options);
     }
 
     struct socket_address address;
@@ -1487,7 +1480,7 @@ static int s_socket_start_accept_fn(
           } else if (state == nw_listener_state_failed) {
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
-                  "id=%p handle=%p: lisnter on port failed ",
+                  "id=%p handle=%p: listener on port failed ",
                   (void *)socket,
                   socket->io_handle.data.handle);
               /* any error, including if closed remotely in error */
