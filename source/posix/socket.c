@@ -292,12 +292,12 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-#ifdef AWS_USE_KQUEUE
+#ifdef AWS_USE_KQUEUE || AWS_USE_EPOLL
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     return s_socket_init(socket, alloc, options, -1);
 }
-#endif // AWS_USE_KQUEUE
+#endif // #ifdef AWS_USE_KQUEUE || AWS_USE_EPOLL
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
@@ -949,7 +949,7 @@ error:
     return AWS_OP_ERR;
 }
 
-#ifdef AWS_USE_KQUEUE
+#ifdef AWS_USE_KQUEUE || AWS_USE_EPOLL
 int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
     if (socket->local_endpoint.address[0] == 0) {
         AWS_LOGF_ERROR(
@@ -962,7 +962,7 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
     *out_address = socket->local_endpoint;
     return AWS_OP_SUCCESS;
 }
-#endif // AWS_USE_KQUEUE
+#endif // AWS_USE_KQUEUE || AWS_USE_EPOLL
 
 static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
     if (socket->state != BOUND) {
@@ -2054,7 +2054,7 @@ static bool s_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.fd >= 0;
 }
 
-#ifdef AWS_USE_KQUEUE
+#ifdef AWS_USE_KQUEUE || AWS_USE_EPOLL
 void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
     struct aws_uuid uuid;
     AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
@@ -2063,7 +2063,7 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
 }
-#endif // AWS_USE_KQUEUE
+#endif // AWS_USE_KQUEUE || AWS_USE_EPOLL
 
 bool aws_is_network_interface_name_valid(const char *interface_name) {
     if (if_nametoindex(interface_name) == 0) {
