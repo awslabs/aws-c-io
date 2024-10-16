@@ -17,6 +17,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
+#ifdef AWS_USE_DISPATCH_QUEUE
 static int s_determine_socket_error(int error) {
     switch (error) {
         case ECONNREFUSED:
@@ -53,6 +54,7 @@ static int s_determine_socket_error(int error) {
             return AWS_IO_SOCKET_NOT_CONNECTED;
     }
 }
+
 
 static inline int s_convert_pton_error(int pton_code) {
     if (pton_code == 0) {
@@ -322,7 +324,6 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     nw_socket = NULL;
 }
 
-#ifdef AWS_USE_DISPATCH_QUEUE
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
@@ -371,7 +372,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
     return AWS_OP_SUCCESS;
 }
-#endif // AWS_USE_DISPATCH_QUEUE
 
 static void s_client_set_dispatch_queue(struct aws_io_handle *handle, void *queue) {
     nw_connection_set_queue(handle->data.handle, queue);
@@ -1589,7 +1589,6 @@ static bool s_socket_is_open_fn(struct aws_socket *socket) {
     return nw_socket->last_error == AWS_OP_SUCCESS;
 }
 
-#ifdef AWS_USE_DISPATCH_QUEUE
 void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
     struct aws_uuid uuid;
     AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);

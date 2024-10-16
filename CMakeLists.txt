@@ -116,8 +116,7 @@ elseif (APPLE)
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
-            "source/darwin/darwin_pki_utils.c"
-            "source/darwin/secure_transport_tls_channel_handler.c"
+            "source/darwin/*.c"
             )
 
     find_library(SECURITY_LIB Security)
@@ -136,11 +135,6 @@ elseif (APPLE)
      if(AWS_USE_DISPATCH_QUEUE OR IOS)
         set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
         message("use dispatch queue")
-        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
-        "source/darwin/dispatch_queue_event_loop.c"
-        "source/darwin/nw_socket.c"
-        )
-        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
      else ()
          set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
     endif()
