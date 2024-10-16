@@ -2,23 +2,21 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#ifdef AWS_USE_DISPATCH_QUEUE
 
-#    include <aws/io/event_loop.h>
+#include <aws/io/event_loop.h>
 
-#    include <aws/common/atomics.h>
-#    include <aws/common/mutex.h>
-#    include <aws/common/task_scheduler.h>
-#    include <aws/common/uuid.h>
+#include <aws/common/atomics.h>
+#include <aws/common/mutex.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/uuid.h>
 
-#    include <aws/io/logging.h>
+#include <aws/io/logging.h>
 
-#    include <unistd.h>
+#include <unistd.h>
 
-#    include <Block.h>
-#    include <aws/io/private/dispatch_queue.h>
-#    include <dispatch/dispatch.h>
-#    include <dispatch/queue.h>
+#include <Block.h>
+#include <dispatch/dispatch.h>
+#include <dispatch/queue.h>
 
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
@@ -49,12 +47,48 @@ static struct aws_event_loop_vtable s_vtable = {
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
+struct dispatch_scheduling_state {
+    // Let's us skip processing an iteration task if one is already in the middle
+    // of executing
+    bool is_executing_iteration;
+
+    // List<scheduled_service_entry> in sorted order by timestamp
+    //
+    // When we go to schedule a new iteration, we check here first to see
+    // if our scheduling attempt is redundant
+    struct aws_linked_list scheduled_services;
+};
+
 struct scheduled_service_entry {
     struct aws_allocator *allocator;
     uint64_t timestamp;
     struct aws_linked_list_node node;
     struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
-    bool cancel;                 // The entry will be canceled if the event loop is destroyed.
+};
+
+struct dispatch_loop {
+    struct aws_allocator *allocator;
+    struct aws_ref_count ref_count;
+    dispatch_queue_t dispatch_queue;
+    struct aws_task_scheduler scheduler;
+    struct aws_linked_list local_cross_thread_tasks;
+
+    // Apple dispatch queue uses the id string to identify the dispatch queue
+    struct aws_string *dispatch_queue_id;
+
+    struct {
+        struct dispatch_scheduling_state scheduling_state;
+        struct aws_linked_list cross_thread_tasks;
+        struct aws_mutex lock;
+        bool suspended;
+        // `is_executing` flag and `current_thread_id` together are used to identify the excuting
+        // thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct aws_event_loop *event_loop)`
+        // for details.
+        bool is_executing;
+        aws_thread_id_t current_thread_id;
+    } synced_data;
+
+    bool wakeup_schedule_needed;
 };
 
 struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
@@ -78,7 +112,6 @@ void scheduled_service_entry_destroy(struct scheduled_service_entry *entry) {
     aws_ref_count_release(&dispatch_loop->ref_count);
 
     aws_mem_release(entry->allocator, entry);
-    entry = NULL;
 }
 
 // checks to see if another scheduled iteration already exists that will either
@@ -101,13 +134,14 @@ static void s_dispatch_event_loop_destroy(void *context) {
     struct aws_event_loop *event_loop = context;
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroy Dispatch Queue Event Loop.", (void *)event_loop);
+
     aws_mutex_clean_up(&dispatch_loop->synced_data.lock);
     aws_string_destroy(dispatch_loop->dispatch_queue_id);
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
     aws_thread_decrement_unjoined_count();
 }
 
@@ -199,13 +233,8 @@ clean_up_loop:
 
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
-    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
-    // Avoid double destroy
-    if (dispatch_loop->is_destroying) {
-        return;
-    }
-    dispatch_loop->is_destroying = true;
+    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     /* make sure the loop is running so we can schedule a last task. */
     s_run(event_loop);
@@ -231,17 +260,14 @@ static void s_destroy(struct aws_event_loop *event_loop) {
           task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
       }
 
-      aws_mutex_lock(&dispatch_loop->synced_data.lock);
-      // The entries in the scheduled_services are already put on the apple dispatch queue. It would be a bad memory
-      // access if we destroy the entries here. We instead setting a cancel flag to cancel the task when the
-      // dispatch_queue execute the entry.
-      struct aws_linked_list_node *iter = NULL;
-      for (iter = aws_linked_list_begin(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
-           iter != aws_linked_list_end(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
-           iter = aws_linked_list_next(iter)) {
-          struct scheduled_service_entry *entry = AWS_CONTAINER_OF(iter, struct scheduled_service_entry, node);
-          entry->cancel = true;
+      while (!aws_linked_list_empty(&dispatch_loop->synced_data.scheduling_state.scheduled_services)) {
+          struct aws_linked_list_node *node =
+              aws_linked_list_pop_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
+          struct scheduled_service_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_service_entry, node);
+          scheduled_service_entry_destroy(entry);
       }
+
+      aws_mutex_lock(&dispatch_loop->synced_data.lock);
       dispatch_loop->synced_data.suspended = true;
       dispatch_loop->synced_data.is_executing = false;
       aws_mutex_unlock(&dispatch_loop->synced_data.lock);
@@ -346,23 +372,19 @@ void end_iteration(struct scheduled_service_entry *entry) {
         }
     }
 
-    scheduled_service_entry_destroy(entry);
     aws_mutex_unlock(&loop->synced_data.lock);
+    scheduled_service_entry_destroy(entry);
 }
 
 // this function is what gets scheduled and executed by the Dispatch Queue API
 void run_iteration(void *context) {
     struct scheduled_service_entry *entry = context;
     struct aws_event_loop *event_loop = entry->loop;
-    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
-    AWS_ASSERT(event_loop && dispatch_loop);
-    if (entry->cancel) {
-        scheduled_service_entry_destroy(entry);
+    if (event_loop == NULL)
         return;
-    }
+    struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     if (!begin_iteration(entry)) {
-        scheduled_service_entry_destroy(entry);
         return;
     }
 
@@ -457,6 +479,9 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 }
 
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    (void)event_loop;
+    (void)handle;
+#ifdef AWS_USE_DISPATCH_QUEUE
     AWS_PRECONDITION(handle->set_queue && handle->clear_queue);
 
     AWS_LOGF_TRACE(
@@ -466,7 +491,7 @@ static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct
         (void *)handle->data.handle);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
     handle->set_queue(handle, dispatch_loop->dispatch_queue);
-
+#endif //    #ifdef AWS_USE_DISPATCH_QUEUE
     return AWS_OP_SUCCESS;
 }
 
@@ -476,7 +501,9 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: un-subscribing from events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
+#ifdef AWS_USE_DISPATCH_QUEUE
     handle->clear_queue(handle);
+#endif
     return AWS_OP_SUCCESS;
 }
 
@@ -492,5 +519,3 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     aws_mutex_unlock(&dispatch_queue->synced_data.lock);
     return result;
 }
-
-#endif /* AWS_USE_DISPATCH_QUEUE */
