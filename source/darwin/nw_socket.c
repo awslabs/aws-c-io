@@ -241,6 +241,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
 
     if (options->type == AWS_SOCKET_STREAM) {
         if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
+#    ifdef AWS_USE_SECITEM
+
             /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
             if (nw_socket->tls_ctx) {
                 struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
@@ -417,6 +419,16 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                       s_setup_tcp_options(tcp_options, options);
                     });
             }
+#    else  // !AWS_USE_SECITEM
+           // TLS options are not set and the TLS options block should be disabled.
+            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                // TLS options Block disabled
+                NW_PARAMETERS_DISABLE_PROTOCOL,
+                // TCP options Block
+                ^(nw_protocol_options_t tcp_options) {
+                  s_setup_tcp_options(tcp_options, options);
+                });
+#    endif // AWS_USE_SECITEM
         } else if (options->domain == AWS_SOCKET_LOCAL) {
 #    if defined(TARGET_OS_OSX) && TARGET_OS_OSX
             nw_socket->nw_parameters = nw_parameters_create_custom_ip(AF_LOCAL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
@@ -1300,6 +1312,12 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
         local_endpoint->address,
         (int)local_endpoint->port);
 
+    if (nw_socket->nw_parameters == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET, "id=%p: socket nw_parameters needs to be set before binding socket.", (void *)socket);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
+
     struct socket_address address;
     AWS_ZERO_STRUCT(address);
     int pton_err = 1;
@@ -1371,16 +1389,25 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    socket->io_handle.data.handle = nw_listener_create(nw_socket->nw_parameters);
-    nw_socket->nw_listener = socket->io_handle.data.handle;
-    nw_retain(socket->io_handle.data.handle);
-    nw_socket->is_listener = true;
+    if (nw_socket->nw_parameters == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p: socket nw_parameters needs to be set before creating a listener from socket.",
+            (void *)socket);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
 
+    socket->io_handle.data.handle = nw_listener_create(nw_socket->nw_parameters);
     if (!socket->io_handle.data.handle) {
-        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p:  listen failed with error code %d", (void *)socket, aws_last_error());
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET, "id=%p: listener creation failed with error code %d", (void *)socket, aws_last_error());
         socket->state = ERROR;
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
+
+    nw_socket->nw_listener = socket->io_handle.data.handle;
+    nw_retain(socket->io_handle.data.handle);
+    nw_socket->is_listener = true;
 
     socket->io_handle.set_queue = s_listener_set_dispatch_queue;
     socket->io_handle.clear_queue = s_listener_clear_dispatch_queue;
