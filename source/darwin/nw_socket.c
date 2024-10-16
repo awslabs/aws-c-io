@@ -55,7 +55,6 @@ static int s_determine_socket_error(int error) {
     }
 }
 
-
 static inline int s_convert_pton_error(int pton_code) {
     if (pton_code == 0) {
         return AWS_IO_SOCKET_INVALID_ADDRESS;
