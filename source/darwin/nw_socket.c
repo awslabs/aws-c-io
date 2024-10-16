@@ -1008,27 +1008,28 @@ static int s_socket_connect_fn(
     }
 
     struct aws_tls_connection_options *tls_connection_options = NULL;
-    retrieve_tls_options(&tls_connection_options, user_data);
+    if (retrieve_tls_options != NULL) {
+        retrieve_tls_options(&tls_connection_options, user_data);
+        if (tls_connection_options->server_name) {
+            if (nw_socket->host_name != NULL) {
+                aws_string_destroy(nw_socket->host_name);
+                nw_socket->host_name = NULL;
+            }
+            nw_socket->host_name = aws_string_new_from_string(
+                tls_connection_options->server_name->allocator, tls_connection_options->server_name);
+            if (nw_socket->host_name == NULL) {
+                return AWS_OP_ERR;
+            }
+        }
 
-    if (tls_connection_options->server_name) {
-        if (nw_socket->host_name != NULL) {
-            aws_string_destroy(nw_socket->host_name);
-            nw_socket->host_name = NULL;
+        if (tls_connection_options->ctx) {
+            if (nw_socket->tls_ctx) {
+                aws_tls_ctx_release(nw_socket->tls_ctx);
+                nw_socket->tls_ctx = NULL;
+            }
+            nw_socket->tls_ctx = tls_connection_options->ctx;
+            aws_tls_ctx_acquire(nw_socket->tls_ctx);
         }
-        nw_socket->host_name = aws_string_new_from_string(
-            tls_connection_options->server_name->allocator, tls_connection_options->server_name);
-        if (nw_socket->host_name == NULL) {
-            return AWS_OP_ERR;
-        }
-    }
-
-    if (tls_connection_options->ctx) {
-        if (nw_socket->tls_ctx) {
-            aws_tls_ctx_release(nw_socket->tls_ctx);
-            nw_socket->tls_ctx = NULL;
-        }
-        nw_socket->tls_ctx = tls_connection_options->ctx;
-        aws_tls_ctx_acquire(nw_socket->tls_ctx);
     }
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
