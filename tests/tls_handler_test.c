@@ -895,6 +895,9 @@ static int s_tls_channel_shutdown_with_cache_test_helper(struct aws_allocator *a
      * wait for the event to fire. */
     ASSERT_SUCCESS(s_tls_channel_server_client_tester_cleanup());
 
+    // wait for socket ref count drop and released
+    aws_thread_current_sleep(1000000000);
+
     return AWS_OP_SUCCESS;
 }
 
