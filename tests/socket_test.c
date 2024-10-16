@@ -402,7 +402,7 @@ static int s_test_socket_ex(
 
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(1000000000);
 
     return 0;
@@ -440,7 +440,7 @@ static int s_test_socket_udp_dispatch_queue(
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
     ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for incoming listener come back
     aws_thread_current_sleep(1000000000);
 
     struct local_outgoing_args outgoing_args = {
@@ -581,7 +581,7 @@ static int s_test_socket_udp_dispatch_queue(
 
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(5000000000);
 
     return 0;
@@ -1616,7 +1616,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(1000000000);
 
     return 0;
@@ -1761,7 +1761,7 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     aws_socket_clean_up(&listener);
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(1000000000);
 
     return 0;
