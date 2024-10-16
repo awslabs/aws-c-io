@@ -204,7 +204,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
 
-// DEBUG WIP We should expose or condense all these def specific function APIs and not make them
+// TODO: We should expose or condense all these def specific function APIs and not make them
 // defined specific. Consolidation of them should work and branched logic within due to all the
 // arguments being the same. Let's move away from different API based on framework and instead
 // raise an unsupported platform error or simply use branching in implementation.
