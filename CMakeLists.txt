@@ -134,6 +134,7 @@ elseif (APPLE)
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
     if (AWS_USE_SECITEM)
+        message("AWS_USE_SECITEM is set, adding dispatch queue and secitem support")
         set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE -DAWS_USE_SECITEM")
         file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
         "source/darwin/dispatch_queue_event_loop.c"
@@ -141,6 +142,7 @@ elseif (APPLE)
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
     elseif (AWS_USE_DISPATCH_QUEUE OR IOS)
+        message("AWS_USE_DISPATCH_QUEUE is set, using dispatch queue")
         set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE")
         file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
             "source/darwin/dispatch_queue_event_loop.c"
@@ -148,6 +150,7 @@ elseif (APPLE)
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
     else ()
+        message("using default kqueue")
         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
     endif()
 
@@ -203,8 +206,6 @@ aws_add_sanitizers(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC "${EVENT_LOOP_DEFINES}")
-
-
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
