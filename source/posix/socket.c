@@ -293,6 +293,13 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
+#if defined(AWS_USE_KQUEUE) || defined(AWS_USE_EPOLL)
+int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
+    AWS_ASSERT(options);
+    return s_socket_init(socket, alloc, options, -1);
+}
+#endif // #ifdef AWS_USE_KQUEUE || AWS_USE_EPOLL
+
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
         /* protect from double clean */
@@ -945,37 +952,50 @@ error:
     return AWS_OP_ERR;
 }
 
-static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
-    if (socket->state != BOUND) {
+#if defined(AWS_USE_KQUEUE) || defined(AWS_USE_EPOLL)
+int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
+    if (socket->local_endpoint.address[0] == 0) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: invalid state for listen operation. You must call bind first.",
+            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
             (void *)socket,
             socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
+    *out_address = socket->local_endpoint;
+    return AWS_OP_SUCCESS;
+}
+#endif // AWS_USE_KQUEUE || AWS_USE_EPOLL
 
-    int error_code = listen(socket->io_handle.data.fd, backlog_size);
-
-    if (!error_code) {
-        AWS_LOGF_INFO(
-            AWS_LS_IO_SOCKET, "id=%p fd=%d: successfully listening", (void *)socket, socket->io_handle.data.fd);
-        socket->state = LISTENING;
-        return AWS_OP_SUCCESS;
-    }
-
-    int errno_value = errno; /* Always cache errno before potential side-effect */
-
+if (socket->state != BOUND) {
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: listen failed with error code %d",
+        "id=%p fd=%d: invalid state for listen operation. You must call bind first.",
         (void *)socket,
-        socket->io_handle.data.fd,
-        errno_value);
+        socket->io_handle.data.fd);
+    return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+}
 
-    socket->state = ERROR;
+int error_code = listen(socket->io_handle.data.fd, backlog_size);
 
-    return aws_raise_error(s_determine_socket_error(errno_value));
+if (!error_code) {
+    AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: successfully listening", (void *)socket, socket->io_handle.data.fd);
+    socket->state = LISTENING;
+    return AWS_OP_SUCCESS;
+}
+
+int errno_value = errno; /* Always cache errno before potential side-effect */
+
+AWS_LOGF_ERROR(
+    AWS_LS_IO_SOCKET,
+    "id=%p fd=%d: listen failed with error code %d",
+    (void *)socket,
+    socket->io_handle.data.fd,
+    errno_value);
+
+socket->state = ERROR;
+
+return aws_raise_error(s_determine_socket_error(errno_value));
 }
 
 /* this is called by the event loop handler that was installed in start_accept(). It runs once the FD goes readable,
@@ -1259,7 +1279,8 @@ static int s_socket_set_options(struct aws_socket *socket, const struct aws_sock
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, keep-alive probe "
+        "id=%p fd=%d: setting socket options to: keep-alive %d, keep-alive timeout %d, keep-alive interval %d, "
+        "keep-alive probe "
         "count %d.",
         (void *)socket,
         socket->io_handle.data.fd,
@@ -2034,13 +2055,7 @@ static bool s_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.fd >= 0;
 }
 
-#if !defined(AWS_USE_DISPATCH_QUEUE)
-
-int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
-    AWS_ASSERT(options);
-    return s_socket_init(socket, alloc, options, -1);
-}
-
+#if defined(AWS_USE_KQUEUE) || defined(AWS_USE_EPOLL)
 void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
     struct aws_uuid uuid;
     AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
@@ -2049,18 +2064,12 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
 }
+#endif // AWS_USE_KQUEUE || AWS_USE_EPOLL
 
-int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
-    if (socket->local_endpoint.address[0] == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
-            (void *)socket,
-            socket->io_handle.data.fd);
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+bool aws_is_network_interface_name_valid(const char *interface_name) {
+    if (if_nametoindex(interface_name) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_name(%s) is invalid with errno: %d", interface_name, errno);
+        return false;
     }
-    *out_address = socket->local_endpoint;
-    return AWS_OP_SUCCESS;
+    return true;
 }
-
-#endif /* !AWS_USE_DISPATCH_QUEUE */

@@ -55,7 +55,7 @@ struct scheduled_service_entry {
     uint64_t timestamp;
     struct aws_linked_list_node node;
     struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
-    bool cancel;
+    bool cancel;                 // The entry will be canceled if the event loop is destroyed.
 };
 
 struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
@@ -202,6 +202,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
+    // Avoid double destroy
     if (dispatch_loop->is_destroying) {
         return;
     }
@@ -232,8 +233,9 @@ static void s_destroy(struct aws_event_loop *event_loop) {
       }
 
       aws_mutex_lock(&dispatch_loop->synced_data.lock);
-      // The entry in the scheduled_services are all pushed to dispatch loop as the function context.
-      // Apple does not allow NULL context here, do not destroy the entry until the block run.
+      // The entries in the scheduled_services are already put on the apple dispatch queue. It would be a bad memory
+      // access if we destroy the entries here. We instead setting a cancel flag to cancel the task when the
+      // dispatch_queue execute the entry.
       struct aws_linked_list_node *iter = NULL;
       for (iter = aws_linked_list_begin(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
            iter != aws_linked_list_end(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
@@ -456,6 +458,9 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 }
 
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    (void)event_loop;
+    (void)handle;
+#    ifdef AWS_USE_DISPATCH_QUEUE
     AWS_PRECONDITION(handle->set_queue && handle->clear_queue);
 
     AWS_LOGF_TRACE(
@@ -465,7 +470,7 @@ static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct
         (void *)handle->data.handle);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
     handle->set_queue(handle, dispatch_loop->dispatch_queue);
-
+#    endif //    #ifdef AWS_USE_DISPATCH_QUEUE
     return AWS_OP_SUCCESS;
 }
 
@@ -475,7 +480,9 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: un-subscribing from events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
+#    ifdef AWS_USE_DISPATCH_QUEUE
     handle->clear_queue(handle);
+#    endif
     return AWS_OP_SUCCESS;
 }
 
@@ -491,5 +498,3 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     aws_mutex_unlock(&dispatch_queue->synced_data.lock);
     return result;
 }
-
-#endif /* AWS_USE_DISPATCH_QUEUE */

@@ -551,7 +551,6 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     struct nw_socket *nw_socket = sock_ptr;
 
     /* we might have leftovers from the read queue, clean them up. */
-    // Todo check if this is disposing data that needs to be processed already received on the socket.
     // When the socket is being closed from the remote endpoint, we need to insure all received data
     // already received is processed and not thrown away before fully tearing down the socket. I'm relatively
     // certain that should take place before we reach this point of nw_socket destroy.
@@ -700,11 +699,13 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     if (status != AWS_TASK_STATUS_CANCELED) {
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
-            aws_socket_close(socket);
-        }
 
         if (socket && nw_socket->on_readable) {
+            if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
+                aws_socket_close(socket);
+            }
+            // If data is valid, push it in read_queue. The read_queue should be only accessed in event loop, as the
+            // task is scheduled in event loop, it is fine to directly access it.
             if (readable_args->data) {
                 struct read_queue_node *node = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct read_queue_node));
                 node->allocator = nw_socket->allocator;
@@ -930,9 +931,7 @@ static void s_schedule_cancel_task(struct nw_socket *nw_socket, struct aws_task 
         args->task_to_cancel = task_to_cancel;
         aws_ref_count_acquire(&nw_socket->ref_count);
         aws_task_init(task, s_process_cancel_task, args, "cancelTaskTask");
-        // TODO DEBUG:
-        AWS_LOGF_DEBUG(
-            AWS_LS_COMMON_TASK_SCHEDULER, "id=%p: Schedule cancel %s task", (void *)task_to_cancel, task->type_tag);
+        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: Schedule cancel %s task", (void *)task_to_cancel, task->type_tag);
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
@@ -948,8 +947,9 @@ static void s_process_write_task(struct aws_task *task, void *args, enum aws_tas
     if (status != AWS_TASK_STATUS_CANCELED) {
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        if (task_args->written_fn)
+        if (task_args->written_fn) {
             task_args->written_fn(socket, task_args->error_code, task_args->bytes_written, task_args->user_data);
+        }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
     }
 
@@ -965,21 +965,21 @@ static void s_schedule_write_fn(
     void *user_data,
     aws_socket_on_write_completed_fn *written_fn) {
 
+    struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
+
+    struct nw_socket_written_args *args =
+        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
+
+    args->nw_socket = nw_socket;
+    args->allocator = nw_socket->allocator;
+    args->error_code = error_code;
+    args->written_fn = written_fn;
+    args->user_data = user_data;
+    args->bytes_written = bytes_written;
+    aws_ref_count_acquire(&nw_socket->ref_count);
+    aws_task_init(task, s_process_write_task, args, "writtenTask");
     aws_mutex_lock(&nw_socket->synced_data.lock);
     if (nw_socket->synced_data.event_loop) {
-        struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
-
-        struct nw_socket_written_args *args =
-            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
-
-        args->nw_socket = nw_socket;
-        args->allocator = nw_socket->allocator;
-        args->error_code = error_code;
-        args->written_fn = written_fn;
-        args->user_data = user_data;
-        args->bytes_written = bytes_written;
-        aws_ref_count_acquire(&nw_socket->ref_count);
-        aws_task_init(task, s_process_write_task, args, "writtenTask");
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
@@ -1048,7 +1048,7 @@ static int s_socket_connect_fn(
             return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
         }
     } else { /* UDP socket */
-        // Though UDP is a connectionless transport, but the network framework uses a connection based abstraction on
+        // Though UDP is a connection-less transport, but the network framework uses a connection based abstraction on
         // top of the UDP layer. We should always do an "connect" action for Apple Network Framework.
         if (socket->state != CONNECTED_READ && socket->state != INIT) {
             return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
@@ -1576,6 +1576,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 
 static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_direction dir) {
     (void)dir;
+    // Invalid operation so far, current nw_socket does not support both dir connection
     AWS_ASSERT(true);
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET, "id=%p: shutdown by direction is not support for Apple network framework.", (void *)socket);
@@ -1718,7 +1719,6 @@ static int s_socket_subscribe_to_readable_events_fn(
     // is released while nw_socket is still alive an processing events.
     // Store the function on nw_socket to avoid bad access after the
     // aws_socket is released.
-    // DEBUG: test to check if this could be removed...?
     nw_socket->on_readable = on_readable;
     nw_socket->on_readable_user_data = user_data;
 
@@ -1778,7 +1778,6 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
         struct aws_linked_list_node *node = aws_linked_list_front(&nw_socket->read_queue);
         struct read_queue_node *read_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
 
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p, [DEBUG READ DATA] start processing node ", (void *)node);
         bool read_completed = dispatch_data_apply(
             read_node->received_data,
             (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
@@ -1797,7 +1796,6 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             });
 
         if (read_completed) {
-            AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p, [DEBUG READ DATA] clean up the node", (void *)node);
             aws_linked_list_remove(node);
             s_clean_up_read_queue_node(read_node);
         }

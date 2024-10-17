@@ -29,9 +29,6 @@ static bool s_use_dispatch_queue = true;
 static bool s_use_dispatch_queue = false;
 #endif
 
-#define NANOS_PER_SEC ((uint64_t)AWS_TIMESTAMP_NANOS)
-#define TIMEOUT (10 * NANOS_PER_SEC)
-
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -254,6 +251,8 @@ static int s_test_socket_ex(
     ASSERT_INT_EQUALS(endpoint->port, bound_endpoint.port);
     ASSERT_STR_EQUALS(endpoint->address, bound_endpoint.address);
 
+    // The Apple Network Framework always require a "start listener/start connection"
+    // for setup a server socket
     if (options->type == AWS_SOCKET_STREAM || s_use_dispatch_queue) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
@@ -404,7 +403,7 @@ static int s_test_socket_ex(
 
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(1000000000);
 
     return 0;
@@ -442,7 +441,7 @@ static int s_test_socket_udp_dispatch_queue(
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
     ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for incoming listener come back
     aws_thread_current_sleep(1000000000);
 
     struct local_outgoing_args outgoing_args = {
@@ -584,7 +583,7 @@ static int s_test_socket_udp_dispatch_queue(
 
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(5000000000);
 
     return 0;
@@ -644,7 +643,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     (void)ctx;
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 30000;
+    options.connect_timeout_ms = 3000;
     options.keepalive = true;
     options.keep_alive_interval_sec = 1000;
     options.keep_alive_timeout_sec = 60000;
@@ -704,6 +703,20 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bind_to_invalid_interface)
+
+static int s_test_is_network_interface_name_valid(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    ASSERT_FALSE(aws_is_network_interface_name_valid("invalid_name"));
+#if defined(AWS_OS_LINUX)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo"));
+#elif !defined(AWS_OS_WINDOWS)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo0"));
+#endif
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_is_network_interface_name_valid, s_test_is_network_interface_name_valid)
 
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
@@ -1624,7 +1637,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(1000000000);
 
     return 0;
@@ -1770,7 +1783,7 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     aws_socket_clean_up(&listener);
     aws_event_loop_destroy(event_loop);
 
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(1000000000);
 
     return 0;

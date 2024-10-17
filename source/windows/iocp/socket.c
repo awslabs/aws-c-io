@@ -446,6 +446,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
+#ifdef AWS_USE_IO_COMPLETION_PORTS
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
     AWS_ASSERT(options);
 
@@ -455,6 +456,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
     return err;
 }
+#endif // AWS_USE_IO_COMPLETION_PORTS
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
@@ -527,6 +529,7 @@ static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endp
     return socket_impl->iocp_vtable->bind(socket, local_endpoint);
 }
 
+#ifdef AWS_USE_IO_COMPLETION_PORTS
 int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
     if (socket->local_endpoint.address[0] == 0) {
         AWS_LOGF_ERROR(
@@ -539,6 +542,7 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
     *out_address = socket->local_endpoint;
     return AWS_OP_SUCCESS;
 }
+#endif // AWS_USE_IO_COMPLETION_PORTS
 
 /* Update IPV4 or IPV6 socket->local_endpoint based on the results of getsockname() */
 static int s_update_local_endpoint_ipv4_ipv6(struct aws_socket *socket) {
@@ -3314,6 +3318,7 @@ static bool s_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.handle != INVALID_HANDLE_VALUE;
 }
 
+#ifdef AWS_USE_IO_COMPLETION_PORTS
 void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
     struct aws_uuid uuid;
     AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
@@ -3321,4 +3326,11 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
+}
+#endif
+
+bool aws_is_network_interface_name_valid(const char *interface_name) {
+    (void)interface_name;
+    AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_names are not supported on Windows");
+    return false;
 }

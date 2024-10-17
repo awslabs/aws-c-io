@@ -748,6 +748,13 @@ shutdown_channel:
 
 static void s_run_read(struct aws_channel_task *task, void *arg, aws_task_status status) {
     (void)task;
+    // DEBUG:
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_TLS,
+        "id=%p: s_run_read scheduled by increment the window  %s, is task running: %d",
+        (void *)task,
+        task->type_tag,
+        status);
     if (status == AWS_TASK_STATUS_RUN_READY) {
         struct aws_channel_handler *handler = arg;
         struct secure_transport_handler *secure_transport_handler = handler->impl;

@@ -62,6 +62,7 @@ add_net_test_case(tcp_socket_communication)
 add_net_test_case(udp_socket_communication)
 add_net_test_case(test_socket_with_bind_to_interface)
 add_net_test_case(test_socket_with_bind_to_invalid_interface)
+add_net_test_case(test_is_network_interface_name_valid)
 add_net_test_case(connect_timeout)
 add_net_test_case(connect_timeout_cancelation)
 
@@ -83,10 +84,12 @@ add_test_case(sock_write_cb_is_async)
 add_test_case(socket_validate_port)
 
 if(NOT AWS_USE_DISPATCH_QUEUE)
-# The read/write will always run a different thread for Apple Network Framework
-add_test_case(wrong_thread_read_write_fails)
 # Apple Network Framework does not support bind+connect
 add_test_case(udp_bind_connect_communication)
+# The read/write will always run a different thread for Apple Network Framework
+add_test_case(wrong_thread_read_write_fails)
+# Apple Network Framework would not validate the binding endpoint until we start the
+# listen. The test does not apply here.
 add_test_case(incoming_duplicate_tcp_bind_errors)
 endif()
 
@@ -257,6 +260,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
+    add_net_test_case(test_pkcs8_import)
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)

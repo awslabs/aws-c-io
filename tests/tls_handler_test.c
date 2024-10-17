@@ -196,7 +196,7 @@ static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
 
     aws_condition_variable_clean_up(&tester->condition_variable);
     aws_mutex_clean_up(&tester->mutex);
-    // DEBUG WIP, sleep to wait for reference release
+    // wait for socket ref count drop and released
     aws_thread_current_sleep(1000000000);
 
     return AWS_OP_SUCCESS;
@@ -894,6 +894,9 @@ static int s_tls_channel_shutdown_with_cache_test_helper(struct aws_allocator *a
     /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
     ASSERT_SUCCESS(s_tls_channel_server_client_tester_cleanup());
+
+    // wait for socket ref count drop and released
+    aws_thread_current_sleep(1000000000);
 
     return AWS_OP_SUCCESS;
 }
@@ -2506,5 +2509,41 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
 }
 
 AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
+
+static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    aws_io_library_init(allocator);
+
+    struct aws_byte_buf cert_buf;
+    struct aws_byte_buf key_buf;
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "unittests.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "unittests.p8"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+
+    aws_tls_ctx_release(tls_context);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_pkcs8_import, s_test_pkcs8_import)
 
 #endif /* BYO_CRYPTO */

@@ -106,6 +106,8 @@ typedef void(aws_socket_on_accept_result_fn)(
 /**
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
+ *
+ * socket is possible to be a NULL pointer in the callback.
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
@@ -223,9 +225,10 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * In TCP, LOCAL and VSOCK this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
  *
- * The function will failed with error if the endpoint is invalid. Except for LOCAL with AWS_USE_DISPATCH_QUEUE (with
- * Apple Network Framework enabled). In Apple network framework, we would not know if the local endpoint is valid until
- * we have the connection state back, Make sure to validate in `on_connection_result` for this case.
+ * The function will failed with error if the endpoint is invalid. Except for Apple Network Framework (with
+ * AWS_USE_DISPATCH_QUEUE enabled). In Apple network framework, as connect is an async api, we would not know if the
+ * local endpoint is valid until we have the connection state returned in callback. The error will returned in
+ * `on_connection_result` callback
  *
  * If an event_loop is provided for UDP sockets, a notification will be sent on
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
@@ -394,6 +397,11 @@ AWS_IO_API int aws_socket_validate_port_for_bind(uint32_t port, enum aws_socket_
  * For use in internal tests only.
  */
 AWS_IO_API void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint);
+
+/**
+ * Validates whether the network interface name is valid. On Windows, it will always return false since we don't support
+ * network_interface_name on Windows */
+AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
