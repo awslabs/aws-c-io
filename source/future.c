@@ -56,6 +56,13 @@ struct aws_future_impl {
 };
 
 static void s_future_impl_result_dtor(struct aws_future_impl *future, void *result_addr) {
+/*
+ * On ARM machines, the compiler complains about the array bounds warning for aws_future_bool, even though
+ * aws_future_bool will never go into any destroy or release branch. Disable the warning since it's a false positive.
+ */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
+
     switch (future->type) {
         case AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP: {
             future->result_dtor.clean_up(result_addr);
@@ -79,6 +86,7 @@ static void s_future_impl_result_dtor(struct aws_future_impl *future, void *resu
         default:
             break;
     }
+#pragma GCC diagnostic pop
 }
 
 static void s_future_impl_destroy(void *user_data) {
@@ -472,60 +480,7 @@ bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout
     return is_done;
 }
 
-// AWS_FUTURE_T_BY_VALUE_IMPLEMENTATION(aws_future_bool, bool)
-struct aws_future_bool *aws_future_bool_new(struct aws_allocator *alloc) {
-    return (struct aws_future_bool *)aws_future_impl_new_by_value(alloc, sizeof(bool));
-}
-void aws_future_bool_set_result(struct aws_future_bool *future, bool result) {
-    aws_future_impl_set_result_by_move((struct aws_future_impl *)future, &result);
-}
-bool aws_future_bool_get_result(const struct aws_future_bool *future) {
-    return *(bool *)aws_future_impl_get_result_address((const struct aws_future_impl *)future);
-}
-struct aws_future_bool *aws_future_bool_acquire(struct aws_future_bool *future) {
-    return (struct aws_future_bool *)aws_future_impl_acquire((struct aws_future_impl *)future);
-}
-struct aws_future_bool *aws_future_bool_release(struct aws_future_bool *future) {
-    return (struct aws_future_bool *)aws_future_impl_release((struct aws_future_impl *)future);
-}
-void aws_future_bool_set_error(struct aws_future_bool *future, int error_code) {
-    aws_future_impl_set_error((struct aws_future_impl *)future, error_code);
-}
-bool aws_future_bool_is_done(const struct aws_future_bool *future) {
-    return aws_future_impl_is_done((const struct aws_future_impl *)future);
-}
-int aws_future_bool_get_error(const struct aws_future_bool *future) {
-    return aws_future_impl_get_error((const struct aws_future_impl *)future);
-}
-void aws_future_bool_register_callback(
-    struct aws_future_bool *future,
-    aws_future_callback_fn *on_done,
-    void *user_data) {
-    aws_future_impl_register_callback((struct aws_future_impl *)future, on_done, user_data);
-}
-bool aws_future_bool_register_callback_if_not_done(
-    struct aws_future_bool *future,
-    aws_future_callback_fn *on_done,
-    void *user_data) {
-    return aws_future_impl_register_callback_if_not_done((struct aws_future_impl *)future, on_done, user_data);
-}
-void aws_future_bool_register_event_loop_callback(
-    struct aws_future_bool *future,
-    struct aws_event_loop *event_loop,
-    aws_future_callback_fn *on_done,
-    void *user_data) {
-    aws_future_impl_register_event_loop_callback((struct aws_future_impl *)future, event_loop, on_done, user_data);
-}
-void aws_future_bool_register_channel_callback(
-    struct aws_future_bool *future,
-    struct aws_channel *channel,
-    aws_future_callback_fn *on_done,
-    void *user_data) {
-    aws_future_impl_register_channel_callback((struct aws_future_impl *)future, channel, on_done, user_data);
-}
-bool aws_future_bool_wait(struct aws_future_bool *future, uint64_t timeout_ns) {
-    return aws_future_impl_wait((struct aws_future_impl *)future, timeout_ns);
-}
+AWS_FUTURE_T_BY_VALUE_IMPLEMENTATION(aws_future_bool, bool)
 
 AWS_FUTURE_T_BY_VALUE_IMPLEMENTATION(aws_future_size, size_t)
 
