@@ -56,13 +56,15 @@ struct aws_future_impl {
 };
 
 static void s_future_impl_result_dtor(struct aws_future_impl *future, void *result_addr) {
+
 /*
  * On ARM machines, the compiler complains about the array bounds warning for aws_future_bool, even though
  * aws_future_bool will never go into any destroy or release branch. Disable the warning since it's a false positive.
  */
+#ifndef _MSC_VER
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
-
+#endif
     switch (future->type) {
         case AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP: {
             future->result_dtor.clean_up(result_addr);
@@ -86,7 +88,9 @@ static void s_future_impl_result_dtor(struct aws_future_impl *future, void *resu
         default:
             break;
     }
+#ifndef _MSC_VER
 #pragma GCC diagnostic pop
+#endif
 }
 
 static void s_future_impl_destroy(void *user_data) {
