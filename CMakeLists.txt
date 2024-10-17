@@ -132,7 +132,7 @@ elseif (APPLE)
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
-     if(AWS_USE_DISPATCH_QUEUE OR IOS)
+     if(AWS_USE_DISPATCH_QUEUE OR AWS_USE_SECITEM OR IOS)
         # SecItem must use dispatch queue and is always used iOS
         if(AWS_USE_SECITEM OR IOS)
                 set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE -DAWS_USE_SECITEM" )
