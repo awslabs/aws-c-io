@@ -3,23 +3,21 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#ifdef AWS_USE_DISPATCH_QUEUE
+#include <aws/io/event_loop.h>
 
-#    include <aws/io/event_loop.h>
+#include <aws/common/atomics.h>
+#include <aws/common/mutex.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/uuid.h>
 
-#    include <aws/common/atomics.h>
-#    include <aws/common/mutex.h>
-#    include <aws/common/task_scheduler.h>
-#    include <aws/common/uuid.h>
+#include <aws/io/logging.h>
 
-#    include <aws/io/logging.h>
+#include <unistd.h>
 
-#    include <unistd.h>
-
-#    include <Block.h>
-#    include <aws/io/private/aws_apple_network_framework.h>
-#    include <dispatch/dispatch.h>
-#    include <dispatch/queue.h>
+#include <Block.h>
+#include <aws/io/private/aws_apple_network_framework.h>
+#include <dispatch/dispatch.h>
+#include <dispatch/queue.h>
 
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
@@ -460,7 +458,7 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     (void)event_loop;
     (void)handle;
-#    ifdef AWS_USE_DISPATCH_QUEUE
+#ifdef AWS_USE_DISPATCH_QUEUE
     AWS_PRECONDITION(handle->set_queue && handle->clear_queue);
 
     AWS_LOGF_TRACE(
@@ -470,7 +468,7 @@ static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct
         (void *)handle->data.handle);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
     handle->set_queue(handle, dispatch_loop->dispatch_queue);
-#    endif //    #ifdef AWS_USE_DISPATCH_QUEUE
+#endif //    #ifdef AWS_USE_DISPATCH_QUEUE
     return AWS_OP_SUCCESS;
 }
 
@@ -480,9 +478,9 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: un-subscribing from events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
-#    ifdef AWS_USE_DISPATCH_QUEUE
+#ifdef AWS_USE_DISPATCH_QUEUE
     handle->clear_queue(handle);
-#    endif
+#endif
     return AWS_OP_SUCCESS;
 }
 
@@ -498,5 +496,3 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     aws_mutex_unlock(&dispatch_queue->synced_data.lock);
     return result;
 }
-
-#endif /* AWS_USE_DISPATCH_QUEUE */
