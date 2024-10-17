@@ -474,13 +474,13 @@ bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout
 
 // AWS_FUTURE_T_BY_VALUE_IMPLEMENTATION(aws_future_bool, bool)
 struct aws_future_bool *aws_future_bool_new(struct aws_allocator *alloc) {
-    return (struct aws_future_bool *)aws_future_impl_new_by_value(alloc, sizeof(_Bool));
+    return (struct aws_future_bool *)aws_future_impl_new_by_value(alloc, sizeof(bool));
 }
-void aws_future_bool_set_result(struct aws_future_bool *future, _Bool result) {
+void aws_future_bool_set_result(struct aws_future_bool *future, bool result) {
     aws_future_impl_set_result_by_move((struct aws_future_impl *)future, &result);
 }
-_Bool aws_future_bool_get_result(const struct aws_future_bool *future) {
-    return *(_Bool *)aws_future_impl_get_result_address((const struct aws_future_impl *)future);
+bool aws_future_bool_get_result(const struct aws_future_bool *future) {
+    return *(bool *)aws_future_impl_get_result_address((const struct aws_future_impl *)future);
 }
 struct aws_future_bool *aws_future_bool_acquire(struct aws_future_bool *future) {
     return (struct aws_future_bool *)aws_future_impl_acquire((struct aws_future_impl *)future);
@@ -491,7 +491,7 @@ struct aws_future_bool *aws_future_bool_release(struct aws_future_bool *future) 
 void aws_future_bool_set_error(struct aws_future_bool *future, int error_code) {
     aws_future_impl_set_error((struct aws_future_impl *)future, error_code);
 }
-_Bool aws_future_bool_is_done(const struct aws_future_bool *future) {
+bool aws_future_bool_is_done(const struct aws_future_bool *future) {
     return aws_future_impl_is_done((const struct aws_future_impl *)future);
 }
 int aws_future_bool_get_error(const struct aws_future_bool *future) {
@@ -503,7 +503,7 @@ void aws_future_bool_register_callback(
     void *user_data) {
     aws_future_impl_register_callback((struct aws_future_impl *)future, on_done, user_data);
 }
-_Bool aws_future_bool_register_callback_if_not_done(
+bool aws_future_bool_register_callback_if_not_done(
     struct aws_future_bool *future,
     aws_future_callback_fn *on_done,
     void *user_data) {
@@ -523,7 +523,7 @@ void aws_future_bool_register_channel_callback(
     void *user_data) {
     aws_future_impl_register_channel_callback((struct aws_future_impl *)future, channel, on_done, user_data);
 }
-_Bool aws_future_bool_wait(struct aws_future_bool *future, uint64_t timeout_ns) {
+bool aws_future_bool_wait(struct aws_future_bool *future, uint64_t timeout_ns) {
     return aws_future_impl_wait((struct aws_future_impl *)future, timeout_ns);
 }
 
