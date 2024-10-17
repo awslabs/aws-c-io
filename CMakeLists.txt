@@ -133,16 +133,22 @@ elseif (APPLE)
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
-     if(AWS_USE_DISPATCH_QUEUE OR AWS_USE_SECITEM OR IOS)
-        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
-        message("use dispatch queue")
+    if (AWS_USE_SECITEM)
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE -DAWS_USE_SECITEM")
         file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
         "source/darwin/dispatch_queue_event_loop.c"
         "source/darwin/nw_socket.c"
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
-     else ()
-         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+    elseif (AWS_USE_DISPATCH_QUEUE OR IOS)
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE")
+        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
+            "source/darwin/dispatch_queue_event_loop.c"
+            "source/darwin/nw_socket.c"
+        )
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
+    else ()
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
@@ -198,9 +204,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC "${EVENT_LOOP_DEFINES}")
 
-if (AWS_USE_SECITEM)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
-endif()
+
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
