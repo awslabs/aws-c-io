@@ -62,8 +62,8 @@ static void s_future_impl_result_dtor(struct aws_future_impl *future, void *resu
  * aws_future_bool will never go into any destroy or release branch. Disable the warning since it's a false positive.
  */
 #ifndef _MSC_VER
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Warray-bounds"
+#    pragma GCC diagnostic push
+#    pragma GCC diagnostic ignored "-Warray-bounds"
 #endif
     switch (future->type) {
         case AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP: {
@@ -89,7 +89,7 @@ static void s_future_impl_result_dtor(struct aws_future_impl *future, void *resu
             break;
     }
 #ifndef _MSC_VER
-#pragma GCC diagnostic pop
+#    pragma GCC diagnostic pop
 #endif
 }
 
