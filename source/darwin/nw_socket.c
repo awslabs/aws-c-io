@@ -326,6 +326,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             CFErrorRef error = NULL;
                             SecTrustRef trust_ref = sec_trust_copy_ref(trust);
                             OSStatus status;
+                            bool verification_successful = false;
 
                             /* Use root ca if provided. */
                             if (transport_ctx->ca_cert != NULL) {
@@ -375,9 +376,9 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                     // Proceed based on the trust_result if necessary
                                     if (trust_result == kSecTrustResultProceed ||
                                         trust_result == kSecTrustResultUnspecified) {
-                                        complete(true);
+                                        verification_successful = true;
                                     } else {
-                                        complete(false);
+                                        verification_successful = false;
                                     }
                                 } else {
                                     AWS_LOGF_DEBUG(
@@ -385,7 +386,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                         "id=%p: nw_socket SecTrustGetTrustResult failed with OSStatus: %d",
                                         (void *)nw_socket,
                                         (int)status);
-                                    complete(false);
+                                    verification_successful = false;
                                 }
                             } else {
                                 AWS_LOGF_DEBUG(
@@ -393,7 +394,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                     "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %ld",
                                     (void *)nw_socket,
                                     (long)CFErrorGetCode(error));
-                                complete(false);
+                                verification_successful = false;
                             }
 
                         verification_done:
@@ -401,6 +402,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             if (error) {
                                 CFRelease(error);
                             }
+                            complete(verification_successful);
                           },
                           dispatch_loop->dispatch_queue);
                     },
