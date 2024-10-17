@@ -278,9 +278,22 @@ int aws_pipe_read(struct aws_pipe_read_end *read_end, struct aws_byte_buf *dst_b
     if (read_val < 0) {
         int errno_value = errno; /* Always cache errno before potential side-effect */
         if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
+            if (read_impl->handle.update_io_result) {
+                struct aws_io_handle_io_op_result io_op_result;
+                AWS_ZERO_STRUCT(io_op_result);
+                io_op_result.read_error_code = AWS_IO_READ_WOULD_BLOCK;
+                read_impl->handle.update_io_result(read_impl->event_loop, &read_impl->handle, &io_op_result);
+            }
             return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
         }
         return s_raise_posix_error(errno_value);
+    } else if (read_val == 0) {
+        if (read_impl->handle.update_io_result) {
+            struct aws_io_handle_io_op_result io_op_result;
+            AWS_ZERO_STRUCT(io_op_result);
+            io_op_result.error_code = AWS_IO_SOCKET_CLOSED;
+            read_impl->handle.update_io_result(read_impl->event_loop, &read_impl->handle, &io_op_result);
+        }
     }
 
     /* Success */
@@ -454,6 +467,14 @@ static void s_write_end_process_requests(struct aws_pipe_write_end *write_end) {
                 if (errno_value == EAGAIN || errno_value == EWOULDBLOCK) {
                     /* The pipe is no longer writable. Bail out */
                     write_impl->is_writable = false;
+
+                    if (write_impl->handle.update_io_result) {
+                        struct aws_io_handle_io_op_result io_op_result;
+                        AWS_ZERO_STRUCT(io_op_result);
+                        io_op_result.write_error_code = AWS_IO_READ_WOULD_BLOCK;
+                        write_impl->handle.update_io_result(write_impl->event_loop, &write_impl->handle, &io_op_result);
+                    }
+
                     return;
                 }
 
