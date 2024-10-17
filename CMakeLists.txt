@@ -134,7 +134,12 @@ elseif (APPLE)
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
      if(AWS_USE_DISPATCH_QUEUE OR IOS)
+        # SecItem must use dispatch queue and is always used iOS
+        if(AWS_USE_SECITEM OR IOS)
+                set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE -DAWS_USE_SECITEM" )
+        else ()
         set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
+        endif()
         message("use dispatch queue")
         file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
         "source/darwin/dispatch_queue_event_loop.c"

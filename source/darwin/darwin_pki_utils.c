@@ -598,7 +598,7 @@ int aws_secitem_import_cert_and_key(
     CFStringRef cert_label_ref = NULL;
 
     CFMutableDictionaryRef key_attributes = NULL;
-    CFDictionaryRef key_copied_attributes;
+    CFDictionaryRef key_copied_attributes = NULL;
     CFDataRef key_data = NULL;
     SecKeyRef key_ref = NULL;
     CFStringRef key_type = NULL;
