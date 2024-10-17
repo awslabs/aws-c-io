@@ -967,35 +967,37 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
 }
 #endif // AWS_USE_KQUEUE || AWS_USE_EPOLL
 
-if (socket->state != BOUND) {
+static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
+    if (socket->state != BOUND) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: invalid state for listen operation. You must call bind first.",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    }
+
+    int error_code = listen(socket->io_handle.data.fd, backlog_size);
+
+    if (!error_code) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_SOCKET, "id=%p fd=%d: successfully listening", (void *)socket, socket->io_handle.data.fd);
+        socket->state = LISTENING;
+        return AWS_OP_SUCCESS;
+    }
+
+    int errno_value = errno; /* Always cache errno before potential side-effect */
+
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: invalid state for listen operation. You must call bind first.",
+        "id=%p fd=%d: listen failed with error code %d",
         (void *)socket,
-        socket->io_handle.data.fd);
-    return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-}
+        socket->io_handle.data.fd,
+        errno_value);
 
-int error_code = listen(socket->io_handle.data.fd, backlog_size);
+    socket->state = ERROR;
 
-if (!error_code) {
-    AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: successfully listening", (void *)socket, socket->io_handle.data.fd);
-    socket->state = LISTENING;
-    return AWS_OP_SUCCESS;
-}
-
-int errno_value = errno; /* Always cache errno before potential side-effect */
-
-AWS_LOGF_ERROR(
-    AWS_LS_IO_SOCKET,
-    "id=%p fd=%d: listen failed with error code %d",
-    (void *)socket,
-    socket->io_handle.data.fd,
-    errno_value);
-
-socket->state = ERROR;
-
-return aws_raise_error(s_determine_socket_error(errno_value));
+    return aws_raise_error(s_determine_socket_error(errno_value));
 }
 
 /* this is called by the event loop handler that was installed in start_accept(). It runs once the FD goes readable,
