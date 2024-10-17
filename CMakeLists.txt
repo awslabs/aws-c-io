@@ -116,7 +116,8 @@ elseif (APPLE)
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
-            "source/darwin/*.c"
+            "source/darwin/darwin_pki_utils.c"
+            "source/darwin/secure_transport_tls_channel_handler.c"
             )
 
     find_library(SECURITY_LIB Security)
@@ -133,13 +134,13 @@ elseif (APPLE)
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
      if(AWS_USE_DISPATCH_QUEUE OR AWS_USE_SECITEM OR IOS)
-        # SecItem must use dispatch queue and is always used iOS
-        if(AWS_USE_SECITEM OR IOS)
-                set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE -DAWS_USE_SECITEM" )
-        else ()
         set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
-        endif()
         message("use dispatch queue")
+        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
+        "source/darwin/dispatch_queue_event_loop.c"
+        "source/darwin/nw_socket.c"
+        )
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
      else ()
          set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
     endif()
@@ -167,21 +168,10 @@ if (BYO_CRYPTO)
 endif()
 
 if (USE_S2N)
-        file(GLOB AWS_IO_TLS_SRC
-                "source/s2n/*.c"
-                )
-        # Prefer find_package() because it's the normal CMake way to do dependencies.
-        # But fall back on aws_use_package() because some projects still need to do an IN_SOURCE_BUILD of S2N.
-        # (e.g. aws-crt-java until this is resolved: https://github.com/awslabs/aws-crt-java/pull/817)
-        find_package(s2n QUIET)
-
-        if (s2n_FOUND)
-            list(APPEND DEP_AWS_LIBS AWS::s2n)
-        else()
-            # Set flag to use in-source path to  <s2n/unstable/*.h> headers if we do an IN_SOURCE_BUILD.
-            aws_use_package(s2n)
-            add_definitions(-DAWS_S2N_INSOURCE_PATH)
-        endif()
+    file(GLOB AWS_IO_TLS_SRC
+            "source/s2n/*.c"
+            )
+    aws_use_package(s2n)
 endif()
 
 file(GLOB IO_HEADERS
@@ -207,6 +197,10 @@ aws_add_sanitizers(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC "${EVENT_LOOP_DEFINES}")
+
+if (AWS_USE_SECITEM)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
+endif()
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
