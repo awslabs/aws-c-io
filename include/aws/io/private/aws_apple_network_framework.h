@@ -23,11 +23,9 @@ struct secure_transport_ctx {
 
 #endif /* AWS_OS_APPLE */
 
-#ifdef AWS_USE_DISPATCH_QUEUE
-
-#    include <aws/common/mutex.h>
-#    include <aws/common/thread.h>
-#    include <dispatch/dispatch.h>
+#include <aws/common/mutex.h>
+#include <aws/common/thread.h>
+#include <dispatch/dispatch.h>
 
 struct dispatch_scheduling_state {
     // Let's us skip processing an iteration task if one is already in the middle
@@ -66,6 +64,5 @@ struct dispatch_loop {
     bool wakeup_schedule_needed;
     bool is_destroying;
 };
-#endif /* AWS_USE_DISPATCH_QUEUE */
 
 #endif /* #ifndef AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H  */

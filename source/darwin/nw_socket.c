@@ -1915,5 +1915,12 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
     *out_address = socket->local_endpoint;
     return AWS_OP_SUCCESS;
 }
+#else
+
+/* This is here because ISO C requires at least one declaration. We do not simply not include this file at build
+ * in the CMakeLists because it'd require even more tinkering in aws-crt-swift to manage the inclusion/exclusion of
+ * this file across a number of platforms.
+ */
+int aws_nw_socket_declaration;
 
 #endif /* AWS_USE_DISPATCH_QUEUE */
