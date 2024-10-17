@@ -3,23 +3,46 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/socket.h>
-
-#include <aws/common/clock.h>
-#include <aws/common/string.h>
-#include <aws/common/uuid.h>
-#include <aws/io/logging.h>
-
-#include <Network/Network.h>
-#include <aws/io/private/dispatch_queue.h>
-#include <aws/io/private/tls_channel_handler_shared.h>
-
-#include <arpa/inet.h>
-#include <sys/socket.h>
-
 #ifdef AWS_USE_DISPATCH_QUEUE
+
+#    include <aws/io/socket.h>
+
+#    include <aws/common/clock.h>
+#    include <aws/common/string.h>
+#    include <aws/common/uuid.h>
+#    include <aws/io/logging.h>
+
+#    include <Network/Network.h>
+#    include <aws/io/private/aws_apple_network_framework.h>
+#    include <aws/io/private/tls_channel_handler_shared.h>
+
+#    include <arpa/inet.h>
+#    include <sys/socket.h>
+
+const char *aws_sec_trust_result_type_to_string(SecTrustResultType trust_result) {
+    switch (trust_result) {
+        case kSecTrustResultInvalid:
+            return "kSecTrustResultInvalid";
+        case kSecTrustResultProceed:
+            return "kSecTrustResultProceed";
+        case kSecTrustResultDeny:
+            return "kSecTrustResultDeny";
+        case kSecTrustResultUnspecified:
+            return "kSecTrustResultUnspecified";
+        case kSecTrustResultRecoverableTrustFailure:
+            return "kSecTrustResultRecoverableTrustFailure";
+        case kSecTrustResultFatalTrustFailure:
+            return "kSecTrustResultFatalTrustFailure";
+        case kSecTrustResultOtherError:
+            return "kSecTrustResultOtherError";
+        default:
+            return "Unknown SecTrustResultType";
+    }
+}
+
 static int s_determine_socket_error(int error) {
     switch (error) {
+        /* POSIX Errors */
         case ECONNREFUSED:
             return AWS_IO_SOCKET_CONNECTION_REFUSED;
         case ETIMEDOUT:
@@ -50,6 +73,39 @@ static int s_determine_socket_error(int error) {
             return AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY;
         case EACCES:
             return AWS_ERROR_NO_PERMISSION;
+
+        /* SSL/TLS Errors */
+        case errSSLUnknownRootCert:
+            return AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE;
+        case errSSLNoRootCert:
+            return AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND;
+        case errSSLCertExpired:
+            return AWS_IO_TLS_CERTIFICATE_EXPIRED;
+        case errSSLCertNotYetValid:
+            return AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID;
+        case errSSLPeerHandshakeFail:
+            return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
+        case errSSLBadCert:
+            return AWS_IO_TLS_BAD_CERTIFICATE;
+        case errSSLPeerCertExpired:
+            return AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED;
+        case errSSLPeerBadCert:
+            return AWS_IO_TLS_BAD_PEER_CERTIFICATE;
+        case errSSLPeerCertRevoked:
+            return AWS_IO_TLS_PEER_CERTIFICATE_REVOKED;
+        case errSSLPeerCertUnknown:
+            return AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN;
+        case errSSLInternal:
+            return AWS_IO_TLS_INTERNAL_ERROR;
+        case errSSLClosedGraceful:
+            return AWS_IO_TLS_CLOSED_GRACEFUL;
+        case errSSLClosedAbort:
+            return AWS_IO_TLS_CLOSED_ABORT;
+        case errSSLXCertChainInvalid:
+            return AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN;
+        case errSSLHostNameMismatch:
+            return AWS_IO_TLS_HOST_NAME_MISSMATCH;
+
         default:
             return AWS_IO_SOCKET_NOT_CONNECTED;
     }
@@ -118,8 +174,8 @@ struct nw_socket {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     nw_connection_t nw_connection;
+    nw_parameters_t nw_parameters;
     nw_listener_t nw_listener;
-    nw_parameters_t socket_options_to_params;
     struct aws_linked_list read_queue;
     int last_error;
     aws_socket_on_readable_fn *on_readable;
@@ -131,6 +187,8 @@ struct nw_socket {
     struct nw_socket_timeout_args *timeout_args;
     aws_socket_on_connection_result_fn *on_connection_result_fn;
     void *connect_accept_user_data;
+    struct aws_string *host_name;
+    struct aws_tls_ctx *tls_ctx;
 
     struct {
         struct aws_mutex lock;
@@ -149,46 +207,248 @@ struct socket_address {
 
 static size_t KB_16 = 16 * 1024;
 
-static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
-    if (options->type == AWS_SOCKET_STREAM) {
-        /* if TCP, setup all the tcp options */
-        if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
-            // DEBUG WIP NW_PARAMETERS_DISABLE_PROTOCOL will need to be changed to use MTLS With SecItem
-            nw_socket->socket_options_to_params =
-                nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, ^(nw_protocol_options_t nw_options) {
-                  if (options->connect_timeout_ms) {
-                      /* this value gets set in seconds. */
-                      nw_tcp_options_set_connection_timeout(
-                          nw_options, options->connect_timeout_ms / AWS_TIMESTAMP_MILLIS);
-                  }
-
-                  // Only change default keepalive values if keepalive is true and both interval and timeout
-                  // are not zero.
-                  if (options->keepalive && options->keep_alive_interval_sec != 0 &&
-                      options->keep_alive_timeout_sec != 0) {
-                      nw_tcp_options_set_enable_keepalive(nw_options, options->keepalive);
-                      nw_tcp_options_set_keepalive_idle_time(nw_options, options->keep_alive_timeout_sec);
-                      nw_tcp_options_set_keepalive_interval(nw_options, options->keep_alive_interval_sec);
-                  }
-
-                  if (options->keep_alive_max_failed_probes) {
-                      nw_tcp_options_set_keepalive_count(nw_options, options->keep_alive_max_failed_probes);
-                  }
-
-                  if (g_aws_channel_max_fragment_size < KB_16) {
-                      nw_tcp_options_set_maximum_segment_size(nw_options, g_aws_channel_max_fragment_size);
-                  }
-                });
-        } else if (options->domain == AWS_SOCKET_LOCAL) {
-            nw_socket->socket_options_to_params =
-                nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
-        }
-    } else if (options->type == AWS_SOCKET_DGRAM) {
-        nw_socket->socket_options_to_params =
-            nw_parameters_create_secure_udp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+/* setup the TCP options Block for use in socket parameters */
+static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct aws_socket_options *options) {
+    if (options->connect_timeout_ms) {
+        /* this value gets set in seconds. */
+        nw_tcp_options_set_connection_timeout(tcp_options, options->connect_timeout_ms / AWS_TIMESTAMP_MILLIS);
     }
 
-    if (!nw_socket->socket_options_to_params) {
+    /* Only change default keepalive values if keepalive is true and both interval and timeout
+     * are not zero. */
+    if (options->keepalive && options->keep_alive_interval_sec != 0 && options->keep_alive_timeout_sec != 0) {
+        nw_tcp_options_set_enable_keepalive(tcp_options, options->keepalive);
+        nw_tcp_options_set_keepalive_idle_time(tcp_options, options->keep_alive_timeout_sec);
+        nw_tcp_options_set_keepalive_interval(tcp_options, options->keep_alive_interval_sec);
+    }
+
+    if (options->keep_alive_max_failed_probes) {
+        nw_tcp_options_set_keepalive_count(tcp_options, options->keep_alive_max_failed_probes);
+    }
+
+    if (g_aws_channel_max_fragment_size < KB_16) {
+        nw_tcp_options_set_maximum_segment_size(tcp_options, g_aws_channel_max_fragment_size);
+    }
+}
+
+static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
+
+    /* If we already have parameters set, release them before re-establishing new parameters */
+    if (nw_socket->nw_parameters != NULL) {
+        nw_release(nw_socket->nw_parameters);
+        nw_socket->nw_parameters = NULL;
+    }
+
+    if (options->type == AWS_SOCKET_STREAM) {
+        if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
+#    ifdef AWS_USE_SECITEM
+
+            /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
+            if (nw_socket->tls_ctx) {
+                struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
+
+                aws_mutex_lock(&nw_socket->synced_data.lock);
+                struct dispatch_loop *dispatch_loop = nw_socket->synced_data.event_loop->impl_data;
+                aws_mutex_unlock(&nw_socket->synced_data.lock);
+
+                /* This check cannot be done within the TLS options block and must be handled here. */
+                if (transport_ctx->minimum_tls_version == AWS_IO_SSLv3 ||
+                    transport_ctx->minimum_tls_version == AWS_IO_TLSv1 ||
+                    transport_ctx->minimum_tls_version == AWS_IO_TLSv1_1) {
+                    AWS_LOGF_ERROR(
+                        AWS_LS_IO_SOCKET,
+                        "id=%p options=%p: Selected minimum tls version not supported by Apple Network Framework due "
+                        "to deprecated status and known security flaws.",
+                        (void *)nw_socket,
+                        (void *)options);
+                    return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+                }
+
+                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                    // TLS options block
+                    ^(nw_protocol_options_t tls_options) {
+                      /* Obtain the security protocol options from the tls_options. Changes made directly
+                       * to the copy will impact the protocol options within the tls_options */
+                      sec_protocol_options_t sec_options = nw_tls_copy_sec_protocol_options(tls_options);
+
+                      sec_protocol_options_set_local_identity(sec_options, transport_ctx->secitem_identity);
+
+                      // Set the minimum TLS version
+                      switch (transport_ctx->minimum_tls_version) {
+                          case AWS_IO_TLSv1_2:
+                              sec_protocol_options_set_min_tls_protocol_version(
+                                  sec_options, tls_protocol_version_TLSv12);
+                              break;
+                          case AWS_IO_TLSv1_3:
+                              sec_protocol_options_set_min_tls_protocol_version(
+                                  sec_options, tls_protocol_version_TLSv13);
+                              break;
+                          case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                              /* not assigning a min tls protocol version automatically uses the
+                               * system default version. */
+                              break;
+                          default:
+                              AWS_LOGF_ERROR(
+                                  AWS_LS_IO_SOCKET,
+                                  "id=%p options=%p: Unrecognized minimum TLS version used for parameter creation. "
+                                  "System default minimum TLS version will be used.",
+                                  (void *)nw_socket,
+                                  (void *)options);
+                              break;
+                      }
+
+                      /* Enable/Disable peer authentication. This setting is ignored by network framework due to our
+                       * implementation of the verification block below but we set it in case anything else checks this
+                       * value and/or in case we decide to remove the verify block in the future. */
+                      sec_protocol_options_set_peer_authentication_required(sec_options, transport_ctx->verify_peer);
+
+                      /* We handle the verification of the remote end here. */
+                      sec_protocol_options_set_verify_block(
+                          sec_options,
+                          ^(sec_protocol_metadata_t metadata,
+                            sec_trust_t trust,
+                            sec_protocol_verify_complete_t complete) {
+                            (void)metadata;
+
+                            /* Since we manually handle the verification of the peer, the value set using
+                             * sec_protocol_options_set_peer_authentication_required is ignored and this block is
+                             * run instead. We must manually skip the verification at this point if verify_peer is
+                             * false. */
+                            if (!transport_ctx->verify_peer) {
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: nw_socket instructed not to verify peer. Accepting peer credentials "
+                                    "without evaluation against CA.",
+                                    (void *)nw_socket);
+                                complete(true);
+                            }
+
+                            CFErrorRef error = NULL;
+                            SecTrustRef trust_ref = sec_trust_copy_ref(trust);
+                            OSStatus status;
+                            bool verification_successful = false;
+
+                            /* Use root ca if provided. */
+                            if (transport_ctx->ca_cert != NULL) {
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: nw_socket verify block applying provided root CA for remote verification.",
+                                    (void *)nw_socket);
+                                // We add the ca certificate as a anchor certificate in the trust_ref
+                                status = SecTrustSetAnchorCertificates(trust_ref, transport_ctx->ca_cert);
+                                if (status != errSecSuccess) {
+                                    AWS_LOGF_DEBUG(
+                                        AWS_LS_IO_TLS,
+                                        "id=%p: nw_socket verify block SecTrustSetAnchorCertificates failed with "
+                                        "OSStatus: %d",
+                                        (void *)nw_socket,
+                                        (int)status);
+                                    goto verification_done;
+                                }
+                            }
+
+                            /* Add the host name to be checked against the available Certificate Authorities */
+                            if (nw_socket->host_name != NULL) {
+                                SecPolicyRef policy = NULL;
+                                CFStringRef server_name = CFStringCreateWithBytes(
+                                    transport_ctx->wrapped_allocator,
+                                    nw_socket->host_name->bytes,
+                                    (CFIndex)nw_socket->host_name->len,
+                                    kCFStringEncodingUTF8,
+                                    false);
+                                policy = SecPolicyCreateSSL(true, server_name);
+                                CFRelease(server_name);
+                                status = SecTrustSetPolicies(trust_ref, policy);
+                            }
+
+                            SecTrustResultType trust_result;
+
+                            bool success = SecTrustEvaluateWithError(trust_ref, &error);
+                            if (success) {
+                                status = SecTrustGetTrustResult(trust_ref, &trust_result);
+                                if (status == errSecSuccess) {
+                                    AWS_LOGF_DEBUG(
+                                        AWS_LS_IO_TLS,
+                                        "id=%p: nw_socket verify block trust result: %s",
+                                        (void *)nw_socket,
+                                        aws_sec_trust_result_type_to_string(trust_result));
+
+                                    // Proceed based on the trust_result if necessary
+                                    if (trust_result == kSecTrustResultProceed ||
+                                        trust_result == kSecTrustResultUnspecified) {
+                                        verification_successful = true;
+                                    } else {
+                                        verification_successful = false;
+                                    }
+                                } else {
+                                    AWS_LOGF_DEBUG(
+                                        AWS_LS_IO_TLS,
+                                        "id=%p: nw_socket SecTrustGetTrustResult failed with OSStatus: %d",
+                                        (void *)nw_socket,
+                                        (int)status);
+                                    verification_successful = false;
+                                }
+                            } else {
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %ld",
+                                    (void *)nw_socket,
+                                    (long)CFErrorGetCode(error));
+                                verification_successful = false;
+                            }
+
+                        verification_done:
+                            CFRelease(trust_ref);
+                            if (error) {
+                                CFRelease(error);
+                            }
+                            complete(verification_successful);
+                          },
+                          dispatch_loop->dispatch_queue);
+                    },
+
+                    // TCP options block
+                    ^(nw_protocol_options_t tcp_options) {
+                      s_setup_tcp_options(tcp_options, options);
+                    });
+            } else {
+                // TLS options are not set and the TLS options block should be disabled.
+                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                    // TLS options Block disabled
+                    NW_PARAMETERS_DISABLE_PROTOCOL,
+                    // TCP options Block
+                    ^(nw_protocol_options_t tcp_options) {
+                      s_setup_tcp_options(tcp_options, options);
+                    });
+            }
+#    else  // !AWS_USE_SECITEM
+           // TLS options are not set and the TLS options block should be disabled.
+            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                // TLS options Block disabled
+                NW_PARAMETERS_DISABLE_PROTOCOL,
+                // TCP options Block
+                ^(nw_protocol_options_t tcp_options) {
+                  s_setup_tcp_options(tcp_options, options);
+                });
+#    endif // AWS_USE_SECITEM
+        } else if (options->domain == AWS_SOCKET_LOCAL) {
+            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                NW_PARAMETERS_DISABLE_PROTOCOL,
+                // TCP options Block
+                ^(nw_protocol_options_t tcp_options) {
+                  s_setup_tcp_options(tcp_options, options);
+                });
+        }
+    } else if (options->type == AWS_SOCKET_DGRAM) {
+        nw_socket->nw_parameters = nw_parameters_create_secure_udp(
+            NW_PARAMETERS_DISABLE_PROTOCOL,
+            // TCP options Block
+            ^(nw_protocol_options_t tcp_options) {
+              s_setup_tcp_options(tcp_options, options);
+            });
+    }
+
+    if (!nw_socket->nw_parameters) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p options=%p: failed to create nw_parameters_t for nw_socket.",
@@ -196,8 +456,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
             (void *)options);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
-
-    nw_parameters_set_reuse_local_address(nw_socket->socket_options_to_params, true);
+    /* allow a local address to be used by multiple parameters. */
+    nw_parameters_set_reuse_local_address(nw_socket->nw_parameters, true);
 
     return AWS_OP_SUCCESS;
 }
@@ -208,6 +468,7 @@ static int s_socket_connect_fn(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data);
 static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size);
@@ -302,14 +563,23 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     }
 
     /* Network Framework cleanup */
-    if (nw_socket->socket_options_to_params) {
-        nw_release(nw_socket->socket_options_to_params);
-        nw_socket->socket_options_to_params = NULL;
+    if (nw_socket->nw_parameters) {
+        nw_release(nw_socket->nw_parameters);
+        nw_socket->nw_parameters = NULL;
     }
 
     if (nw_socket->nw_connection) {
         nw_release(nw_socket->nw_connection);
         nw_socket->nw_connection = NULL;
+    }
+
+    if (nw_socket->host_name) {
+        aws_string_destroy(nw_socket->host_name);
+    }
+
+    if (nw_socket->tls_ctx) {
+        aws_tls_ctx_release(nw_socket->tls_ctx);
+        nw_socket->tls_ctx = NULL;
     }
 
     if (nw_socket->nw_listener) {
@@ -362,11 +632,9 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
     nw_socket->synced_data.base_socket = socket;
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 
-    if (s_setup_socket_params(nw_socket, options)) {
-        aws_mem_release(alloc, nw_socket);
-        return AWS_OP_ERR;
-    }
     aws_ref_count_init(&nw_socket->ref_count, nw_socket, s_socket_impl_destroy);
+
+    nw_socket->allocator = alloc;
     aws_linked_list_init(&nw_socket->read_queue);
 
     return AWS_OP_SUCCESS;
@@ -725,11 +993,49 @@ static int s_socket_connect_fn(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data) {
     struct nw_socket *nw_socket = socket->impl;
 
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
+
+    if (socket->event_loop) {
+        return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
+    }
+
+    struct aws_tls_connection_options *tls_connection_options = NULL;
+    if (retrieve_tls_options != NULL) {
+        retrieve_tls_options(&tls_connection_options, user_data);
+        if (tls_connection_options->server_name) {
+            if (nw_socket->host_name != NULL) {
+                aws_string_destroy(nw_socket->host_name);
+                nw_socket->host_name = NULL;
+            }
+            nw_socket->host_name = aws_string_new_from_string(
+                tls_connection_options->server_name->allocator, tls_connection_options->server_name);
+            if (nw_socket->host_name == NULL) {
+                return AWS_OP_ERR;
+            }
+        }
+
+        if (tls_connection_options->ctx) {
+            if (nw_socket->tls_ctx) {
+                aws_tls_ctx_release(nw_socket->tls_ctx);
+                nw_socket->tls_ctx = NULL;
+            }
+            nw_socket->tls_ctx = tls_connection_options->ctx;
+            aws_tls_ctx_acquire(nw_socket->tls_ctx);
+        }
+    }
+
+    aws_mutex_lock(&nw_socket->synced_data.lock);
+    nw_socket->synced_data.event_loop = event_loop;
+    aws_mutex_unlock(&nw_socket->synced_data.lock);
+
+    if (s_setup_socket_params(nw_socket, &socket->options)) {
+        return AWS_OP_ERR;
+    }
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, socket->io_handle.data.handle);
@@ -817,7 +1123,7 @@ static int s_socket_connect_fn(
         return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
-    socket->io_handle.data.handle = nw_connection_create(endpoint, nw_socket->socket_options_to_params);
+    socket->io_handle.data.handle = nw_connection_create(endpoint, nw_socket->nw_parameters);
     nw_socket->nw_connection = socket->io_handle.data.handle;
     nw_release(endpoint);
 
@@ -850,10 +1156,6 @@ static int s_socket_connect_fn(
         s_handle_socket_timeout,
         nw_socket->timeout_args,
         "NWSocketConnectionTimeoutTask");
-
-    aws_mutex_lock(&nw_socket->synced_data.lock);
-    nw_socket->synced_data.event_loop = event_loop;
-    aws_mutex_unlock(&nw_socket->synced_data.lock);
 
     /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
      * was disconnected etc .... */
@@ -1008,6 +1310,10 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
         local_endpoint->address,
         (int)local_endpoint->port);
 
+    if (nw_socket->nw_parameters == NULL) {
+        s_setup_socket_params(nw_socket, &socket->options);
+    }
+
     struct socket_address address;
     AWS_ZERO_STRUCT(address);
     int pton_err = 1;
@@ -1047,7 +1353,7 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
         return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
-    nw_parameters_set_local_endpoint(nw_socket->socket_options_to_params, endpoint);
+    nw_parameters_set_local_endpoint(nw_socket->nw_parameters, endpoint);
     nw_release(endpoint);
 
     // Apple network framework requires connection besides bind.
@@ -1079,16 +1385,25 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    socket->io_handle.data.handle = nw_listener_create(nw_socket->socket_options_to_params);
-    nw_socket->nw_listener = socket->io_handle.data.handle;
-    nw_retain(socket->io_handle.data.handle);
-    nw_socket->is_listener = true;
+    if (nw_socket->nw_parameters == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p: socket nw_parameters needs to be set before creating a listener from socket.",
+            (void *)socket);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
 
+    socket->io_handle.data.handle = nw_listener_create(nw_socket->nw_parameters);
     if (!socket->io_handle.data.handle) {
-        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p:  listen failed with error code %d", (void *)socket, aws_last_error());
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET, "id=%p: listener creation failed with error code %d", (void *)socket, aws_last_error());
         socket->state = ERROR;
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
+
+    nw_socket->nw_listener = socket->io_handle.data.handle;
+    nw_retain(socket->io_handle.data.handle);
+    nw_socket->is_listener = true;
 
     socket->io_handle.set_queue = s_listener_set_dispatch_queue;
     socket->io_handle.clear_queue = s_listener_clear_dispatch_queue;
@@ -1167,7 +1482,7 @@ static int s_socket_start_accept_fn(
           } else if (state == nw_listener_state_failed) {
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
-                  "id=%p handle=%p: lisnter on port failed ",
+                  "id=%p handle=%p: listener on port failed ",
                   (void *)socket,
                   socket->io_handle.data.handle);
               /* any error, including if closed remotely in error */
@@ -1272,7 +1587,8 @@ static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_
 
 static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_socket_options *options) {
     if (socket->options.domain != options->domain || socket->options.type != options->type) {
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        return AWS_OP_ERR;
     }
 
     AWS_LOGF_DEBUG(
@@ -1289,15 +1605,7 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
 
     socket->options = *options;
 
-    struct nw_socket *nw_socket = socket->impl;
-
-    /* If nw_parameters_t has been previously set, they need to be released prior to assinging a new one */
-    if (nw_socket->socket_options_to_params) {
-        nw_release(nw_socket->socket_options_to_params);
-        nw_socket->socket_options_to_params = NULL;
-    }
-
-    return s_setup_socket_params(nw_socket, options);
+    return AWS_OP_SUCCESS;
 }
 
 static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aws_event_loop *event_loop) {
@@ -1609,4 +1917,12 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
     *out_address = socket->local_endpoint;
     return AWS_OP_SUCCESS;
 }
-#endif // AWS_USE_DISPATCH_QUEUE
+#else
+
+/* This is here because ISO C requires at least one declaration. We do not simply not include this file at build
+ * in the CMakeLists because it'd require even more tinkering in aws-crt-swift to manage the inclusion/exclusion of
+ * this file across a number of platforms.
+ */
+int aws_nw_socket_declaration;
+
+#endif /* AWS_USE_DISPATCH_QUEUE */

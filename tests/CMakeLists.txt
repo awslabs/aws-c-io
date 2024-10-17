@@ -17,7 +17,7 @@ endmacro()
 add_test_case(io_library_init)
 add_test_case(io_library_init_cleanup_init_cleanup)
 
-# DEBUG: temporarily disable the pipe related tests
+# Apple Dispatch Queue does not support pipe
 if(NOT AWS_USE_DISPATCH_QUEUE)
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)

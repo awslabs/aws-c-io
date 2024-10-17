@@ -1,26 +1,31 @@
-#ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H
-#define AWS_IO_PRIVATE_DISPATCH_QUEUE_H
+#ifndef AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H
+#define AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H
 /**
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <Security/Security.h>
-#include <aws/common/mutex.h>
-#include <aws/common/thread.h>
 #include <aws/io/tls_channel_handler.h>
-#include <dispatch/dispatch.h>
 
+#ifdef AWS_OS_APPLE
+/* It's ok to include external headers because this is a PRIVATE header file */
+#    include <Security/Security.h>
 struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
-    SecIdentityRef secitem_identity;
+    sec_identity_t secitem_identity;
     CFArrayRef ca_cert;
-    enum aws_tls_versions minimum_version;
+    enum aws_tls_versions minimum_tls_version;
     struct aws_string *alpn_list;
     bool verify_peer;
 };
+
+#endif /* AWS_OS_APPLE */
+
+#include <aws/common/mutex.h>
+#include <aws/common/thread.h>
+#include <dispatch/dispatch.h>
 
 struct dispatch_scheduling_state {
     // Let's us skip processing an iteration task if one is already in the middle
@@ -60,4 +65,4 @@ struct dispatch_loop {
     bool is_destroying;
 };
 
-#endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H */
+#endif /* #ifndef AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H  */
