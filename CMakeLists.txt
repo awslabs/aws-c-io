@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.13)
+cmake_minimum_required(VERSION 3.9)
 project(aws-c-io C)
 
 if (DEFINED CMAKE_PREFIX_PATH)
