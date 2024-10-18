@@ -15,7 +15,7 @@
 #include <unistd.h>
 
 #include <Block.h>
-#include <aws/io/private/dispatch_queue.h>
+#include <aws/io/private/aws_apple_network_framework.h>
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
 

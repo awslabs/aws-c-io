@@ -132,11 +132,16 @@ elseif (APPLE)
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
-     if(AWS_USE_DISPATCH_QUEUE OR IOS)
-        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
-        message("use dispatch queue")
-     else ()
-         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+    if (AWS_USE_SECITEM OR IOS)
+        message("AWS_USE_SECITEM is set, using dispatch queue event loops")
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE")
+    elseif (AWS_USE_DISPATCH_QUEUE)
+        message("AWS_USE_DISPATCH_QUEUE is set, using dispatch queue event loops")
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE")
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
+    else ()
+        message("using default kqueue event loops")
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
@@ -162,21 +167,10 @@ if (BYO_CRYPTO)
 endif()
 
 if (USE_S2N)
-        file(GLOB AWS_IO_TLS_SRC
-                "source/s2n/*.c"
-                )
-        # Prefer find_package() because it's the normal CMake way to do dependencies.
-        # But fall back on aws_use_package() because some projects still need to do an IN_SOURCE_BUILD of S2N.
-        # (e.g. aws-crt-java until this is resolved: https://github.com/awslabs/aws-crt-java/pull/817)
-        find_package(s2n QUIET)
-
-        if (s2n_FOUND)
-            list(APPEND DEP_AWS_LIBS AWS::s2n)
-        else()
-            # Set flag to use in-source path to  <s2n/unstable/*.h> headers if we do an IN_SOURCE_BUILD.
-            aws_use_package(s2n)
-            add_definitions(-DAWS_S2N_INSOURCE_PATH)
-        endif()
+    file(GLOB AWS_IO_TLS_SRC
+            "source/s2n/*.c"
+            )
+    aws_use_package(s2n)
 endif()
 
 file(GLOB IO_HEADERS
@@ -202,6 +196,10 @@ aws_add_sanitizers(${PROJECT_NAME})
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
 target_compile_definitions(${PROJECT_NAME} PUBLIC "${EVENT_LOOP_DEFINES}")
+
+if (AWS_USE_SECITEM)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
+endif()
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
