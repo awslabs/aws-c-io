@@ -76,35 +76,36 @@ static int s_determine_socket_error(int error) {
 
         /* SSL/TLS Errors */
         case errSSLUnknownRootCert:
-            return AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE;
+            // return AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE;
         case errSSLNoRootCert:
-            return AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND;
+            // return AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND;
         case errSSLCertExpired:
-            return AWS_IO_TLS_CERTIFICATE_EXPIRED;
+            // return AWS_IO_TLS_CERTIFICATE_EXPIRED;
         case errSSLCertNotYetValid:
-            return AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID;
+            // return AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID;
         case errSSLPeerHandshakeFail:
-            return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
+            // return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
         case errSSLBadCert:
-            return AWS_IO_TLS_BAD_CERTIFICATE;
+            // return AWS_IO_TLS_BAD_CERTIFICATE;
         case errSSLPeerCertExpired:
-            return AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED;
+            // return AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED;
         case errSSLPeerBadCert:
-            return AWS_IO_TLS_BAD_PEER_CERTIFICATE;
+            // return AWS_IO_TLS_BAD_PEER_CERTIFICATE;
         case errSSLPeerCertRevoked:
-            return AWS_IO_TLS_PEER_CERTIFICATE_REVOKED;
+            // return AWS_IO_TLS_PEER_CERTIFICATE_REVOKED;
         case errSSLPeerCertUnknown:
-            return AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN;
+            // return AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN;
         case errSSLInternal:
-            return AWS_IO_TLS_INTERNAL_ERROR;
+            // return AWS_IO_TLS_INTERNAL_ERROR;
         case errSSLClosedGraceful:
-            return AWS_IO_TLS_CLOSED_GRACEFUL;
+            // return AWS_IO_TLS_CLOSED_GRACEFUL;
         case errSSLClosedAbort:
-            return AWS_IO_TLS_CLOSED_ABORT;
+            // return AWS_IO_TLS_CLOSED_ABORT;
         case errSSLXCertChainInvalid:
-            return AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN;
+            // return AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN;
         case errSSLHostNameMismatch:
-            return AWS_IO_TLS_HOST_NAME_MISSMATCH;
+            // return AWS_IO_TLS_HOST_NAME_MISSMATCH;
+            return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
 
         default:
             return AWS_IO_SOCKET_NOT_CONNECTED;
@@ -359,6 +360,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                 policy = SecPolicyCreateSSL(true, server_name);
                                 CFRelease(server_name);
                                 status = SecTrustSetPolicies(trust_ref, policy);
+                                CFRelease(policy);
                             }
 
                             SecTrustResultType trust_result;
@@ -389,11 +391,20 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                     verification_successful = false;
                                 }
                             } else {
+                                CFStringRef error_description = CFErrorCopyDescription(error);
+                                char description_buffer[256];
+                                CFStringGetCString(
+                                    error_description,
+                                    description_buffer,
+                                    sizeof(description_buffer),
+                                    kCFStringEncodingUTF8);
+                                CFRelease(error_description);
                                 AWS_LOGF_DEBUG(
                                     AWS_LS_IO_TLS,
-                                    "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %ld",
+                                    "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %ld : %s",
                                     (void *)nw_socket,
-                                    (long)CFErrorGetCode(error));
+                                    (long)CFErrorGetCode(error),
+                                    description_buffer);
                                 verification_successful = false;
                             }
 
