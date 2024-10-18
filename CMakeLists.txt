@@ -116,8 +116,7 @@ elseif (APPLE)
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
-            "source/darwin/darwin_pki_utils.c"
-            "source/darwin/secure_transport_tls_channel_handler.c"
+            "source/darwin/*.c"
             )
 
     find_library(SECURITY_LIB Security)
@@ -133,21 +132,12 @@ elseif (APPLE)
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
-    if (AWS_USE_SECITEM)
+    if (AWS_USE_SECITEM OR IOS)
         message("AWS_USE_SECITEM is set, adding dispatch queue and secitem support")
         set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE -DAWS_USE_SECITEM")
-        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
-        "source/darwin/dispatch_queue_event_loop.c"
-        "source/darwin/nw_socket.c"
-        )
-        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
-    elseif (AWS_USE_DISPATCH_QUEUE OR IOS)
+    elseif (AWS_USE_DISPATCH_QUEUE)
         message("AWS_USE_DISPATCH_QUEUE is set, using dispatch queue")
         set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE")
-        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
-            "source/darwin/dispatch_queue_event_loop.c"
-            "source/darwin/nw_socket.c"
-        )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
     else ()
         message("using default kqueue")
