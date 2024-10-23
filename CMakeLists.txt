@@ -44,7 +44,6 @@ file(GLOB AWS_IO_TESTING_HEADERS
         "include/aws/testing/*.h"
         )
 
-
 file(GLOB AWS_IO_PRIV_HEADERS
         "include/aws/io/private/*.h"
         )
@@ -75,7 +74,7 @@ if (WIN32)
                 )
          list(APPEND AWS_IO_OS_SRC ${AWS_IO_IOCP_SRC})
 
-         set(EVENT_LOOP_DEFINE "IO_COMPLETION_PORTS")
+         set(EVENT_LOOP_DEFINES "AWS_USE_IO_COMPLETION_PORTS")
     endif ()
 
     if (MSVC)
@@ -102,7 +101,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Androi
             )
     set(PLATFORM_LIBS "")
 
-    set(EVENT_LOOP_DEFINE "EPOLL")
+    set(EVENT_LOOP_DEFINES "-DAWS_USE_EPOLL")
     set(USE_S2N ON)
 
 elseif (APPLE)
@@ -113,7 +112,8 @@ elseif (APPLE)
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
-            "source/darwin/*.c"
+            "source/darwin/darwin_pki_utils.c"
+            "source/darwin/secure_transport_tls_channel_handler.c"
             )
 
     find_library(SECURITY_LIB Security)
@@ -121,9 +121,24 @@ elseif (APPLE)
         message(FATAL_ERROR "Security framework not found")
     endif ()
 
+    find_library(NETWORK_LIB Network)
+    if (NOT NETWORK_LIB)
+        message(FATAL_ERROR "Network framework not found")
+    endif ()
+
     #No choice on TLS for apple, darwinssl will always be used.
-    list(APPEND PLATFORM_LIBS "-framework Security")
-    set(EVENT_LOOP_DEFINE "KQUEUE")
+    list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
+
+     if(AWS_USE_DISPATCH_QUEUE OR IOS)
+        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
+        message("use dispatch queue")
+        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
+        "source/darwin/dispatch_queue_event_loop.c"
+        )
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
+     else ()
+         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+    endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
@@ -134,7 +149,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
             "source/posix/*.c"
             )
 
-    set(EVENT_LOOP_DEFINE "KQUEUE")
+    set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
     set(USE_S2N ON)
 
 endif()
@@ -187,7 +202,7 @@ aws_add_sanitizers(${PROJECT_NAME})
 # We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_${EVENT_LOOP_DEFINE}")
+target_compile_definitions(${PROJECT_NAME} PUBLIC "${EVENT_LOOP_DEFINES}")
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
