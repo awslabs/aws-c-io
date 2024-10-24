@@ -995,7 +995,7 @@ static int s_verify_negotiation_fails_helper(
         return AWS_OP_SKIP;
     }
 
-    ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
+    ASSERT_TRUE(aws_tls_error_code_check(outgoing_args.last_error_code));
 
     aws_client_bootstrap_release(client_bootstrap);
 

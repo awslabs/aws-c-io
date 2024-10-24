@@ -923,3 +923,37 @@ void aws_custom_key_op_handler_perform_operation(
     struct aws_tls_key_operation *operation) {
     key_op_handler->vtable->on_key_operation(key_op_handler, operation);
 }
+
+bool aws_tls_error_code_check(int error_code) {
+    switch (error_code) {
+        case AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE:
+        case AWS_IO_TLS_ERROR_NOT_NEGOTIATED:
+        case AWS_IO_TLS_ERROR_WRITE_FAILURE:
+        case AWS_IO_TLS_ERROR_ALERT_RECEIVED:
+        case AWS_IO_TLS_CTX_ERROR:
+        case AWS_IO_TLS_VERSION_UNSUPPORTED:
+        case AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED:
+        case AWS_IO_TLS_NEGOTIATION_TIMEOUT:
+        case AWS_IO_TLS_ALERT_NOT_GRACEFUL:
+        case AWS_IO_TLS_DIGEST_ALGORITHM_UNSUPPORTED:
+        case AWS_IO_TLS_SIGNATURE_ALGORITHM_UNSUPPORTED:
+        case AWS_IO_TLS_ERROR_READ_FAILURE:
+        case AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE:
+        case AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND:
+        case AWS_IO_TLS_CERTIFICATE_EXPIRED:
+        case AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID:
+        case AWS_IO_TLS_BAD_CERTIFICATE:
+        case AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED:
+        case AWS_IO_TLS_BAD_PEER_CERTIFICATE:
+        case AWS_IO_TLS_PEER_CERTIFICATE_REVOKED:
+        case AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN:
+        case AWS_IO_TLS_INTERNAL_ERROR:
+        case AWS_IO_TLS_CLOSED_GRACEFUL:
+        case AWS_IO_TLS_CLOSED_ABORT:
+        case AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN:
+        case AWS_IO_TLS_HOST_NAME_MISSMATCH:
+            return true;
+        default:
+            return false;
+    }
+}

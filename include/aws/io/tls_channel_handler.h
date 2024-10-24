@@ -941,6 +941,12 @@ const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm sig
 AWS_IO_API
 const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
 
+/**
+ * Returns true if provided error_code is a TLS Negotiation related error. Use this to determine if
+ * the cause related to an error originated from a TLS handshake.
+ */
+AWS_IO_API bool aws_tls_error_code_check(int error_code);
+
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
 

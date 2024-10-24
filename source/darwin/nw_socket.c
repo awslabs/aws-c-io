@@ -76,35 +76,35 @@ static int s_determine_socket_error(int error) {
 
         /* SSL/TLS Errors */
         case errSSLUnknownRootCert:
-            // return AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE;
+            return AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE;
         case errSSLNoRootCert:
-            // return AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND;
+            return AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND;
         case errSSLCertExpired:
-            // return AWS_IO_TLS_CERTIFICATE_EXPIRED;
+            return AWS_IO_TLS_CERTIFICATE_EXPIRED;
         case errSSLCertNotYetValid:
-            // return AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID;
+            return AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID;
         case errSSLPeerHandshakeFail:
-            // return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
+            return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
         case errSSLBadCert:
-            // return AWS_IO_TLS_BAD_CERTIFICATE;
+            return AWS_IO_TLS_BAD_CERTIFICATE;
         case errSSLPeerCertExpired:
-            // return AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED;
+            return AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED;
         case errSSLPeerBadCert:
-            // return AWS_IO_TLS_BAD_PEER_CERTIFICATE;
+            return AWS_IO_TLS_BAD_PEER_CERTIFICATE;
         case errSSLPeerCertRevoked:
-            // return AWS_IO_TLS_PEER_CERTIFICATE_REVOKED;
+            return AWS_IO_TLS_PEER_CERTIFICATE_REVOKED;
         case errSSLPeerCertUnknown:
-            // return AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN;
+            return AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN;
         case errSSLInternal:
-            // return AWS_IO_TLS_INTERNAL_ERROR;
+            return AWS_IO_TLS_INTERNAL_ERROR;
         case errSSLClosedGraceful:
-            // return AWS_IO_TLS_CLOSED_GRACEFUL;
+            return AWS_IO_TLS_CLOSED_GRACEFUL;
         case errSSLClosedAbort:
-            // return AWS_IO_TLS_CLOSED_ABORT;
+            return AWS_IO_TLS_CLOSED_ABORT;
         case errSSLXCertChainInvalid:
-            // return AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN;
+            return AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN;
         case errSSLHostNameMismatch:
-            // return AWS_IO_TLS_HOST_NAME_MISSMATCH;
+            return AWS_IO_TLS_HOST_NAME_MISSMATCH;
         case errSecNotTrusted:
             return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
 
@@ -423,7 +423,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             }
                             // DEBUG WIP trigger the on_negotiation_result func w/error here?
                             if (nw_socket->on_tls_negotiation_result_fn) {
-                                // nw_socket->on_tls_negotiation_result_fn(NULL, NULL, error_code, NULL);
+                                nw_socket->on_tls_negotiation_result_fn(
+                                    NULL, NULL, error_code, nw_socket->on_tls_negotiation_result_user_data);
                             }
                             complete(verification_successful);
                           },
@@ -806,7 +807,7 @@ static void s_schedule_on_connection_result(struct nw_socket *nw_socket, int err
         args->allocator = socket->allocator;
         args->error_code = error_code;
         aws_ref_count_acquire(&nw_socket->ref_count);
-        aws_task_init(task, s_process_connection_result_task, args, "connectionSuccessTask");
+        aws_task_init(task, s_process_connection_result_task, args, "connectionResultTask");
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
@@ -955,7 +956,7 @@ static void s_schedule_cancel_task(struct nw_socket *nw_socket, struct aws_task 
         args->allocator = nw_socket->allocator;
         args->task_to_cancel = task_to_cancel;
         aws_ref_count_acquire(&nw_socket->ref_count);
-        aws_task_init(task, s_process_cancel_task, args, "cancelTaskTask");
+        aws_task_init(task, s_process_cancel_task, args, "cancelTask");
         AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: Schedule cancel %s task", (void *)task_to_cancel, task->type_tag);
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
@@ -1280,9 +1281,6 @@ static int s_socket_connect_fn(
               socket->state = ERROR;
               if (!nw_socket->setup_run) {
                   s_schedule_on_connection_result(nw_socket, error_code);
-                  // DEBUG WIP we need to call the Tls handler callback from tls_ctx
-                  // Maybe schedule this from within the verification block where the TLS handhake error is origianting
-                  // s_schedule_on_negotiation_result()
                   nw_socket->setup_run = true;
               } else if (socket->readable_fn) {
                   s_schedule_on_readable(nw_socket, nw_socket->last_error, NULL);
