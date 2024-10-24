@@ -130,6 +130,13 @@ struct client_connection_args {
     struct aws_event_loop *requested_event_loop;
 
     /*
+     * Apple network framework's establishment of a network connection combines both socket and TLS related
+     * operations into a singular connection callback. This is used to store a previously received
+     * TLS error_code that can be reported at a later time.
+     */
+    int tls_error_code;
+
+    /*
      * It is likely that all reference adjustments to the connection args take place in a single event loop
      * thread and are thus thread-safe. I can imagine some complex future scenarios where that might not hold true
      * and so it seems reasonable to switch now to a safe pattern.
@@ -591,8 +598,21 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 (void *)connection_args->bootstrap,
                 error_code);
             /* connection_args will be released after setup_callback */
+            if (connection_args->tls_error_code != AWS_ERROR_SUCCESS) {
+                error_code = connection_args->tls_error_code;
+            }
             s_connection_args_setup_callback(connection_args, error_code, NULL);
         }
+
+#ifdef AWS_USE_SECITEM
+        // DEBUG WIP
+        if (aws_tls_error_code_check(error_code)) {
+            printf("\n\nTLS ERROR DETECTED IN s_on_client_established\n\n");
+            connection_args->tls_error_code = error_code;
+            connection_args->channel_data.socket = socket;
+        }
+// handle error_code that is TLS specific because socket was opened
+#endif /* AWS_USE_SECITEM */
 
         /* every connection task adds a ref, so every failure or cancel needs to dec one */
         s_client_connection_args_release(connection_args);
@@ -881,6 +901,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     client_connection_args->outgoing_port = port;
     client_connection_args->enable_read_back_pressure = options->enable_read_back_pressure;
     client_connection_args->requested_event_loop = options->requested_event_loop;
+    client_connection_args->tls_error_code = AWS_ERROR_SUCCESS;
 
     if (tls_options) {
         if (aws_tls_connection_options_copy(&client_connection_args->channel_data.tls_options, tls_options)) {
