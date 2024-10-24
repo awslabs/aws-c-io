@@ -607,6 +607,12 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 #ifdef AWS_USE_SECITEM
         // DEBUG WIP
         if (aws_tls_error_code_check(error_code)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: Connection failed with TLS error_code %d.",
+                (void *)connection_args->bootstrap,
+                error_code);
+
             printf("\n\nTLS ERROR DETECTED IN s_on_client_established\n\n");
             connection_args->tls_error_code = error_code;
             connection_args->channel_data.socket = socket;

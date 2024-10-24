@@ -106,6 +106,7 @@ static int s_determine_socket_error(int error) {
         case errSSLHostNameMismatch:
             return AWS_IO_TLS_HOST_NAME_MISSMATCH;
         case errSecNotTrusted:
+        case errSSLPeerProtocolVersion:
             return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
 
         default:
