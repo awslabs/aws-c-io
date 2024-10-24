@@ -105,6 +105,7 @@ static int s_determine_socket_error(int error) {
             // return AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN;
         case errSSLHostNameMismatch:
             // return AWS_IO_TLS_HOST_NAME_MISSMATCH;
+        case errSecNotTrusted:
             return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
 
         default:
@@ -188,6 +189,8 @@ struct nw_socket {
     struct nw_socket_timeout_args *timeout_args;
     aws_socket_on_connection_result_fn *on_connection_result_fn;
     void *connect_accept_user_data;
+    aws_tls_on_negotiation_result_fn *on_tls_negotiation_result_fn;
+    void *on_tls_negotiation_result_user_data;
     struct aws_string *host_name;
     struct aws_tls_ctx *tls_ctx;
 
@@ -325,6 +328,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             }
 
                             CFErrorRef error = NULL;
+                            int error_code = AWS_ERROR_SUCCESS;
                             SecTrustRef trust_ref = sec_trust_copy_ref(trust);
                             OSStatus status;
                             bool verification_successful = false;
@@ -411,7 +415,15 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                         verification_done:
                             CFRelease(trust_ref);
                             if (error) {
+                                error_code = CFErrorGetCode(error);
+                                error_code = s_determine_socket_error(error_code);
+                                nw_socket->last_error = error_code;
+                                aws_raise_error(error_code);
                                 CFRelease(error);
+                            }
+                            // DEBUG WIP trigger the on_negotiation_result func w/error here?
+                            if (nw_socket->on_tls_negotiation_result_fn) {
+                                // nw_socket->on_tls_negotiation_result_fn(NULL, NULL, error_code, NULL);
                             }
                             complete(verification_successful);
                           },
@@ -645,7 +657,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
     aws_ref_count_init(&nw_socket->ref_count, nw_socket, s_socket_impl_destroy);
 
-    nw_socket->allocator = alloc;
     aws_linked_list_init(&nw_socket->read_queue);
 
     return AWS_OP_SUCCESS;
@@ -762,7 +773,7 @@ static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code, 
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 }
 
-static void s_process_connection_success_task(struct aws_task *task, void *arg, enum aws_task_status status) {
+static void s_process_connection_result_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)status;
 
     struct nw_socket_scheduled_task_args *task_args = arg;
@@ -781,7 +792,7 @@ static void s_process_connection_success_task(struct aws_task *task, void *arg, 
     aws_mem_release(task_args->allocator, task_args);
 }
 
-static void s_schedule_on_connection_success(struct nw_socket *nw_socket, int error_code) {
+static void s_schedule_on_connection_result(struct nw_socket *nw_socket, int error_code) {
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
@@ -795,12 +806,13 @@ static void s_schedule_on_connection_success(struct nw_socket *nw_socket, int er
         args->allocator = socket->allocator;
         args->error_code = error_code;
         aws_ref_count_acquire(&nw_socket->ref_count);
-        aws_task_init(task, s_process_connection_success_task, args, "connectionSuccessTask");
+        aws_task_init(task, s_process_connection_result_task, args, "connectionSuccessTask");
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 }
+// DEBUG WIP might need to schedule a tls_result the same way we schedule a connection_result()
 
 static void s_process_listener_success_task(struct aws_task *task, void *args, enum aws_task_status status) {
     (void)status;
@@ -1015,30 +1027,63 @@ static int s_socket_connect_fn(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    struct aws_tls_connection_options *tls_connection_options = NULL;
+    struct tls_connection_context tls_connection_context;
     if (retrieve_tls_options != NULL) {
-        retrieve_tls_options(&tls_connection_options, user_data);
-        if (tls_connection_options->server_name) {
+        retrieve_tls_options(&tls_connection_context, user_data);
+        if (tls_connection_context.host_name != NULL) {
             if (nw_socket->host_name != NULL) {
                 aws_string_destroy(nw_socket->host_name);
                 nw_socket->host_name = NULL;
             }
             nw_socket->host_name = aws_string_new_from_string(
-                tls_connection_options->server_name->allocator, tls_connection_options->server_name);
+                tls_connection_context.host_name->allocator, tls_connection_context.host_name);
             if (nw_socket->host_name == NULL) {
                 return AWS_OP_ERR;
             }
         }
 
-        if (tls_connection_options->ctx) {
+        if (tls_connection_context.tls_ctx) {
             if (nw_socket->tls_ctx) {
                 aws_tls_ctx_release(nw_socket->tls_ctx);
                 nw_socket->tls_ctx = NULL;
             }
-            nw_socket->tls_ctx = tls_connection_options->ctx;
+            nw_socket->tls_ctx = tls_connection_context.tls_ctx;
             aws_tls_ctx_acquire(nw_socket->tls_ctx);
         }
+
+        nw_socket->on_tls_negotiation_result_fn = tls_connection_context.user_on_negotiation_result;
+        nw_socket->on_tls_negotiation_result_user_data = tls_connection_context.user_on_negotiation_result_user_data;
     }
+    /*
+        struct aws_tls_connection_options *tls_connection_options = NULL;
+        if (retrieve_tls_options != NULL) {
+            retrieve_tls_options(&tls_connection_options, user_data);
+            if (tls_connection_options->server_name) {
+                if (nw_socket->host_name != NULL) {
+                    aws_string_destroy(nw_socket->host_name);
+                    nw_socket->host_name = NULL;
+                }
+                nw_socket->host_name = aws_string_new_from_string(
+                    tls_connection_options->server_name->allocator, tls_connection_options->server_name);
+                if (nw_socket->host_name == NULL) {
+                    return AWS_OP_ERR;
+                }
+            }
+
+            if (tls_connection_options->ctx) {
+                if (nw_socket->tls_ctx) {
+                    aws_tls_ctx_release(nw_socket->tls_ctx);
+                    nw_socket->tls_ctx = NULL;
+                }
+                nw_socket->tls_ctx = tls_connection_options->ctx;
+                aws_tls_ctx_acquire(nw_socket->tls_ctx);
+            }
+
+            if (tls_connection_options->on_negotiation_result) {
+                nw_socket->on_tls_negotiation_result_fn = tls_connection_options->on_negotiation_result;
+            }
+        }
+        */
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
     nw_socket->synced_data.event_loop = event_loop;
@@ -1210,7 +1255,7 @@ static int s_socket_connect_fn(
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
               nw_socket->setup_run = true;
               aws_ref_count_acquire(&nw_socket->ref_count);
-              s_schedule_on_connection_success(nw_socket, AWS_OP_SUCCESS);
+              s_schedule_on_connection_result(nw_socket, AWS_OP_SUCCESS);
               s_schedule_next_read(nw_socket);
               aws_ref_count_release(&nw_socket->ref_count);
 
@@ -1233,7 +1278,10 @@ static int s_socket_connect_fn(
               aws_raise_error(error_code);
               socket->state = ERROR;
               if (!nw_socket->setup_run) {
-                  s_schedule_on_connection_success(nw_socket, error_code);
+                  s_schedule_on_connection_result(nw_socket, error_code);
+                  // DEBUG WIP we need to call the Tls handler callback from tls_ctx
+                  // Maybe schedule this from within the verification block where the TLS handhake error is origianting
+                  // s_schedule_on_negotiation_result()
                   nw_socket->setup_run = true;
               } else if (socket->readable_fn) {
                   s_schedule_on_readable(nw_socket, nw_socket->last_error, NULL);
@@ -1255,7 +1303,7 @@ static int s_socket_connect_fn(
               socket->state = CLOSED;
               aws_raise_error(AWS_IO_SOCKET_CLOSED);
               if (!nw_socket->setup_run) {
-                  s_schedule_on_connection_success(nw_socket, AWS_IO_SOCKET_CLOSED);
+                  s_schedule_on_connection_result(nw_socket, AWS_IO_SOCKET_CLOSED);
                   nw_socket->setup_run = true;
               } else if (socket->readable_fn) {
                   s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED, NULL);
@@ -1507,7 +1555,7 @@ static int s_socket_start_accept_fn(
           } else if (state == nw_listener_state_ready) {
               AWS_LOGF_DEBUG(
                   AWS_LS_IO_SOCKET,
-                  "id=%p handle=%p: lisnter on port ready ",
+                  "id=%p handle=%p: listener on port ready ",
                   (void *)socket,
                   (void *)nw_socket->nw_connection);
 

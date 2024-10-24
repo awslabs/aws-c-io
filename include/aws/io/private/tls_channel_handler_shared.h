@@ -25,6 +25,13 @@ enum aws_tls_handler_read_state {
     AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE,
 };
 
+struct tls_connection_context {
+    struct aws_string *host_name;
+    struct aws_tls_ctx *tls_ctx;
+    aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
+    void *user_on_negotiation_result_user_data;
+};
+
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API void aws_tls_channel_handler_shared_init(

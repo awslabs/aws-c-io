@@ -8,6 +8,7 @@
 #include <aws/common/string.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
@@ -636,9 +637,13 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 /* Called when a socket connection attempt requires access to TLS options. Currently this is only necessary on
  * iOS/tvOS where the parameters used to create the Apple Network Framework socket requires TLS options.
  */
-static void s_retrieve_tls_options(struct aws_tls_connection_options **tls_ctx_options, void *user_data) {
+static void s_retrieve_tls_options(struct tls_connection_context *context, void *user_data) {
     struct client_connection_args *connection_args = user_data;
-    *tls_ctx_options = &connection_args->channel_data.tls_options;
+    AWS_ZERO_STRUCT(context);
+    context->host_name = connection_args->channel_data.tls_options.server_name;
+    context->tls_ctx = connection_args->channel_data.tls_options.ctx;
+    context->user_on_negotiation_result = connection_args->channel_data.user_on_negotiation_result;
+    context->user_on_negotiation_result_user_data = connection_args->channel_data.tls_user_data;
 }
 
 struct connection_task_data {
@@ -1165,6 +1170,10 @@ static void s_tls_server_on_error(
     }
 }
 
+/* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
+ * The TCP and TLS handshake are both handled by the network parameters and its options and verification block.
+ * We do not need to set up a separate TLS slot in the channel for iOS. */
+#if !defined(AWS_USE_SECITEM)
 static inline int s_setup_server_tls(struct server_channel_data *channel_data, struct aws_channel *channel) {
     struct aws_channel_slot *tls_slot = NULL;
     struct aws_channel_handler *tls_handler = NULL;
@@ -1248,6 +1257,7 @@ static inline int s_setup_server_tls(struct server_channel_data *channel_data, s
 
     return AWS_OP_SUCCESS;
 }
+#endif /* !AWS_USE_SECITEM */
 
 static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
     struct server_channel_data *channel_data = user_data;
@@ -1313,6 +1323,10 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
         goto error;
     }
 
+    /* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
+     * The TCP and TLS handshake are both handled by the network parameters and its options and verification block.
+     * We do not need to set up a separate TLS slot in the channel for iOS. */
+#if !defined(AWS_USE_SECITEM)
     if (channel_data->server_connection_args->use_tls) {
         /* incoming callback will be invoked upon the negotiation completion so don't do it
          * here. */
@@ -1323,6 +1337,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     } else {
         s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
     }
+#endif /* !AWS_USE_SECITEM */
     return;
 
 error:
