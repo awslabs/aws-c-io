@@ -995,7 +995,7 @@ static int s_verify_negotiation_fails_helper(
         return AWS_OP_SKIP;
     }
 
-    ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
+    ASSERT_TRUE(aws_tls_error_code_check(outgoing_args.last_error_code));
 
     aws_client_bootstrap_release(client_bootstrap);
 
@@ -1837,6 +1837,7 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
         &local_server_tester.endpoint,
         aws_event_loop_group_get_next_loop(c_tester.el_group),
         s_on_client_connected_do_hangup,
+        NULL,
         shutdown_tester));
 
     /* Wait for client socket to close */
@@ -2354,7 +2355,7 @@ struct import_info {
 
 static void s_import_cert(void *ctx) {
     (void)ctx;
-#    if !defined(AWS_OS_IOS)
+#    if !defined(AWS_USE_SECITEM)
     struct import_info *import = ctx;
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&import->cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import->key_buf);
@@ -2367,7 +2368,7 @@ static void s_import_cert(void *ctx) {
     AWS_FATAL_ASSERT(import->tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
-#    endif /* !AWS_OS_IOS */
+#    endif /* !AWS_USE_SECITEM */
 }
 
 #    define NUM_PAIRS 2
@@ -2426,7 +2427,7 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     struct aws_byte_buf cert_buf = {0};
     struct aws_byte_buf key_buf = {0};
 
-#    if !defined(AWS_OS_IOS)
+#    if !defined(AWS_USE_SECITEM)
 
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert0.pem"));
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey.pem"));
@@ -2446,7 +2447,7 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     aws_tls_ctx_release(tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
-#    endif /* !AWS_OS_IOS */
+#    endif /* !AWS_USE_SECITEM */
 
     /* clean up */
     aws_byte_buf_clean_up(&cert_buf);

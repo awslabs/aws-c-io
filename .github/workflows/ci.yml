@@ -160,13 +160,24 @@ jobs:
     runs-on: macos-14 # latest
     strategy:
       matrix:
-        eventloop: ["-DAWS_USE_DISPATCH_QUEUE=ON", "-DAWS_USE_DISPATCH_QUEUE=OFF"]
+        cmake_options:
+          - "-DAWS_USE_DISPATCH_QUEUE=ON"
+          - "-DAWS_USE_DISPATCH_QUEUE=OFF"
     steps:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=${{ matrix.eventloop }}
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=${{ matrix.cmake_options }}
+  
+  macos-secitem:
+    runs-on: macos-14 # latest
+    steps:
+    - name: Build ${{ env.PACKAGE_NAME }} + consumers
+      run: |
+        python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
+        chmod a+x builder
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_DISPATCH_QUEUE=ON --cmake-extra=-DAWS_USE_SECITEM=ON
 
   macos-x64:
     runs-on: macos-14-large # latest
