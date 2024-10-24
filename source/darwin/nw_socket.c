@@ -1028,6 +1028,7 @@ static int s_socket_connect_fn(
     }
 
     struct tls_connection_context tls_connection_context;
+    AWS_ZERO_STRUCT(tls_connection_context);
     if (retrieve_tls_options != NULL) {
         retrieve_tls_options(&tls_connection_context, user_data);
         if (tls_connection_context.host_name != NULL) {

@@ -639,7 +639,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
  */
 static void s_retrieve_tls_options(struct tls_connection_context *context, void *user_data) {
     struct client_connection_args *connection_args = user_data;
-    AWS_ZERO_STRUCT(context);
     context->host_name = connection_args->channel_data.tls_options.server_name;
     context->tls_ctx = connection_args->channel_data.tls_options.ctx;
     context->user_on_negotiation_result = connection_args->channel_data.user_on_negotiation_result;
