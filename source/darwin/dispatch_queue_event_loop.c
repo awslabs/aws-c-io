@@ -432,8 +432,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
      */
 
     if (is_empty && !dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
-        /** If there is no currently running iteration, then we check if we have already scheduled an iteration scheduled
-         * before this task's run time. */
+        /** If there is no currently running iteration, then we check if we have already scheduled an iteration
+         * scheduled before this task's run time. */
         should_schedule =
             should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos);
     }

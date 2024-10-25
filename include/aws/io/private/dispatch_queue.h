@@ -23,16 +23,16 @@ struct secure_transport_ctx {
 };
 
 struct dispatch_scheduling_state {
-    /** 
+    /**
      * Let's us skip processing an iteration task if one is already in the middle of executing
-    */
+     */
     bool is_executing_iteration;
 
     /**
      * List<scheduled_service_entry> in sorted order by timestamp
      *
      * When we go to schedule a new iteration, we check here first to see
-     * if our scheduling attempt is redundant 
+     * if our scheduling attempt is redundant
      */
     struct aws_linked_list scheduled_services;
 };
