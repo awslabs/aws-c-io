@@ -957,12 +957,13 @@ static void s_schedule_cancel_task(struct nw_socket *nw_socket, struct aws_task 
         args->allocator = nw_socket->allocator;
         args->task_to_cancel = task_to_cancel;
         aws_ref_count_acquire(&nw_socket->ref_count);
-        const char *prefix = "Cancel-";
-        size_t buffer_size = strlen(prefix) + strlen(task_to_cancel->type_tag) + 1;
-        char prefixed_tag[buffer_size];
-        snprintf(prefixed_tag, buffer_size, "%s%s", prefix, task_to_cancel->type_tag);
-        aws_task_init(task, s_process_cancel_task, args, prefixed_tag);
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: Schedule %s task", (void *)task_to_cancel, task->type_tag);
+        aws_task_init(task, s_process_cancel_task, args, "cancel_socket_timeout");
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET,
+            "id=%p: Schedule %s task to cancel %s task",
+            (void *)task_to_cancel,
+            task->type_tag,
+            task_to_cancel->type_tag);
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
