@@ -44,7 +44,7 @@ struct dispatch_loop {
     struct aws_task_scheduler scheduler;
     struct aws_linked_list local_cross_thread_tasks;
 
-    // Apple dispatch queue uses the id string to identify the dispatch queue
+    /* Apple dispatch queue uses the id string to identify the dispatch queue */
     struct aws_string *dispatch_queue_id;
 
     struct {
@@ -52,9 +52,10 @@ struct dispatch_loop {
         struct aws_linked_list cross_thread_tasks;
         struct aws_mutex lock;
         bool suspended;
-        // `is_executing` flag and `current_thread_id` together are used to identify the excuting
-        // thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct aws_event_loop *event_loop)`
-        // for details.
+        /* `is_executing` flag and `current_thread_id` together are used to identify the excuting
+         * thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct aws_event_loop *event_loop)`
+         * for details.
+         */
         bool is_executing;
         aws_thread_id_t current_thread_id;
     } synced_data;

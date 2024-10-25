@@ -144,7 +144,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing dispatch_queue event-loop", (void *)loop);
     if (aws_event_loop_init_base(loop, alloc, options->clock)) {
-        goto clean_up_loop;
+        goto clean_up;
     }
 
     struct dispatch_loop *dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
@@ -157,7 +157,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     if (!dispatch_loop->dispatch_queue) {
         AWS_LOGF_FATAL(AWS_LS_IO_EVENT_LOOP, "id=%p: Failed to create dispatch queue.", (void *)loop);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto clean_up_dispatch;
+        goto clean_up;
     }
 
     dispatch_loop->synced_data.scheduling_state.is_executing_iteration = false;
@@ -166,7 +166,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     int err = aws_task_scheduler_init(&dispatch_loop->scheduler, alloc);
     if (err) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing task scheduler failed", (void *)loop);
-        goto clean_up_dispatch;
+        goto clean_up;
     }
 
     aws_linked_list_init(&dispatch_loop->local_cross_thread_tasks);
@@ -178,19 +178,20 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     loop->impl_data = dispatch_loop;
     loop->vtable = &s_vtable;
 
-    // manually increament the thread count, so the library will wait for dispatch queue releasing
+    /** manually increament the thread count, so the library will wait for dispatch queue releasing */
     aws_thread_increment_unjoined_count();
 
     return loop;
 
-clean_up_dispatch:
-    if (dispatch_loop->dispatch_queue) {
-        dispatch_release(dispatch_loop->dispatch_queue);
+clean_up:
+    if (dispatch_loop) {
+        if (dispatch_loop->dispatch_queue) {
+            dispatch_release(dispatch_loop->dispatch_queue);
+        }
+        aws_ref_count_release(&dispatch_loop->ref_count);
+        aws_event_loop_clean_up_base(loop);
     }
-    aws_ref_count_release(&dispatch_loop->ref_count);
-    aws_event_loop_clean_up_base(loop);
 
-clean_up_loop:
     aws_mem_release(alloc, loop);
 
     return NULL;
@@ -200,7 +201,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
-    // Avoid double destroy
+    /* To avoid double destroy */
     if (dispatch_loop->is_destroying) {
         return;
     }
@@ -231,9 +232,9 @@ static void s_destroy(struct aws_event_loop *event_loop) {
       }
 
       aws_mutex_lock(&dispatch_loop->synced_data.lock);
-      // The entries in the scheduled_services are already put on the apple dispatch queue. It would be a bad memory
-      // access if we destroy the entries here. We instead setting a cancel flag to cancel the task when the
-      // dispatch_queue execute the entry.
+      /* The entries in the scheduled_services are already put on the apple dispatch queue. It would be a bad memory
+       * access if we destroy the entries here. We instead setting a cancel flag to cancel the task when the
+       * dispatch_queue execute the entry. */
       struct aws_linked_list_node *iter = NULL;
       for (iter = aws_linked_list_begin(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
            iter != aws_linked_list_end(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
@@ -277,8 +278,8 @@ static int s_stop(struct aws_event_loop *event_loop) {
     if (!dispatch_loop->synced_data.suspended) {
         dispatch_loop->synced_data.suspended = true;
         AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
-        // Suspend will increase the dispatch reference count. It is required to call resume before
-        // releasing the dispatch queue.
+        /* Suspend will increase the dispatch reference count. It is required to call resume before
+         * releasing the dispatch queue. */
         dispatch_suspend(dispatch_loop->dispatch_queue);
     }
     aws_mutex_unlock(&dispatch_loop->synced_data.lock);
@@ -433,8 +434,8 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
      */
 
     if (is_empty && !dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
-        /** If there is no currently running iteration, then we check if we have already scheduled an iteration scheduled
-         * before this task's run time. */
+        /** If there is no currently running iteration, then we check if we have already scheduled an iteration
+         * scheduled before this task's run time. */
         should_schedule =
             should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos);
     }
