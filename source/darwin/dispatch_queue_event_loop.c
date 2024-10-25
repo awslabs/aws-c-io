@@ -295,11 +295,6 @@ bool begin_iteration(struct scheduled_service_entry *entry) {
 
     aws_mutex_lock(&dispatch_loop->synced_data.lock);
 
-    // someone else is already going, do nothing
-    if (dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
-        goto done;
-    }
-
     // swap the cross-thread tasks into task-local data
     AWS_FATAL_ASSERT(aws_linked_list_empty(&dispatch_loop->local_cross_thread_tasks));
     aws_linked_list_swap_contents(
@@ -310,9 +305,6 @@ bool begin_iteration(struct scheduled_service_entry *entry) {
     aws_linked_list_remove(&entry->node);
 
     should_execute_iteration = true;
-
-done:
-
     aws_mutex_unlock(&dispatch_loop->synced_data.lock);
 
     return should_execute_iteration;
