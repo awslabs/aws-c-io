@@ -93,7 +93,6 @@ add_test_case(wrong_thread_read_write_fails)
 add_test_case(incoming_duplicate_tcp_bind_errors)
 endif()
 
-
 if(WIN32)
     add_test_case(local_socket_pipe_connected_race)
 endif()
@@ -214,7 +213,10 @@ if(NOT BYO_CRYPTO)
     if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
         # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
         add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
+        if(NOT AWS_USE_SECITEM)
+        # SecItem does not allow use of depricated TLS versions
         add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
+        endif()
         add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
         add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
     endif()
