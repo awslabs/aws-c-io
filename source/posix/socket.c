@@ -1220,7 +1220,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, keep-alive probe "
+        "id=%p fd=%d: setting socket options to: keep-alive %d, keep-alive timeout %d, keep-alive interval %d, "
+        "keep-alive probe "
         "count %d.",
         (void *)socket,
         socket->io_handle.data.fd,
@@ -2006,4 +2007,12 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
+}
+
+bool aws_is_network_interface_name_valid(const char *interface_name) {
+    if (if_nametoindex(interface_name) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_name(%s) is invalid with errno: %d", interface_name, errno);
+        return false;
+    }
+    return true;
 }
