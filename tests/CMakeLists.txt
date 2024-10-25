@@ -136,8 +136,16 @@ add_test_case(pem_sanitize_comments_around_pem_object_removed)
 add_test_case(pem_sanitize_empty_file_rejected)
 add_test_case(pem_sanitize_wrong_format_rejected)
 
+
+if(NOT AWS_USE_SECITEM)
+# These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
+# The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
+# valid app bundle.
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
+endif()
+
+
 # These tests fail on Windows due to some bug in our server code where, if the socket is closed
 # immediately after data is written, that data does not flush cleanly to the client.
 # I've lost days to this bug, and no one is using our Windows server funcionality,
@@ -156,9 +164,14 @@ add_test_case(socket_handler_close)
 #    before calling closesocket() but shutdown() gets error WSAENOTCONN, even
 #    though, at that moment, the socket should be connected just fine.
 if(NOT WIN32)
+    if(NOT AWS_USE_SECITEM)
+    # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
+    # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
+    # valid app bundle.
     add_net_test_case(socket_handler_read_to_eof_after_peer_hangup)
     add_net_test_case(socket_handler_ipv4_read_to_eof_after_peer_hangup)
     add_net_test_case(socket_handler_ipv6_read_to_eof_after_peer_hangup)
+    endif()
 endif()
 add_test_case(socket_pinned_event_loop)
 add_net_test_case(socket_pinned_event_loop_dns_failure)

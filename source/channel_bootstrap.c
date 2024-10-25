@@ -597,10 +597,18 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 "id=%p: Connection failed with error_code %d.",
                 (void *)connection_args->bootstrap,
                 error_code);
-            /* connection_args will be released after setup_callback */
+
+#ifdef AWS_USE_SECITEM
+            /* If a Apple Network connection has already failed with a TLS related error,
+             * the TLS error should be reported over a socket timeout as the TLS error is
+             * the reason why this connection attempt has failed.
+             */
             if (connection_args->tls_error_code != AWS_ERROR_SUCCESS) {
                 error_code = connection_args->tls_error_code;
             }
+#endif /* AWS_USE_SECITEM */
+
+            /* connection_args will be released after setup_callback */
             s_connection_args_setup_callback(connection_args, error_code, NULL);
         }
 
