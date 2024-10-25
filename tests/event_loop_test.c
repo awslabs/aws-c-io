@@ -79,7 +79,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     aws_mutex_unlock(&task_args.mutex);
 
 // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-// therefore we do not validate the thread id for disaptch queue.
+// therefore we do not validate the thread id for dispatch queue.
 #ifndef AWS_USE_DISPATCH_QUEUE
     ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
 #endif
@@ -155,7 +155,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     ASSERT_TRUE(task1_args.invoked);
     ASSERT_TRUE(task1_args.was_in_thread);
 // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-// therefore we do not validate the thread id for disaptch queue.
+// therefore we do not validate the thread id for dispatch queue.
 #ifndef AWS_USE_DISPATCH_QUEUE
     ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
 #endif
@@ -172,8 +172,8 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     aws_mutex_unlock(&task2_args.mutex);
 
     ASSERT_TRUE(task2_args.was_in_thread);
-// The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-// therefore we do not validate the thread id for disaptch queue.
+// The dispatch queue will schedule tasks on thread pools, it is unpredictable which thread we run the task on,
+// therefore we do not validate the thread id for dispatch queue.
 #ifndef AWS_USE_DISPATCH_QUEUE
     ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
 #endif

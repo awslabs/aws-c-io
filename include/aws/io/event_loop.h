@@ -151,6 +151,12 @@ struct aws_event_loop_configuration {
     enum aws_event_loop_style style;
     aws_new_system_event_loop_fn *event_loop_new_fn;
     const char *name;
+    /**
+     * TODO: Currently, we use pre-compile definitions to determine which event-loop we would like to use in aws-c-io.
+     * For future improvements, we would like to allow a runtime configuration to set the event loop, so that the user
+     * could make choice themselves. Once that's there, as we would have multiple event loop implementation enabled,
+     * the `is_default` would be used to set the default event loop configuration.
+     */
     bool is_default;
 };
 
@@ -185,7 +191,8 @@ AWS_IO_API
 struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *overlapped);
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
 
-/* Get available event-loop configurations, this will return each available event-loop implementation for the current
+/**
+ * Get available event-loop configurations, this will return each available event-loop implementation for the current
  * running system */
 AWS_IO_API const struct aws_event_loop_configuration_group *aws_event_loop_get_available_configurations(void);
 
@@ -204,10 +211,11 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
 
-// TODO: We should expose or condense all these def specific function APIs and not make them
-// defined specific. Consolidation of them should work and branched logic within due to all the
-// arguments being the same. Let's move away from different API based on framework and instead
-// raise an unsupported platform error or simply use branching in implementation.
+// TODO: Currently, we do not allow runtime switch between different event loop configurations.
+// When that's enabled, we should expose or condense all these def specific function APIs and not
+// make them defined specific. Consolidation of them should work and branched logic within due to
+// all the arguments being the same. Let's move away from different API based on framework and
+// instead raise an unsupported platform error or simply use branching in implementation.
 #ifdef AWS_USE_IO_COMPLETION_PORTS
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_iocp_with_options(
@@ -446,6 +454,11 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     void *new_loop_user_data,
     const struct aws_shutdown_callback_options *shutdown_options);
 
+/**
+ * Creates an event loop group, with specified event loop configuration, max threads and shutdown options.
+ * If max_threads == 0, then the loop count will be the number of available processors on the machine / 2 (to exclude
+ * hyper-threads). Otherwise, max_threads will be the number of event loops in the group.
+ */
 AWS_IO_API
 struct aws_event_loop_group *aws_event_loop_group_new_from_config(
     struct aws_allocator *allocator,
@@ -510,6 +523,9 @@ struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_
 AWS_IO_API
 void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
 
+/**
+ * Return the event loop style. 
+ */
 AWS_IO_API
 enum aws_event_loop_style aws_event_loop_group_get_style(struct aws_event_loop_group *el_group);
 

@@ -52,8 +52,8 @@ struct scheduled_service_entry {
     struct aws_allocator *allocator;
     uint64_t timestamp;
     struct aws_linked_list_node node;
-    struct aws_event_loop *loop; // might eventually need to be ref-counted for cleanup?
-    bool cancel;                 // The entry will be canceled if the event loop is destroyed.
+    struct aws_event_loop *loop;
+    bool cancel; // The entry will be canceled if the event loop is destroyed.
 };
 
 struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
@@ -69,7 +69,7 @@ struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loo
 }
 
 // may only be called when the dispatch event loop synced data lock is held
-void scheduled_service_entry_destroy(struct scheduled_service_entry *entry) {
+static void scheduled_service_entry_destroy(struct scheduled_service_entry *entry) {
     if (aws_linked_list_node_is_in_list(&entry->node)) {
         aws_linked_list_remove(&entry->node);
     }
@@ -172,7 +172,6 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     aws_linked_list_init(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
     aws_linked_list_init(&dispatch_loop->synced_data.cross_thread_tasks);
 
-    dispatch_loop->wakeup_schedule_needed = true;
     aws_mutex_init(&dispatch_loop->synced_data.lock);
 
     loop->impl_data = dispatch_loop;
@@ -398,10 +397,14 @@ void run_iteration(void *context) {
     end_iteration(entry);
 }
 
-// Checks if a new iteration task needs to be scheduled, given a target timestamp
-// If so, submits an iteration task to dispatch queue and registers the pending
-// execution in the event loop's list of scheduled iterations.
-// The function should be wrapped with dispatch_loop->synced_data->lock
+/**
+ * Checks if a new iteration task needs to be scheduled, given a target timestamp. If so, submits an iteration task to
+ * dispatch queue and registers the pending execution in the event loop's list of scheduled iterations.
+ *
+ * If timestamp==0, the function will always schedule a new iteration as long as the event loop is not suspended.
+ *
+ * The function should be wrapped with dispatch_loop->synced_data->lock
+ */
 void try_schedule_new_iteration(struct aws_event_loop *loop, uint64_t timestamp) {
     struct dispatch_loop *dispatch_loop = loop->impl_data;
     if (dispatch_loop->synced_data.suspended)
@@ -423,17 +426,27 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     bool is_empty = aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks);
     task->timestamp = run_at_nanos;
 
-    // We dont have control to dispatch queue thread, threat all tasks are threated as cross thread tasks
+    // As we dont have control to dispatch queue thread, all tasks are treated as cross thread tasks
     aws_linked_list_push_back(&dispatch_loop->synced_data.cross_thread_tasks, &task->node);
-    if (is_empty) {
-        if (!dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
-            if (should_schedule_iteration(
-                    &dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos)) {
-                should_schedule = true;
-            }
-        }
+
+    /**
+     * To avoid explicit scheduling event loop iterations, the actual "iteration scheduling" should happened at the end
+     * of each iteration run. (The scheduling will happened in function `void end_iteration(struct
+     * scheduled_service_entry *entry)`). Therefore, as long as there is an executing iteration, we can guaranteed that
+     * the tasks will be scheduled.
+     *
+     * `is_empty` is used for a quick validation. If the `cross_thread_tasks` is not empty, we must have a running
+     * iteration that is processing the `cross_thread_tasks`.
+     */
+
+    if (is_empty && !dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
+        /** If there is no currently running iteration, then we check if we have already scheduled an iteration scheduled
+         * before this task's run time. */
+        should_schedule =
+            should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos);
     }
 
+    // If there is no scheduled iteration, start one right now to process the `cross_thread_task`.
     if (should_schedule) {
         try_schedule_new_iteration(event_loop, 0);
     }
