@@ -133,20 +133,21 @@ static struct aws_string *s_get_unique_dispatch_queue_id(struct aws_allocator *a
 }
 
 /* Setup a dispatch_queue with a scheduler. */
-static struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_PRECONDITION(options);
     AWS_PRECONDITION(options->clock);
 
     struct aws_event_loop *loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
+    struct dispatch_loop *dispatch_loop = NULL;
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing dispatch_queue event-loop", (void *)loop);
     if (aws_event_loop_init_base(loop, alloc, options->clock)) {
         goto clean_up;
     }
 
-    struct dispatch_loop *dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
+    dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
     aws_ref_count_init(&dispatch_loop->ref_count, loop, s_dispatch_event_loop_destroy);
 
     dispatch_loop->dispatch_queue_id = s_get_unique_dispatch_queue_id(alloc);
