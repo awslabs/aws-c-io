@@ -403,11 +403,14 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                     description_buffer,
                                     sizeof(description_buffer),
                                     kCFStringEncodingUTF8);
+                                int crt_error_code = s_determine_socket_error(CFErrorGetCode(error));
                                 CFRelease(error_description);
                                 AWS_LOGF_DEBUG(
                                     AWS_LS_IO_TLS,
-                                    "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %ld : %s",
+                                    "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %d CF error "
+                                    "code: %ld : %s",
                                     (void *)nw_socket,
+                                    crt_error_code,
                                     (long)CFErrorGetCode(error),
                                     description_buffer);
                                 verification_successful = false;
