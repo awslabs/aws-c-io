@@ -57,7 +57,7 @@ struct scheduled_service_entry {
     bool cancel; // The entry will be canceled if the event loop is destroyed.
 };
 
-struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
+static struct scheduled_service_entry *scheduled_service_entry_new(struct aws_event_loop *loop, uint64_t timestamp) {
     struct scheduled_service_entry *entry = aws_mem_calloc(loop->alloc, 1, sizeof(struct scheduled_service_entry));
 
     entry->allocator = loop->alloc;
@@ -83,7 +83,7 @@ static void scheduled_service_entry_destroy(struct scheduled_service_entry *entr
 
 // checks to see if another scheduled iteration already exists that will either
 // handle our needs or reschedule at the end to do so
-bool should_schedule_iteration(struct aws_linked_list *scheduled_iterations, uint64_t proposed_iteration_time) {
+static bool should_schedule_iteration(struct aws_linked_list *scheduled_iterations, uint64_t proposed_iteration_time) {
     if (aws_linked_list_empty(scheduled_iterations)) {
         return true;
     }
@@ -134,7 +134,7 @@ static struct aws_string *s_get_unique_dispatch_queue_id(struct aws_allocator *a
 }
 
 /* Setup a dispatch_queue with a scheduler. */
-struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+static struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_PRECONDITION(options);
@@ -287,10 +287,10 @@ static int s_stop(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-void try_schedule_new_iteration(struct aws_event_loop *loop, uint64_t timestamp);
+static void try_schedule_new_iteration(struct aws_event_loop *loop, uint64_t timestamp);
 
 // returns true if we should execute an iteration, false otherwise
-bool begin_iteration(struct scheduled_service_entry *entry) {
+static bool begin_iteration(struct scheduled_service_entry *entry) {
     bool should_execute_iteration = false;
     struct dispatch_loop *dispatch_loop = entry->loop->impl_data;
 
@@ -312,7 +312,7 @@ bool begin_iteration(struct scheduled_service_entry *entry) {
 }
 
 // conditionally schedule another iteration as needed
-void end_iteration(struct scheduled_service_entry *entry) {
+static void end_iteration(struct scheduled_service_entry *entry) {
     struct dispatch_loop *loop = entry->loop->impl_data;
 
     aws_mutex_lock(&loop->synced_data.lock);
@@ -343,7 +343,7 @@ void end_iteration(struct scheduled_service_entry *entry) {
 }
 
 // this function is what gets scheduled and executed by the Dispatch Queue API
-void run_iteration(void *context) {
+static void run_iteration(void *context) {
     struct scheduled_service_entry *entry = context;
     struct aws_event_loop *event_loop = entry->loop;
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
@@ -399,7 +399,7 @@ void run_iteration(void *context) {
  *
  * The function should be wrapped with dispatch_loop->synced_data->lock
  */
-void try_schedule_new_iteration(struct aws_event_loop *loop, uint64_t timestamp) {
+static void try_schedule_new_iteration(struct aws_event_loop *loop, uint64_t timestamp) {
     struct dispatch_loop *dispatch_loop = loop->impl_data;
     if (dispatch_loop->synced_data.suspended)
         return;
