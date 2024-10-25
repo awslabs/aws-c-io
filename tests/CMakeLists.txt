@@ -229,9 +229,9 @@ if(NOT BYO_CRYPTO)
         if(NOT AWS_USE_SECITEM)
         # SecItem does not allow use of depricated TLS versions
         add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
+        add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
         endif()
         add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
-        add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
     endif()
 
     # Badssl - Secure uncommon suite

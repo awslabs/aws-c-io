@@ -1515,7 +1515,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_no_verify_untrusted_root,
     s_tls_client_channel_negotiation_no_verify_untrusted_root_fn)
 
-static void s_lower_tls_version(struct aws_tls_ctx_options *options) {
+static void s_lower_tls_version_to_tls10(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1);
 }
 
@@ -1523,16 +1523,20 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
-    return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
+    return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version_to_tls10);
 }
 
 AWS_TEST_CASE(
     tls_client_channel_negotiation_override_legacy_crypto_tls10,
     s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn)
 
+static void s_lower_tls_version_to_tls11(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_1);
+}
+
 static int s_tls_client_channel_negotiation_success_legacy_crypto_tls11_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, NULL);
+    return s_verify_good_host(allocator, s_legacy_crypto_tls11_host_name, 1011, &s_lower_tls_version_to_tls11);
 }
 
 AWS_TEST_CASE(
