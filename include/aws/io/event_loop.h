@@ -524,7 +524,7 @@ AWS_IO_API
 void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
 
 /**
- * Return the event loop style. 
+ * Return the event loop style.
  */
 AWS_IO_API
 enum aws_event_loop_style aws_event_loop_group_get_style(struct aws_event_loop_group *el_group);
