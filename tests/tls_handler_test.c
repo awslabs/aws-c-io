@@ -1523,6 +1523,10 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
+#    if defined(AWS_USE_SEITEM)
+    // Apple Network Framework does not allow use of deprecated TLS versions.
+    return AWS_OP_SKIP;
+#    endif
     return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
 }
 

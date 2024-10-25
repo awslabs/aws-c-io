@@ -315,6 +315,12 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             sec_protocol_verify_complete_t complete) {
                             (void)metadata;
 
+                            CFErrorRef error = NULL;
+                            int error_code = AWS_ERROR_SUCCESS;
+                            SecTrustRef trust_ref = sec_trust_copy_ref(trust);
+                            OSStatus status;
+                            bool verification_successful = false;
+
                             /* Since we manually handle the verification of the peer, the value set using
                              * sec_protocol_options_set_peer_authentication_required is ignored and this block is
                              * run instead. We must manually skip the verification at this point if verify_peer is
@@ -325,14 +331,9 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                     "id=%p: nw_socket instructed not to verify peer. Accepting peer credentials "
                                     "without evaluation against CA.",
                                     (void *)nw_socket);
-                                complete(true);
+                                verification_successful = true;
+                                goto verification_done;
                             }
-
-                            CFErrorRef error = NULL;
-                            int error_code = AWS_ERROR_SUCCESS;
-                            SecTrustRef trust_ref = sec_trust_copy_ref(trust);
-                            OSStatus status;
-                            bool verification_successful = false;
 
                             /* Use root ca if provided. */
                             if (transport_ctx->ca_cert != NULL) {
@@ -349,7 +350,6 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                         "OSStatus: %d",
                                         (void *)nw_socket,
                                         (int)status);
-                                    goto verification_done;
                                 }
                             }
 
@@ -424,8 +424,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             }
                             // DEBUG WIP trigger the on_negotiation_result func w/error here?
                             if (nw_socket->on_tls_negotiation_result_fn) {
-                                nw_socket->on_tls_negotiation_result_fn(
-                                    NULL, NULL, error_code, nw_socket->on_tls_negotiation_result_user_data);
+                                // nw_socket->on_tls_negotiation_result_fn(
+                                //     NULL, NULL, error_code, nw_socket->on_tls_negotiation_result_user_data);
                             }
                             complete(verification_successful);
                           },
@@ -768,7 +768,7 @@ static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code, 
         }
         aws_ref_count_acquire(&nw_socket->ref_count);
 
-        aws_task_init(task, s_process_readable_task, args, "readableTask");
+        aws_task_init(task, s_process_readable_task, args, "process_readable");
 
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
@@ -808,7 +808,7 @@ static void s_schedule_on_connection_result(struct nw_socket *nw_socket, int err
         args->allocator = socket->allocator;
         args->error_code = error_code;
         aws_ref_count_acquire(&nw_socket->ref_count);
-        aws_task_init(task, s_process_connection_result_task, args, "connectionResultTask");
+        aws_task_init(task, s_process_connection_result_task, args, "on_connection_result");
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
@@ -920,7 +920,7 @@ static void s_schedule_on_listener_success(
         aws_ref_count_acquire(&nw_socket->ref_count);
         nw_retain(new_connection);
 
-        aws_task_init(task, s_process_listener_success_task, args, "listenerSuccessTask");
+        aws_task_init(task, s_process_listener_success_task, args, "on_listener_success");
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
     aws_mutex_unlock(&nw_socket->synced_data.lock);
@@ -957,8 +957,12 @@ static void s_schedule_cancel_task(struct nw_socket *nw_socket, struct aws_task 
         args->allocator = nw_socket->allocator;
         args->task_to_cancel = task_to_cancel;
         aws_ref_count_acquire(&nw_socket->ref_count);
-        aws_task_init(task, s_process_cancel_task, args, "cancelTask");
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: Schedule cancel %s task", (void *)task_to_cancel, task->type_tag);
+        const char *prefix = "Cancel-";
+        size_t buffer_size = strlen(prefix) + strlen(task_to_cancel->type_tag) + 1;
+        char prefixed_tag[buffer_size];
+        snprintf(prefixed_tag, buffer_size, "%s%s", prefix, task_to_cancel->type_tag);
+        aws_task_init(task, s_process_cancel_task, args, prefixed_tag);
+        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: Schedule %s task", (void *)task_to_cancel, task->type_tag);
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
@@ -1004,7 +1008,7 @@ static void s_schedule_write_fn(
     args->user_data = user_data;
     args->bytes_written = bytes_written;
     aws_ref_count_acquire(&nw_socket->ref_count);
-    aws_task_init(task, s_process_write_task, args, "writtenTask");
+    aws_task_init(task, s_process_write_task, args, "process_write");
     aws_mutex_lock(&nw_socket->synced_data.lock);
     if (nw_socket->synced_data.event_loop) {
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
@@ -1214,7 +1218,7 @@ static int s_socket_connect_fn(
         &nw_socket->timeout_args->task,
         s_handle_socket_timeout,
         nw_socket->timeout_args,
-        "NWSocketConnectionTimeoutTask");
+        "NW_socket_connection_timeout");
 
     /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
      * was disconnected etc .... */
@@ -1569,7 +1573,7 @@ static int s_socket_start_accept_fn(
               // acquire ref count for the task
               aws_ref_count_acquire(&nw_socket->ref_count);
 
-              aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
+              aws_task_init(task, s_process_set_listener_endpoint_task, args, "set_listener_endpoint");
               aws_event_loop_schedule_task_now(socket->event_loop, task);
 
           } else if (state == nw_listener_state_cancelled) {
