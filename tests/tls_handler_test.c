@@ -1204,7 +1204,7 @@ AWS_TEST_CASE(
 AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls10_host_name, "tls-v1-0.badssl.com");
 
 static void s_raise_tls_version_to_11(struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1);
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
 }
 
 static int s_tls_client_channel_negotiation_error_legacy_crypto_tls10_fn(struct aws_allocator *allocator, void *ctx) {
