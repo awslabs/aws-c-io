@@ -242,9 +242,9 @@ static void s_setup_tcp_options_local(nw_protocol_options_t tcp_options, const s
     (void)options;
 }
 // DEBUG WIP
-static void s_setup_tls_options_local(nw_protocol_options_t tls_options) {
-    (void)tls_options;
-}
+// static void s_setup_tls_options_local(nw_protocol_options_t tls_options) {
+//     (void)tls_options;
+// }
 
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
 
