@@ -499,10 +499,15 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
                 goto error;
             }
             return;
+        } else {
+            s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
         }
-#endif /* !AWS_USE_SECITEM */
-
+#else /* !AWS_USE_SECITEM above */
+        /* if AWS_USE_SECITEM we always call the setup callback */
         s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
+
+#endif /* AWS_USE_SECITEM */
+
         return;
     }
 
@@ -1371,6 +1376,9 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     } else {
         s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
     }
+#else
+    /* if AWS_USE_SECITEM we always call the setup callback */
+    s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
 #endif /* !AWS_USE_SECITEM */
     return;
 
