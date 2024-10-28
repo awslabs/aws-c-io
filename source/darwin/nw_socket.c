@@ -236,6 +236,16 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
     }
 }
 
+// DEBUG WIP
+static void s_setup_tcp_options_local(nw_protocol_options_t tcp_options, const struct aws_socket_options *options) {
+    (void)tcp_options;
+    (void)options;
+}
+// DEBUG WIP
+static void s_setup_tls_options_local(nw_protocol_options_t tls_options) {
+    (void)tls_options;
+}
+
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
 
     /* If we already have parameters set, release them before re-establishing new parameters */
@@ -246,8 +256,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
 
     if (options->type == AWS_SOCKET_STREAM) {
         if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
-#    ifdef AWS_USE_SECITEM
 
+#    ifdef AWS_USE_SECITEM
             /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
             if (nw_socket->tls_ctx) {
                 struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
@@ -449,8 +459,15 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                       s_setup_tcp_options(tcp_options, options);
                     });
             }
-#    else  // !AWS_USE_SECITEM
+#    else  // Above block is AWS_USE_SECITEM. Below bloc is !AWS_USE_SECITEM
            // TLS options are not set and the TLS options block should be disabled.
+           // nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+           //     // TLS options Block disabled
+           //     NW_PARAMETERS_DISABLE_PROTOCOL,
+           //     // TCP options Block
+           //     ^(nw_protocol_options_t tcp_options) {
+           //       s_setup_tcp_options(tcp_options, options);
+           //     });
             nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                 // TLS options Block disabled
                 NW_PARAMETERS_DISABLE_PROTOCOL,
@@ -459,21 +476,42 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                   s_setup_tcp_options(tcp_options, options);
                 });
 #    endif // AWS_USE_SECITEM
+
         } else if (options->domain == AWS_SOCKET_LOCAL) {
+            // DEBUG WIP issues with local sockets and potential permissions
+            /*
+                        nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                            // TLS options Block disabled
+                            ^(nw_protocol_options_t tls_options) {
+                              s_setup_tls_options_local(tls_options);
+                            },
+                            // TCP options Block
+                            ^(nw_protocol_options_t tcp_options) {
+                              s_setup_tcp_options_local(tcp_options, options);
+                            });
+                            */
+
             nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                 NW_PARAMETERS_DISABLE_PROTOCOL,
                 // TCP options Block
-                ^(nw_protocol_options_t tcp_options) {
-                  s_setup_tcp_options(tcp_options, options);
+                ^(nw_protocol_options_t tcp_options) { // try setup with nothing inside.
+                  s_setup_tcp_options_local(tcp_options, options);
                 });
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->nw_parameters = nw_parameters_create_secure_udp(
             NW_PARAMETERS_DISABLE_PROTOCOL,
             // TCP options Block
-            ^(nw_protocol_options_t tcp_options) {
-              s_setup_tcp_options(tcp_options, options);
+            ^(nw_protocol_options_t tcp_options) { // try setup with nothing inside. DEBUG WIP
+              s_setup_tcp_options_local(tcp_options, options);
             });
+
+        // DEBUG WIP
+        //  NW_PARAMETERS_DEFAULT_CONFIGURATION); // DEBUG WIP local should not have tcp options set for Apple
+
+        // ^(nw_protocol_options_t tcp_options) {
+        //   s_setup_tcp_options(tcp_options, options);
+        // });
     }
 
     if (!nw_socket->nw_parameters) {

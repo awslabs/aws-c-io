@@ -225,8 +225,8 @@ if(NOT BYO_CRYPTO)
     # to be a way to disable it
     if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
         # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
-        add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
         if(NOT AWS_USE_SECITEM)
+        add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
         # SecItem does not allow use of depricated TLS versions
         add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
         add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
@@ -266,7 +266,6 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_channel_echo_and_backpressure_test)
     add_net_test_case(tls_channel_shutdown_with_cache_test)
     add_net_test_case(tls_channel_shutdown_with_cache_window_update_after_shutdown_test)
-    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
     add_net_test_case(tls_client_channel_negotiation_success)
     add_net_test_case(tls_server_multiple_connections)
     add_net_test_case(tls_server_hangup_during_negotiation)
@@ -276,6 +275,13 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
     add_net_test_case(test_pkcs8_import)
+if(NOT AWS_USE_SECITEM)
+    # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
+    # further up the channel. Apple Network Framework's connection handles both the socket connection as well
+    # as the TLS handshake within the same create connection call without external notification that the socket
+    # has succeeded prior to the TLS negotiation. As such, this test will not work for Secitem.
+    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
+endif()
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)

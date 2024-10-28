@@ -675,6 +675,13 @@ int aws_secitem_import_cert_and_key(
             key_type = kSecAttrKeyTypeEC;
             break;
 
+            // DEBUG WIP
+        case AWS_PEM_TYPE_PRIVATE_PKCS8:
+            // DEBUG not working with SecItem
+            key_type = kSecAttrKeyTypeRSA;
+            break;
+
+        case AWS_PEM_TYPE_UNKNOWN:
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Unsupported private key format.");
             result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -726,6 +733,21 @@ int aws_secitem_import_cert_and_key(
     CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
     key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
 
+    // DEBUG WIP
+    if (!key_ref) {
+        CFStringRef error_desc = CFErrorCopyDescription(error);
+        char error_c_string[256];
+        if (CFStringGetCString(error_desc, error_c_string, sizeof(error_c_string), kCFStringEncodingUTF8)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key with error: %s", error_c_string);
+        } else {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key");
+        }
+
+        CFRelease(error_desc);
+        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
     // Get the hash of the public key stored within the private key
     key_copied_attributes = SecKeyCopyAttributes(key_ref);
     // application_label_ref gets released when key_copied_attributes is released.
@@ -733,6 +755,7 @@ int aws_secitem_import_cert_and_key(
     if (!application_label_ref) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key application label.");
         result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
     }
 
     key_label_ref = CFStringCreateWithBytes(
