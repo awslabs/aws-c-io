@@ -274,8 +274,12 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
-    add_net_test_case(test_pkcs8_import)
 if(NOT AWS_USE_SECITEM)
+    # PKCS8 is not supported on iOS. We will not support PKCS8 on macOS using SecItem.
+    # PKCS8 support for SecItem can be added in the future but it will require macOS
+    # specific branching of logic and import of the key into the keychain.
+    add_net_test_case(test_pkcs8_import)
+
     # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
     # further up the channel. Apple Network Framework's connection handles both the socket connection as well
     # as the TLS handshake within the same create connection call without external notification that the socket

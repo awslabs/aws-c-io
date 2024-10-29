@@ -677,8 +677,14 @@ int aws_secitem_import_cert_and_key(
 
             // DEBUG WIP
         case AWS_PEM_TYPE_PRIVATE_PKCS8:
-            // DEBUG not working with SecItem
+            /* PKCS8 is not supported on iOS and currently is NOT supported by us on macOS
+             * PKCS8 support for macOS using SecItem can be added later for macOS only  but
+             * will require a different import strategy than the currently shared one.
+             */
             key_type = kSecAttrKeyTypeRSA;
+            AWS_LOG_ERROR(AWS_LS_IO_PKI, "The PKCS8 private key format is currently unsupported for use with SecItem.");
+            result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto done;
             break;
 
         case AWS_PEM_TYPE_UNKNOWN:
@@ -734,19 +740,19 @@ int aws_secitem_import_cert_and_key(
     key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
 
     // DEBUG WIP
-    if (!key_ref) {
-        CFStringRef error_desc = CFErrorCopyDescription(error);
-        char error_c_string[256];
-        if (CFStringGetCString(error_desc, error_c_string, sizeof(error_c_string), kCFStringEncodingUTF8)) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key with error: %s", error_c_string);
-        } else {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key");
-        }
+    // if (!key_ref) {
+    //     CFStringRef error_desc = CFErrorCopyDescription(error);
+    //     char error_c_string[256];
+    //     if (CFStringGetCString(error_desc, error_c_string, sizeof(error_c_string), kCFStringEncodingUTF8)) {
+    //         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key with error: %s", error_c_string);
+    //     } else {
+    //         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key");
+    //     }
 
-        CFRelease(error_desc);
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
+    //     CFRelease(error_desc);
+    //     result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+    //     goto done;
+    // }
 
     // Get the hash of the public key stored within the private key
     key_copied_attributes = SecKeyCopyAttributes(key_ref);
