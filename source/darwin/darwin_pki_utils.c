@@ -682,7 +682,8 @@ int aws_secitem_import_cert_and_key(
              * will require a different import strategy than the currently shared one.
              */
             key_type = kSecAttrKeyTypeRSA;
-            AWS_LOG_ERROR(AWS_LS_IO_PKI, "The PKCS8 private key format is currently unsupported for use with SecItem.");
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "The PKCS8 private key format is currently unsupported for use with SecItem.");
             result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             goto done;
             break;
