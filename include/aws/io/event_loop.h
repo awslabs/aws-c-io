@@ -16,19 +16,59 @@ struct aws_task;
 
 typedef void(aws_elg_shutdown_completion_callback)(void *);
 
+/**
+ * Configuration for a callback to invoke when an event loop group has been completely
+ * cleaned up, which includes destroying any managed threads.
+ */
 struct aws_event_loop_group_shutdown_options {
+
+    /**
+     * Function to invoke when the event loop group is fully destroyed.
+     */
     aws_elg_shutdown_completion_callback *shutdown_callback_fn;
+
+    /**
+     * User data to invoke the shutdown callback with.
+     */
     void *shutdown_callback_user_data;
 };
 
+/**
+ * Configuration to pin an event loop group to a particular CPU group
+ */
 struct aws_event_loop_group_pin_options {
+
+    /**
+     * CPU group id that threads in this event loop group should be bound to
+     */
     uint16_t cpu_group;
 };
 
+/**
+ * Event loop group configuration options
+ */
 struct aws_event_loop_group_options {
+
+    /**
+     * How many event loops that event loop group should contain.  For most group types, this implies
+     * the creation and management of an analagous amount of managed threads
+     */
     uint16_t loop_count;
+
+    /**
+     * Clock function that all event loops should use.  If left null, the system's high resolution
+     * clock will be used.  Useful for injection mock time implementations when testing.
+     */
     aws_io_clock_fn *clock_override;
+
+    /**
+     * Optional callback to invoke when the event loop group finishes destruction.
+     */
     struct aws_shutdown_callback_options *shutdown_options;
+
+    /**
+     * Optional configuration to control how the event loop group's threads bind to CPU groups
+     */
     struct aws_event_loop_group_pin_options *pin_options;
 };
 
@@ -80,6 +120,7 @@ AWS_IO_API
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
 /**
+ * Creation function for event loop groups.
  */
 AWS_IO_API
 struct aws_event_loop_group *aws_event_loop_group_new(
@@ -101,9 +142,15 @@ struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_
 AWS_IO_API
 void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
 
+/**
+ * Returns the event loop at a particular index.  If the index is out of bounds, null is returned.
+ */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
 
+/**
+ * Gets the number of event loops managed by an event loop group.
+ */
 AWS_IO_API
 size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group);
 
@@ -116,6 +163,7 @@ AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
 
 AWS_EXTERN_C_END
+
 AWS_POP_SANE_WARNING_LEVEL
 
 #endif /* AWS_IO_EVENT_LOOP_H */
