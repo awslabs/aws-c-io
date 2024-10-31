@@ -58,10 +58,10 @@ struct aws_overlapped {
 };
 
 typedef void(aws_event_loop_on_event_fn)(
-        struct aws_event_loop *event_loop,
-        struct aws_io_handle *handle,
-        int events,
-        void *user_data);
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    void *user_data);
 
 enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
@@ -81,16 +81,15 @@ struct aws_event_loop_vtable {
     void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
     int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
     int (*subscribe_to_io_events)(
-            struct aws_event_loop *event_loop,
-            struct aws_io_handle *handle,
-            int events,
-            aws_event_loop_on_event_fn *on_event,
-            void *user_data);
+        struct aws_event_loop *event_loop,
+        struct aws_io_handle *handle,
+        int events,
+        aws_event_loop_on_event_fn *on_event,
+        void *user_data);
     int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
     void (*free_io_event_resources)(void *user_data);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
-
 
 struct aws_event_loop {
     struct aws_event_loop_vtable *vtable;
@@ -118,10 +117,9 @@ struct aws_event_loop_options {
     struct aws_thread_options *thread_options;
 };
 
-typedef struct aws_event_loop *(aws_new_event_loop_fn)(
-        struct aws_allocator *alloc,
-        const struct aws_event_loop_options *options,
-        void *new_loop_user_data);
+typedef struct aws_event_loop *(aws_new_event_loop_fn)(struct aws_allocator *alloc,
+                                                       const struct aws_event_loop_options *options,
+                                                       void *new_loop_user_data);
 
 struct aws_event_loop_group {
     struct aws_allocator *allocator;
@@ -139,9 +137,9 @@ AWS_EXTERN_C_BEGIN
  */
 AWS_IO_API
 void aws_overlapped_init(
-        struct aws_overlapped *overlapped,
-        aws_event_loop_on_completion_fn *on_completion,
-        void *user_data);
+    struct aws_overlapped *overlapped,
+    aws_event_loop_on_completion_fn *on_completion,
+    void *user_data);
 
 /**
  * Prepares aws_overlapped for re-use without changing the assigned aws_event_loop_on_completion_fn.
@@ -182,14 +180,13 @@ int aws_event_loop_connect_handle_to_io_completion_port(
  */
 AWS_IO_API
 int aws_event_loop_subscribe_to_io_events(
-        struct aws_event_loop *event_loop,
-        struct aws_io_handle *handle,
-        int events,
-        aws_event_loop_on_event_fn *on_event,
-        void *user_data);
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event_fn *on_event,
+    void *user_data);
 
 #endif /* AWS_USE_IO_COMPLETION_PORTS */
-
 
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
@@ -203,8 +200,8 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_default_with_options(
-        struct aws_allocator *alloc,
-        const struct aws_event_loop_options *options);
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
@@ -236,9 +233,9 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 int aws_event_loop_fetch_local_object(
-        struct aws_event_loop *event_loop,
-        void *key,
-        struct aws_event_loop_local_object *obj);
+    struct aws_event_loop *event_loop,
+    void *key,
+    struct aws_event_loop_local_object *obj);
 
 /**
  * Puts an item object the event-loop's data store. Key will be taken as the memory address of the memory pointed to by
@@ -256,9 +253,9 @@ int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aw
  */
 AWS_IO_API
 int aws_event_loop_remove_local_object(
-        struct aws_event_loop *event_loop,
-        void *key,
-        struct aws_event_loop_local_object *removed_obj);
+    struct aws_event_loop *event_loop,
+    void *key,
+    struct aws_event_loop_local_object *removed_obj);
 
 /**
  * Triggers the running of the event loop. This function must not block. The event loop is not active until this
@@ -329,6 +326,13 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
  */
 AWS_IO_API
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_new_internal(
+    struct aws_allocator *allocator,
+    const struct aws_event_loop_group_options *options,
+    aws_new_event_loop_fn *new_loop_fn,
+    void *new_loop_user_data);
 
 AWS_EXTERN_C_END
 
