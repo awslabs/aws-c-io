@@ -317,6 +317,14 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                        * value and/or in case we decide to remove the verify block in the future. */
                       sec_protocol_options_set_peer_authentication_required(sec_options, transport_ctx->verify_peer);
 
+                      if (nw_socket->host_name != NULL) {
+                          sec_protocol_options_set_tls_server_name(
+                              sec_options, (const char *)nw_socket->host_name->bytes);
+                      }
+
+                      // DEBUG WIP
+                      // We need to set alpn here. might be able to use s_set_protocols()
+
                       /* We handle the verification of the remote end here. */
                       sec_protocol_options_set_verify_block(
                           sec_options,
@@ -326,6 +334,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             (void)metadata;
 
                             CFErrorRef error = NULL;
+                            SecPolicyRef policy = NULL;
                             int error_code = AWS_ERROR_SUCCESS;
                             SecTrustRef trust_ref = sec_trust_copy_ref(trust);
                             OSStatus status;
@@ -336,14 +345,28 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                              * run instead. We must manually skip the verification at this point if verify_peer is
                              * false. */
                             if (!transport_ctx->verify_peer) {
-                                AWS_LOGF_DEBUG(
+                                AWS_LOGF_WARN(
                                     AWS_LS_IO_TLS,
-                                    "id=%p: nw_socket instructed not to verify peer. Accepting peer credentials "
-                                    "without evaluation against CA.",
+                                    "id=%p: x.509 validation has been disabled. "
+                                    "If this is not running in a test environment, this is likely a security "
+                                    "vulnerability.",
                                     (void *)nw_socket);
                                 verification_successful = true;
                                 goto verification_done;
                             }
+
+                            /* Insure we are using built-in anchor certificates during validation */
+                            // status = SecTrustSetAnchorCertificatesOnly(trust_ref, false);
+                            // if (status != errSecSuccess) {
+                            //     AWS_LOGF_DEBUG(
+                            //         AWS_LS_IO_TLS,
+                            //         "id=%p: nw_socket verify block SecTrustSetAnchorCertificatesOnly failed with "
+                            //         "OSStatus: %d",
+                            //         (void *)nw_socket,
+                            //         (int)status);
+                            //     error_code = aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                            //     goto verification_done;
+                            // }
 
                             /* Use root ca if provided. */
                             if (transport_ctx->ca_cert != NULL) {
@@ -354,28 +377,49 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                 // We add the ca certificate as a anchor certificate in the trust_ref
                                 status = SecTrustSetAnchorCertificates(trust_ref, transport_ctx->ca_cert);
                                 if (status != errSecSuccess) {
-                                    AWS_LOGF_DEBUG(
+                                    AWS_LOGF_ERROR(
                                         AWS_LS_IO_TLS,
                                         "id=%p: nw_socket verify block SecTrustSetAnchorCertificates failed with "
                                         "OSStatus: %d",
                                         (void *)nw_socket,
                                         (int)status);
+                                    error_code = aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                                    goto verification_done;
                                 }
                             }
 
                             /* Add the host name to be checked against the available Certificate Authorities */
                             if (nw_socket->host_name != NULL) {
-                                SecPolicyRef policy = NULL;
-                                CFStringRef server_name = CFStringCreateWithBytes(
+                                /*// DEBUG WIP LOG
+                                AWS_LOGF_DEBUG(
+                                    AWS_LS_IO_TLS,
+                                    "nw_socket->host_name: " PRInSTR,
+                                    AWS_BYTE_CURSOR_PRI(aws_byte_cursor_from_string(nw_socket->host_name)));
+                                    */
+                                // CFStringRef server_name = CFStringCreateWithBytes(
+                                //     transport_ctx->wrapped_allocator,
+                                //     nw_socket->host_name->bytes,
+                                //     (CFIndex)nw_socket->host_name->len,
+                                //     kCFStringEncodingUTF8,
+                                //     false);
+                                CFStringRef server_name = CFStringCreateWithCString(
                                     transport_ctx->wrapped_allocator,
-                                    nw_socket->host_name->bytes,
-                                    (CFIndex)nw_socket->host_name->len,
-                                    kCFStringEncodingUTF8,
-                                    false);
+                                    aws_string_c_str(nw_socket->host_name),
+                                    kCFStringEncodingUTF8);
                                 policy = SecPolicyCreateSSL(true, server_name);
                                 CFRelease(server_name);
-                                status = SecTrustSetPolicies(trust_ref, policy);
-                                CFRelease(policy);
+                            } else {
+                                policy = SecPolicyCreateBasicX509();
+                            }
+                            status = SecTrustSetPolicies(trust_ref, policy);
+                            if (status != errSecSuccess) {
+                                AWS_LOGF_ERROR(
+                                    AWS_LS_IO_TLS,
+                                    "id=%p: Failed to set trust policy %d\n",
+                                    (void *)nw_socket,
+                                    (int)status);
+                                error_code = aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                                goto verification_done;
                             }
 
                             SecTrustResultType trust_result;
@@ -427,6 +471,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             }
 
                         verification_done:
+                            CFRelease(policy);
                             CFRelease(trust_ref);
                             if (error) {
                                 error_code = CFErrorGetCode(error);
@@ -1103,36 +1148,6 @@ static int s_socket_connect_fn(
         nw_socket->on_tls_negotiation_result_fn = tls_connection_context.user_on_negotiation_result;
         nw_socket->on_tls_negotiation_result_user_data = tls_connection_context.user_on_negotiation_result_user_data;
     }
-    /*
-        struct aws_tls_connection_options *tls_connection_options = NULL;
-        if (retrieve_tls_options != NULL) {
-            retrieve_tls_options(&tls_connection_options, user_data);
-            if (tls_connection_options->server_name) {
-                if (nw_socket->host_name != NULL) {
-                    aws_string_destroy(nw_socket->host_name);
-                    nw_socket->host_name = NULL;
-                }
-                nw_socket->host_name = aws_string_new_from_string(
-                    tls_connection_options->server_name->allocator, tls_connection_options->server_name);
-                if (nw_socket->host_name == NULL) {
-                    return AWS_OP_ERR;
-                }
-            }
-
-            if (tls_connection_options->ctx) {
-                if (nw_socket->tls_ctx) {
-                    aws_tls_ctx_release(nw_socket->tls_ctx);
-                    nw_socket->tls_ctx = NULL;
-                }
-                nw_socket->tls_ctx = tls_connection_options->ctx;
-                aws_tls_ctx_acquire(nw_socket->tls_ctx);
-            }
-
-            if (tls_connection_options->on_negotiation_result) {
-                nw_socket->on_tls_negotiation_result_fn = tls_connection_options->on_negotiation_result;
-            }
-        }
-        */
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
     nw_socket->synced_data.event_loop = event_loop;
@@ -1185,7 +1200,6 @@ static int s_socket_connect_fn(
         address.sock_addr_types.un_addr.sun_family = AF_UNIX;
         strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
         address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
-
     } else {
         AWS_ASSERT(0);
         return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
