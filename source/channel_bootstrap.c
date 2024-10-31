@@ -501,10 +501,12 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
             return;
 #endif
 #if defined(AWS_USE_SECITEM)
-            if (connection_args->channel_data.user_on_negotiation_result) {
-                connection_args->channel_data.user_on_negotiation_result(
-                    socket_channel_handler, socket_slot, AWS_OP_SUCCESS, connection_args->channel_data.tls_user_data);
-            }
+            // if (connection_args->channel_data.user_on_negotiation_result) {
+            //     connection_args->channel_data.user_on_negotiation_result(
+            //         socket_channel_handler, socket_slot, AWS_OP_SUCCESS,
+            //         connection_args->channel_data.tls_user_data);
+            // }
+            s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
 #endif
         } else {
             s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
