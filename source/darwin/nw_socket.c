@@ -193,6 +193,7 @@ struct nw_socket {
     aws_tls_on_negotiation_result_fn *on_tls_negotiation_result_fn;
     void *on_tls_negotiation_result_user_data;
     struct aws_string *host_name;
+    struct aws_string *alpn_list;
     struct aws_tls_ctx *tls_ctx;
 
     struct {
@@ -322,8 +323,46 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                               sec_options, (const char *)nw_socket->host_name->bytes);
                       }
 
-                      // DEBUG WIP
-                      // We need to set alpn here. might be able to use s_set_protocols()
+                      // Add alpn protocols
+                      if (nw_socket->alpn_list != NULL) {
+                          AWS_LOGF_DEBUG(
+                              AWS_LS_IO_TLS,
+                              "id=%p: Setting ALPN list %s",
+                              (void *)nw_socket,
+                              aws_string_c_str(nw_socket->alpn_list));
+
+                          struct aws_byte_cursor alpn_data = aws_byte_cursor_from_string(nw_socket->alpn_list);
+                          struct aws_array_list alpn_list_array;
+                          if (aws_array_list_init_dynamic(
+                                  &alpn_list_array, nw_socket->allocator, 2, sizeof(struct aws_byte_cursor))) {
+                              AWS_LOGF_ERROR(
+                                  AWS_LS_IO_TLS,
+                                  "id=%p: Failed to setup array list for ALPN setup.",
+                                  (void *)nw_socket);
+                              return;
+                          }
+
+                          if (aws_byte_cursor_split_on_char(&alpn_data, ';', &alpn_list_array)) {
+                              AWS_LOGF_ERROR(
+                                  AWS_LS_IO_TLS,
+                                  "id=%p: Failed to split alpn_list on character ';'.",
+                                  (void *)nw_socket);
+                              return;
+                          }
+
+                          for (size_t i = 0; i < aws_array_list_length(&alpn_list_array); ++i) {
+                              struct aws_byte_cursor protocol_cursor;
+                              aws_array_list_get_at(&alpn_list_array, &protocol_cursor, i);
+
+                              struct aws_string *protocol_string =
+                                  aws_string_new_from_cursor(nw_socket->allocator, &protocol_cursor);
+
+                              sec_protocol_options_add_tls_application_protocol(
+                                  sec_options, aws_string_c_str(protocol_string));
+                              aws_string_destroy(protocol_string);
+                          }
+                          aws_array_list_clean_up(&alpn_list_array);
+                      }
 
                       /* We handle the verification of the remote end here. */
                       sec_protocol_options_set_verify_block(
@@ -686,6 +725,10 @@ static void s_socket_impl_destroy(void *sock_ptr) {
 
     if (nw_socket->host_name) {
         aws_string_destroy(nw_socket->host_name);
+    }
+
+    if (nw_socket->alpn_list) {
+        aws_string_destroy(nw_socket->alpn_list);
     }
 
     if (nw_socket->tls_ctx) {
@@ -1124,6 +1167,39 @@ static int s_socket_connect_fn(
     AWS_ZERO_STRUCT(tls_connection_context);
     if (retrieve_tls_options != NULL) {
         retrieve_tls_options(&tls_connection_context, user_data);
+
+        if (tls_connection_context.host_name != NULL) {
+            if (nw_socket->host_name != NULL) {
+                aws_string_destroy(nw_socket->host_name);
+                nw_socket->host_name = NULL;
+            }
+            nw_socket->host_name = aws_string_new_from_string(
+                tls_connection_context.host_name->allocator, tls_connection_context.host_name);
+            if (nw_socket->host_name == NULL) {
+                return AWS_OP_ERR;
+            }
+        }
+        if (tls_connection_context.tls_ctx != NULL) {
+            struct aws_string *alpn_list = NULL;
+            struct secure_transport_ctx *transport_ctx = tls_connection_context.tls_ctx->impl;
+            if (tls_connection_context.alpn_list != NULL) {
+                alpn_list = tls_connection_context.alpn_list;
+            } else if (transport_ctx->alpn_list != NULL) {
+                alpn_list = transport_ctx->alpn_list;
+            }
+
+            if (alpn_list != NULL) {
+                if (nw_socket->alpn_list != NULL) {
+                    aws_string_destroy(nw_socket->alpn_list);
+                    nw_socket->alpn_list = NULL;
+                }
+                nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
+                if (nw_socket->alpn_list == NULL) {
+                    return AWS_OP_ERR;
+                }
+            }
+        }
+
         if (tls_connection_context.host_name != NULL) {
             if (nw_socket->host_name != NULL) {
                 aws_string_destroy(nw_socket->host_name);
