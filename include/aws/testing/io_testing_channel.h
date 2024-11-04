@@ -76,10 +76,12 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
 };
 
 static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator, aws_io_clock_fn clock) {
-    struct aws_event_loop *event_loop = (struct aws_event_loop *)aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
+    struct aws_event_loop *event_loop =
+        (struct aws_event_loop *)aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
     aws_event_loop_init_base(event_loop, allocator, clock);
 
-    struct testing_loop *testing_loop = (struct testing_loop *)aws_mem_calloc(allocator, 1, sizeof(struct testing_loop));
+    struct testing_loop *testing_loop =
+        (struct testing_loop *)aws_mem_calloc(allocator, 1, sizeof(struct testing_loop));
     aws_task_scheduler_init(&testing_loop->scheduler, allocator);
     testing_loop->mock_on_callers_thread = true;
     event_loop->impl_data = testing_loop;
@@ -412,7 +414,8 @@ static inline int testing_channel_init(
     ASSERT_TRUE(testing->channel_setup_completed);
 
     testing->left_handler_slot = aws_channel_slot_new(testing->channel);
-    struct aws_channel_handler *handler = (struct aws_channel_handler *)s_new_testing_channel_handler(allocator, 16 * 1024);
+    struct aws_channel_handler *handler =
+        (struct aws_channel_handler *)s_new_testing_channel_handler(allocator, 16 * 1024);
     testing->left_handler_impl = (struct testing_channel_handler *)handler->impl;
     ASSERT_SUCCESS(aws_channel_slot_set_handler(testing->left_handler_slot, handler));
 
