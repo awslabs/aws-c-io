@@ -255,7 +255,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 void aws_tls_clean_up_static_state(void) {
     /* only clean up s2n if we were the ones that initialized it */
     if (!s_s2n_initialized_externally) {
-        s2n_cleanup();
+        s2n_cleanup_final();
     }
 }
 
