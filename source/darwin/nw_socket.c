@@ -376,7 +376,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             CFErrorRef error = NULL;
                             SecPolicyRef policy = NULL;
                             int error_code = AWS_ERROR_SUCCESS;
-                            SecTrustRef trust_ref = sec_trust_copy_ref(trust);
+                            SecTrustRef trust_ref = NULL;
                             OSStatus status;
                             bool verification_successful = false;
 
@@ -394,6 +394,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                 verification_successful = true;
                                 goto verification_done;
                             }
+
+                            trust_ref = sec_trust_copy_ref(trust);
 
                             /* Insure we are using built-in anchor certificates during validation */
                             // status = SecTrustSetAnchorCertificatesOnly(trust_ref, false);
@@ -511,8 +513,12 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                             }
 
                         verification_done:
-                            CFRelease(policy);
-                            CFRelease(trust_ref);
+                            if (policy) {
+                                CFRelease(policy);
+                            }
+                            if (trust_ref) {
+                                CFRelease(trust_ref);
+                            }
                             if (error) {
                                 error_code = CFErrorGetCode(error);
                                 error_code = s_determine_socket_error(error_code);
@@ -521,10 +527,11 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                                 CFRelease(error);
                             }
                             // DEBUG WIP trigger the on_negotiation_result func w/error here?
-                            if (nw_socket->on_tls_negotiation_result_fn) {
-                                // nw_socket->on_tls_negotiation_result_fn(
-                                //     NULL, NULL, error_code, nw_socket->on_tls_negotiation_result_user_data);
-                            }
+                            // We may be able to remove on_tls_negotiation_result_fn from nw_socket
+                            // if (nw_socket->on_tls_negotiation_result_fn) {
+                            // nw_socket->on_tls_negotiation_result_fn(
+                            //     NULL, NULL, error_code, nw_socket->on_tls_negotiation_result_user_data);
+                            // }
                             complete(verification_successful);
                           },
                           dispatch_loop->dispatch_queue);
