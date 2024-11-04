@@ -9,6 +9,8 @@
 #include <aws/io/private/aws_apple_network_framework.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
+#include <aws/io/socket.h>
+#include <aws/io/socket_channel_handler.h>
 #include <aws/io/statistics.h>
 
 #include <aws/io/logging.h>
@@ -829,17 +831,37 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
+#if defined(AWS_USE_SECITEM)
+    /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection
+     * and an aws_channel using it does not have a TLS. The negotiated protocol is stored
+     * in the nw_socket and must be retrieved from the socket rather than a secure_transport_handler. */
+    const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
+    return socket->vtable->socket_get_protocol_fn(socket);
+#endif /* AWS_USE_SECITEM */
     struct secure_transport_handler *secure_transport_handler = handler->impl;
+
     return secure_transport_handler->protocol;
 }
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
+    struct aws_string *server_name = NULL;
+#if defined(AWS_USE_SECITEM)
+    /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection
+     * and an aws_channel using it does not have a TLS slot. The server_name is stored
+     * in the nw_socket and must be retrieved from the socket rather than a secure_transport_handler. */
+    const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
+    if (socket->vtable->socket_get_server_name_fn) {
+        server_name = socket->vtable->socket_get_server_name_fn(socket);
+    }
+#else
     struct secure_transport_handler *secure_transport_handler = handler->impl;
+    server_name = secure_transport_handler->server_name
+#endif
     const uint8_t *bytes = NULL;
     size_t len = 0;
-    if (secure_transport_handler->server_name) {
-        bytes = secure_transport_handler->server_name->bytes;
-        len = secure_transport_handler->server_name->len;
+    if (server_name) {
+        bytes = server_name->bytes;
+        len = server_name->len;
     }
     return aws_byte_buf_from_array(bytes, len);
 }

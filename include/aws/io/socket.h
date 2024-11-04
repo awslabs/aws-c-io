@@ -164,6 +164,8 @@ struct aws_socket_vtable {
         void *user_data);
     int (*socket_get_error_fn)(struct aws_socket *socket);
     bool (*socket_is_open_fn)(struct aws_socket *socket);
+    struct aws_byte_buf (*socket_get_protocol_fn)(const struct aws_socket *socket);
+    struct aws_string *(*socket_get_server_name_fn)(const struct aws_socket *socket);
 };
 
 struct aws_socket {

@@ -195,6 +195,7 @@ struct nw_socket {
     struct aws_string *host_name;
     struct aws_string *alpn_list;
     struct aws_tls_ctx *tls_ctx;
+    struct aws_byte_buf protocol_buf;
 
     struct {
         struct aws_mutex lock;
@@ -644,6 +645,8 @@ static int s_socket_write_fn(
     void *user_data);
 static int s_socket_get_error_fn(struct aws_socket *socket);
 static bool s_socket_is_open_fn(struct aws_socket *socket);
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket);
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket);
 
 static struct aws_socket_vtable s_vtable = {
     .socket_cleanup_fn = s_socket_cleanup_fn,
@@ -661,6 +664,8 @@ static struct aws_socket_vtable s_vtable = {
     .socket_write_fn = s_socket_write_fn,
     .socket_get_error_fn = s_socket_get_error_fn,
     .socket_is_open_fn = s_socket_is_open_fn,
+    .socket_get_protocol_fn = s_socket_get_protocol_fn,
+    .socket_get_server_name_fn = s_socket_get_server_name_fn,
 };
 
 static void s_schedule_next_read(struct nw_socket *socket);
@@ -730,6 +735,8 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     if (nw_socket->alpn_list) {
         aws_string_destroy(nw_socket->alpn_list);
     }
+
+    aws_byte_buf_clean_up(&nw_socket->protocol_buf);
 
     if (nw_socket->tls_ctx) {
         aws_tls_ctx_release(nw_socket->tls_ctx);
@@ -1391,6 +1398,35 @@ static int s_socket_connect_fn(
                   nw_socket->timeout_args->connection_succeed = true;
                   s_schedule_cancel_task(nw_socket, &nw_socket->timeout_args->task);
               }
+
+              /* Check and store protocol for connection */
+              if (nw_socket->tls_ctx) {
+                  nw_protocol_metadata_t metadata = nw_connection_copy_protocol_metadata(
+                      socket->io_handle.data.handle, nw_protocol_copy_tls_definition());
+                  if (metadata != NULL) {
+                      sec_protocol_metadata_t sec_metadata = (sec_protocol_metadata_t)metadata;
+
+                      const char *negotiated_protocol = sec_protocol_metadata_get_negotiated_protocol(sec_metadata);
+                      if (negotiated_protocol) {
+                          nw_socket->protocol_buf.allocator = nw_socket->allocator;
+                          size_t protocol_len = strlen(negotiated_protocol);
+                          nw_socket->protocol_buf.buffer =
+                              (uint8_t *)aws_mem_acquire(nw_socket->allocator, protocol_len);
+                          nw_socket->protocol_buf.len = protocol_len;
+                          nw_socket->protocol_buf.capacity = protocol_len;
+                          memcpy(nw_socket->protocol_buf.buffer, negotiated_protocol, protocol_len);
+
+                          AWS_LOGF_DEBUG(
+                              AWS_LS_IO_TLS,
+                              "id=%p handle=%p: ALPN protocol set to: '%s'",
+                              (void *)socket,
+                              socket->io_handle.data.handle,
+                              nw_socket->protocol_buf.buffer);
+                      }
+                      nw_release(metadata);
+                  }
+              }
+
               socket->state = CONNECTED_WRITE | CONNECTED_READ;
               nw_socket->setup_run = true;
               aws_ref_count_acquire(&nw_socket->ref_count);
@@ -2089,6 +2125,16 @@ static bool s_socket_is_open_fn(struct aws_socket *socket) {
     }
 
     return nw_socket->last_error == AWS_OP_SUCCESS;
+}
+
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket) {
+    struct nw_socket *nw_socket = socket->impl;
+    return nw_socket->protocol_buf;
+}
+
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket) {
+    struct nw_socket *nw_socket = socket->impl;
+    return nw_socket->host_name;
 }
 
 void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
