@@ -2355,7 +2355,6 @@ struct import_info {
 
 static void s_import_cert(void *ctx) {
     (void)ctx;
-#    if !defined(AWS_USE_SECITEM)
     struct import_info *import = ctx;
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&import->cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import->key_buf);
@@ -2368,7 +2367,6 @@ static void s_import_cert(void *ctx) {
     AWS_FATAL_ASSERT(import->tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
-#    endif /* !AWS_USE_SECITEM */
 }
 
 #    define NUM_PAIRS 2
