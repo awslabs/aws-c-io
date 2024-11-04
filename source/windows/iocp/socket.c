@@ -176,6 +176,8 @@ static int s_socket_write(
     void *user_data);
 static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket);
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket);
 
 static int s_stream_subscribe_to_read(
     struct aws_socket *socket,
@@ -287,8 +289,8 @@ static struct aws_socket_vtable s_socket_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
-    .socket_get_protocol_fn = NULL,
-    .socket_get_server_name_fn = NULL,
+    .socket_get_protocol_fn = s_socket_get_protocol_fn,
+    .socket_get_server_name_fn = s_socket_get_server_name_fn,
 };
 
 /* When socket is connected, any of the CONNECT_*** flags might be set.
@@ -3318,6 +3320,24 @@ static int s_socket_get_error(struct aws_socket *socket) {
 
 static bool s_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.handle != INVALID_HANDLE_VALUE;
+}
+
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket) {
+    struct aws_byte_buf empty;
+    AWS_ZERO_STRUCT(empty);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p socket_get_protocol_fn should only be called on a socket using secitem.",
+        (void *)socket);
+    return empty;
+}
+
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket) {
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p socket_get_server_name_fn should only be called on a socket using secitem.",
+        (void *)socket);
+    return NULL;
 }
 
 #ifdef AWS_USE_IO_COMPLETION_PORTS
