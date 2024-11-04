@@ -855,7 +855,7 @@ struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *hand
     }
 #else
     struct secure_transport_handler *secure_transport_handler = handler->impl;
-    server_name = secure_transport_handler->server_name
+    server_name = secure_transport_handler->server_name;
 #endif
     const uint8_t *bytes = NULL;
     size_t len = 0;
