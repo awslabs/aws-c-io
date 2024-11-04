@@ -492,12 +492,8 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
  * The TCP and TLS handshake are both handled by the network parameters and its options and verification
  * block. We do not need to set up a separate TLS slot in the channel for iOS. */
 #if defined(AWS_USE_SECITEM)
-            // if (connection_args->channel_data.user_on_negotiation_result) {
-            //     connection_args->channel_data.user_on_negotiation_result(
-            //         socket_channel_handler, socket_slot, AWS_OP_SUCCESS,
-            //         connection_args->channel_data.tls_user_data);
-            // }
-            s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
+            s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
+            return;
 #endif
 #if !defined(AWS_USE_SECITEM)
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
@@ -508,7 +504,6 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
             }
             return;
 #endif
-
         } else {
             s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
         }
@@ -622,19 +617,19 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         }
 
 #ifdef AWS_USE_SECITEM
-        // DEBUG WIP
+        // DEBUG WIP if we get a connection error originating from TLS, we need to cancel
+        // all other ongoing connection attempts related to this one because a socket was
+        // established and the TLS was what failed.
+        // DEBUG TODO on a TLS negotiation error, cancel all ongoing timeout tasks and wrap up
         if (aws_tls_error_code_check(error_code)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
                 "id=%p: Connection failed with TLS error_code %d.",
                 (void *)connection_args->bootstrap,
                 error_code);
-
-            printf("\n\nTLS ERROR DETECTED IN s_on_client_established\n\n");
             connection_args->tls_error_code = error_code;
             connection_args->channel_data.socket = socket;
         }
-// handle error_code that is TLS specific because socket was opened
 #endif /* AWS_USE_SECITEM */
 
         /* every connection task adds a ref, so every failure or cancel needs to dec one */
