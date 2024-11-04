@@ -190,8 +190,6 @@ struct nw_socket {
     struct nw_socket_timeout_args *timeout_args;
     aws_socket_on_connection_result_fn *on_connection_result_fn;
     void *connect_accept_user_data;
-    aws_tls_on_negotiation_result_fn *on_tls_negotiation_result_fn;
-    void *on_tls_negotiation_result_user_data;
     struct aws_string *host_name;
     struct aws_string *alpn_list;
     struct aws_tls_ctx *tls_ctx;
@@ -1234,9 +1232,6 @@ static int s_socket_connect_fn(
             nw_socket->tls_ctx = tls_connection_context.tls_ctx;
             aws_tls_ctx_acquire(nw_socket->tls_ctx);
         }
-
-        nw_socket->on_tls_negotiation_result_fn = tls_connection_context.user_on_negotiation_result;
-        nw_socket->on_tls_negotiation_result_user_data = tls_connection_context.user_on_negotiation_result_user_data;
     }
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
@@ -1418,10 +1413,11 @@ static int s_socket_connect_fn(
                           nw_socket->protocol_buf.allocator = nw_socket->allocator;
                           size_t protocol_len = strlen(negotiated_protocol);
                           nw_socket->protocol_buf.buffer =
-                              (uint8_t *)aws_mem_acquire(nw_socket->allocator, protocol_len);
+                              (uint8_t *)aws_mem_acquire(nw_socket->allocator, protocol_len + 1);
                           nw_socket->protocol_buf.len = protocol_len;
-                          nw_socket->protocol_buf.capacity = protocol_len;
+                          nw_socket->protocol_buf.capacity = protocol_len + 1;
                           memcpy(nw_socket->protocol_buf.buffer, negotiated_protocol, protocol_len);
+                          nw_socket->protocol_buf.buffer[protocol_len] = '\0';
 
                           AWS_LOGF_DEBUG(
                               AWS_LS_IO_TLS,
