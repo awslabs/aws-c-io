@@ -130,6 +130,9 @@ struct aws_socket_endpoint {
 };
 
 struct aws_socket;
+struct aws_byte_buf;
+struct aws_byte_cursor;
+struct aws_string;
 
 struct aws_socket_vtable {
     void (*socket_cleanup_fn)(struct aws_socket *socket);
@@ -186,9 +189,6 @@ struct aws_socket {
     void *connect_accept_user_data;
     void *impl;
 };
-
-struct aws_byte_buf;
-struct aws_byte_cursor;
 
 /* These are hacks for working around headers and functions we need for IO work but aren't directly includable or
    linkable. these are purposely not exported. These functions only get called internally. The awkward aws_ prefixes are
