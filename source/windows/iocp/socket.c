@@ -287,6 +287,8 @@ static struct aws_socket_vtable s_socket_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
+    .socket_get_protocol_fn = NULL,
+    .socket_get_server_name_fn = NULL,
 };
 
 /* When socket is connected, any of the CONNECT_*** flags might be set.

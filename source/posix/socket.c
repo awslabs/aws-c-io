@@ -236,6 +236,8 @@ static struct aws_socket_vtable s_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
+    .socket_get_protocol_fn = NULL,
+    .socket_get_server_name_fn = NULL,
 };
 
 static void s_socket_destroy_impl(void *user_data) {
