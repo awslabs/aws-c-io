@@ -236,7 +236,6 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
     }
 }
 
-#    ifdef AWS_USE_SECITEM
 static void s_setup_tls_options(
     nw_protocol_options_t tls_options,
     const struct aws_socket_options *options,
@@ -449,7 +448,6 @@ static void s_setup_tls_options(
         dispatch_loop->dispatch_queue);
 }
 
-#    endif
 // DEBUG WIP
 static void s_setup_tcp_options_local(nw_protocol_options_t tcp_options, const struct aws_socket_options *options) {
     (void)tcp_options;
@@ -468,33 +466,39 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
         nw_socket->nw_parameters = NULL;
     }
 
-    if (options->type == AWS_SOCKET_STREAM) {
-        if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
+    bool setup_tls = false;
+    struct secure_transport_ctx *transport_ctx = NULL;
 
 #    ifdef AWS_USE_SECITEM
-            /* options->user_data will contain the tls_ctx if tls_ctx was initialized */
-            if (nw_socket->tls_ctx) {
-                struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
+    if (nw_socket->tls_ctx) {
+        setup_tls = true;
+    }
+#    endif /* AWS_USE_SECITEM*/
 
-                /* This check cannot be done within the TLS options block and must be handled here. */
-                if (transport_ctx->minimum_tls_version == AWS_IO_SSLv3 ||
-                    transport_ctx->minimum_tls_version == AWS_IO_TLSv1 ||
-                    transport_ctx->minimum_tls_version == AWS_IO_TLSv1_1) {
-                    AWS_LOGF_ERROR(
-                        AWS_LS_IO_SOCKET,
-                        "id=%p options=%p: Selected minimum tls version not supported by Apple Network Framework due "
-                        "to deprecated status and known security flaws.",
-                        (void *)nw_socket,
-                        (void *)options);
-                    return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-                }
+    if (setup_tls) {
+        transport_ctx = nw_socket->tls_ctx->impl;
 
+        /* This check cannot be done within the TLS options block and must be handled here. */
+        if (transport_ctx->minimum_tls_version == AWS_IO_SSLv3 || transport_ctx->minimum_tls_version == AWS_IO_TLSv1 ||
+            transport_ctx->minimum_tls_version == AWS_IO_TLSv1_1) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p options=%p: Selected minimum tls version not supported by Apple Network Framework due "
+                "to deprecated status and known security flaws.",
+                (void *)nw_socket,
+                (void *)options);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        }
+    }
+
+    if (options->type == AWS_SOCKET_STREAM) {
+        if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
+            if (setup_tls) {
                 nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     // TLS options block
                     ^(nw_protocol_options_t tls_options) {
                       s_setup_tls_options(tls_options, options, nw_socket, transport_ctx);
                     },
-
                     // TCP options block
                     ^(nw_protocol_options_t tcp_options) {
                       s_setup_tcp_options(tcp_options, options);
@@ -509,38 +513,21 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                       s_setup_tcp_options(tcp_options, options);
                     });
             }
-#    else  // Above block is AWS_USE_SECITEM. Below bloc is !AWS_USE_SECITEM
-           // TLS options are not set and the TLS options block should be disabled.
-           // nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-           //     // TLS options Block disabled
-           //     NW_PARAMETERS_DISABLE_PROTOCOL,
-           //     // TCP options Block
-           //     ^(nw_protocol_options_t tcp_options) {
-           //       s_setup_tcp_options(tcp_options, options);
-           //     });
-            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                // TLS options Block disabled
-                NW_PARAMETERS_DISABLE_PROTOCOL,
-                // TCP options Block
-                ^(nw_protocol_options_t tcp_options) {
-                  s_setup_tcp_options(tcp_options, options);
-                });
-#    endif // AWS_USE_SECITEM
-
         } else if (options->domain == AWS_SOCKET_LOCAL) {
             // DEBUG WIP issues with local sockets and potential permissions
             /*
-                        nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                            // TLS options Block disabled
-                            ^(nw_protocol_options_t tls_options) {
-                              s_setup_tls_options_local(tls_options);
-                            },
-                            // TCP options Block
-                            ^(nw_protocol_options_t tcp_options) {
-                              s_setup_tcp_options_local(tcp_options, options);
-                            });
-                            */
-
+            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                // TLS options Block disabled
+                ^(nw_protocol_options_t tls_options) {
+                  s_setup_tls_options_local(tls_options);
+                },
+                // TCP options Block
+                ^(nw_protocol_options_t tcp_options) {
+                  s_setup_tcp_options_local(tcp_options, options);
+                });
+            */
+#    ifdef AWS_USE_SECITEM
+#    endif
             nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                 NW_PARAMETERS_DISABLE_PROTOCOL,
                 // TCP options Block
