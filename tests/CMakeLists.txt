@@ -289,12 +289,16 @@ if(NOT AWS_USE_SECITEM)
     # as the TLS handshake within the same create connection call without external notification that the socket
     # has succeeded prior to the TLS negotiation. As such, this test will not work for Secitem.
     add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
+
+    # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
+    # the socket establishment and does not need a separate timeout task for TLS.
+    add_net_test_case(tls_channel_statistics_test)
 endif()
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)
-    add_net_test_case(tls_channel_statistics_test)
     add_net_test_case(tls_certificate_chain_test)
+    
 else()
     add_test_case(byo_tls_handler_test)
 endif()
