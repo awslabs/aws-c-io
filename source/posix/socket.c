@@ -195,7 +195,11 @@ static int s_socket_connect(
     aws_socket_on_connection_result_fn *on_connection_result,
     aws_socket_retrieve_tls_options_fn retrieve_tls_options,
     void *user_data);
-static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data);
 static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
     struct aws_socket *socket,
@@ -848,7 +852,13 @@ err_clean_up:
     return AWS_OP_ERR;
 }
 
-static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
+static int s_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data) {
+    (void)user_data;
+    (void)retrieve_tls_options;
     if (socket->state != INIT) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,

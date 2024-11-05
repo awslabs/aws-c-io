@@ -526,14 +526,25 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                   s_setup_tcp_options_local(tcp_options, options);
                 });
             */
-#    ifdef AWS_USE_SECITEM
-#    endif
-            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                NW_PARAMETERS_DISABLE_PROTOCOL,
-                // TCP options Block
-                ^(nw_protocol_options_t tcp_options) { // try setup with nothing inside.
-                  s_setup_tcp_options_local(tcp_options, options);
-                });
+            if (setup_tls) {
+                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                    // TLS options block
+                    ^(nw_protocol_options_t tls_options) {
+                      s_setup_tls_options(tls_options, options, nw_socket, transport_ctx);
+                    },
+                    // TCP options block
+                    ^(nw_protocol_options_t tcp_options) {
+                      s_setup_tcp_options(tcp_options, options);
+                    });
+
+            } else {
+                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                    NW_PARAMETERS_DISABLE_PROTOCOL,
+                    // TCP options Block
+                    ^(nw_protocol_options_t tcp_options) { // try setup with nothing inside.
+                      s_setup_tcp_options_local(tcp_options, options);
+                    });
+            }
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->nw_parameters = nw_parameters_create_secure_udp(
@@ -573,7 +584,11 @@ static int s_socket_connect_fn(
     aws_socket_on_connection_result_fn *on_connection_result,
     aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data);
-static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_socket_bind_fn(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data);
 static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept_fn(
     struct aws_socket *socket,
@@ -1122,9 +1137,10 @@ static int s_socket_connect_fn(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    struct tls_connection_context tls_connection_context;
-    AWS_ZERO_STRUCT(tls_connection_context);
     if (retrieve_tls_options != NULL) {
+        struct tls_connection_context tls_connection_context;
+        AWS_ZERO_STRUCT(tls_connection_context);
+
         retrieve_tls_options(&tls_connection_context, user_data);
 
         if (tls_connection_context.host_name != NULL) {
@@ -1191,10 +1207,6 @@ static int s_socket_connect_fn(
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, socket->io_handle.data.handle);
-
-    if (socket->event_loop) {
-        return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
-    }
 
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
@@ -1475,7 +1487,11 @@ static int s_socket_connect_fn(
     return AWS_OP_SUCCESS;
 }
 
-static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
+static int s_socket_bind_fn(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data) {
     struct nw_socket *nw_socket = socket->impl;
 
     if (socket->state != INIT) {
@@ -1492,6 +1508,71 @@ static int s_socket_bind_fn(struct aws_socket *socket, const struct aws_socket_e
         (int)local_endpoint->port);
 
     if (nw_socket->nw_parameters == NULL) {
+        if (retrieve_tls_options) {
+            struct tls_connection_context tls_connection_context;
+            AWS_ZERO_STRUCT(tls_connection_context);
+            retrieve_tls_options(&tls_connection_context, user_data);
+
+            if (tls_connection_context.host_name != NULL) {
+                if (nw_socket->host_name != NULL) {
+                    aws_string_destroy(nw_socket->host_name);
+                    nw_socket->host_name = NULL;
+                }
+                nw_socket->host_name = aws_string_new_from_string(
+                    tls_connection_context.host_name->allocator, tls_connection_context.host_name);
+                if (nw_socket->host_name == NULL) {
+                    return AWS_OP_ERR;
+                }
+            }
+
+            if (tls_connection_context.tls_ctx != NULL) {
+                struct aws_string *alpn_list = NULL;
+                struct secure_transport_ctx *transport_ctx = tls_connection_context.tls_ctx->impl;
+                if (tls_connection_context.alpn_list != NULL) {
+                    alpn_list = tls_connection_context.alpn_list;
+                } else if (transport_ctx->alpn_list != NULL) {
+                    alpn_list = transport_ctx->alpn_list;
+                }
+
+                if (alpn_list != NULL) {
+                    if (nw_socket->alpn_list != NULL) {
+                        aws_string_destroy(nw_socket->alpn_list);
+                        nw_socket->alpn_list = NULL;
+                    }
+                    nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
+                    if (nw_socket->alpn_list == NULL) {
+                        return AWS_OP_ERR;
+                    }
+                }
+            }
+
+            if (tls_connection_context.host_name != NULL) {
+                if (nw_socket->host_name != NULL) {
+                    aws_string_destroy(nw_socket->host_name);
+                    nw_socket->host_name = NULL;
+                }
+                nw_socket->host_name = aws_string_new_from_string(
+                    tls_connection_context.host_name->allocator, tls_connection_context.host_name);
+                if (nw_socket->host_name == NULL) {
+                    return AWS_OP_ERR;
+                }
+            }
+
+            if (tls_connection_context.tls_ctx) {
+                if (nw_socket->tls_ctx) {
+                    aws_tls_ctx_release(nw_socket->tls_ctx);
+                    nw_socket->tls_ctx = NULL;
+                }
+                nw_socket->tls_ctx = tls_connection_context.tls_ctx;
+                aws_tls_ctx_acquire(nw_socket->tls_ctx);
+            }
+
+            if (tls_connection_context.event_loop) {
+                aws_mutex_lock(&nw_socket->synced_data.lock);
+                nw_socket->synced_data.event_loop = tls_connection_context.event_loop;
+                aws_mutex_unlock(&nw_socket->synced_data.lock);
+            }
+        }
         s_setup_socket_params(nw_socket, &socket->options);
     }
 

@@ -143,7 +143,11 @@ struct aws_socket_vtable {
         aws_socket_on_connection_result_fn *on_connection_result,
         aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
         void *user_data);
-    int (*socket_bind_fn)(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+    int (*socket_bind_fn)(
+        struct aws_socket *socket,
+        const struct aws_socket_endpoint *local_endpoint,
+        aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+        void *user_data);
     int (*socket_listen_fn)(struct aws_socket *socket, int backlog_size);
     int (*socket_start_accept_fn)(
         struct aws_socket *socket,
@@ -252,7 +256,11 @@ AWS_IO_API int aws_socket_connect(
  * connection oriented modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()` before using the
  * socket. local_endpoint is copied.
  */
-AWS_IO_API int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+AWS_IO_API int aws_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data);
 
 /**
  * Get the local address which the socket is bound to.

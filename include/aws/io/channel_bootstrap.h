@@ -214,6 +214,7 @@ struct aws_server_socket_channel_bootstrap_options {
     aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
     aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
     bool enable_read_back_pressure;
+    struct aws_event_loop *requested_event_loop;
     void *user_data;
 };
 

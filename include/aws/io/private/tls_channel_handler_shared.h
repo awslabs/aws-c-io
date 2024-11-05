@@ -29,6 +29,7 @@ struct tls_connection_context {
     struct aws_string *host_name;
     struct aws_string *alpn_list;
     struct aws_tls_ctx *tls_ctx;
+    struct aws_event_loop *event_loop;
 };
 
 AWS_EXTERN_C_BEGIN

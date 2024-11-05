@@ -675,11 +675,44 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 /* Called when a socket connection attempt requires access to TLS options. Currently this is only necessary on
  * iOS/tvOS where the parameters used to create the Apple Network Framework socket requires TLS options.
  */
-static void s_retrieve_tls_options(struct tls_connection_context *context, void *user_data) {
+static void s_retrieve_client_tls_options(struct tls_connection_context *context, void *user_data) {
     struct client_connection_args *connection_args = user_data;
     context->host_name = connection_args->channel_data.tls_options.server_name;
     context->alpn_list = connection_args->channel_data.tls_options.alpn_list;
     context->tls_ctx = connection_args->channel_data.tls_options.ctx;
+}
+
+struct server_connection_args {
+    struct aws_server_bootstrap *bootstrap;
+    struct aws_socket listener;
+    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+    struct aws_tls_connection_options tls_options;
+    aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
+    aws_tls_on_data_read_fn *user_on_data_read;
+    aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
+    aws_tls_on_error_fn *user_on_error;
+    struct aws_task listener_destroy_task;
+    void *tls_user_data;
+    void *user_data;
+    bool use_tls;
+    bool enable_read_back_pressure;
+    struct aws_event_loop *requested_event_loop;
+    struct aws_ref_count ref_count;
+};
+
+static void s_retrieve_server_tls_options(struct tls_connection_context *context, void *user_data) {
+    struct server_connection_args *connection_args = user_data;
+    context->host_name = connection_args->tls_options.server_name;
+    context->alpn_list = connection_args->tls_options.alpn_list;
+    context->tls_ctx = connection_args->tls_options.ctx;
+
+    context->event_loop = connection_args->requested_event_loop;
+    if (context->event_loop == NULL) {
+        context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
+    }
 }
 
 struct connection_task_data {
@@ -711,7 +744,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
             &task_data->endpoint,
             task_data->connect_loop,
             s_on_client_connection_established,
-            s_retrieve_tls_options,
+            s_retrieve_client_tls_options,
             task_data->args)) {
 
         goto socket_connect_failed;
@@ -1011,7 +1044,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
                 &endpoint,
                 connect_loop,
                 s_on_client_connection_established,
-                s_retrieve_tls_options,
+                s_retrieve_client_tls_options,
                 client_connection_args)) {
             aws_socket_clean_up(outgoing_socket);
             aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
@@ -1079,25 +1112,6 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
 
     return bootstrap;
 }
-
-struct server_connection_args {
-    struct aws_server_bootstrap *bootstrap;
-    struct aws_socket listener;
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
-    struct aws_tls_connection_options tls_options;
-    aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
-    aws_tls_on_data_read_fn *user_on_data_read;
-    aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
-    aws_tls_on_error_fn *user_on_error;
-    struct aws_task listener_destroy_task;
-    void *tls_user_data;
-    void *user_data;
-    bool use_tls;
-    bool enable_read_back_pressure;
-    struct aws_ref_count ref_count;
-};
 
 struct server_channel_data {
     struct aws_channel *channel;
@@ -1365,11 +1379,9 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
  * The TCP and TLS handshake are both handled by the network parameters and its options and verification block.
  * We do not need to set up a separate TLS slot in the channel for iOS. */
 #if defined(AWS_USE_SECITEM)
-        /* DEBUG WIP
-         * we need to trace what the server does in the s_setup_server_tls to setup appropriate callbacks
-         * as well. For now, trigger the connection success callback.
-         */
-        s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
+        s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
+        return;
+
 #endif /* AWS_USE_SECITEM */
 #if !defined(AWS_USE_SECITEM)
         /* incoming callback will be invoked upon the negotiation completion so don't do it
@@ -1507,6 +1519,15 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     AWS_PRECONDITION(bootstrap_options->incoming_callback);
     AWS_PRECONDITION(bootstrap_options->shutdown_callback);
 
+    if (bootstrap_options->requested_event_loop != NULL) {
+        /* If we're asking for a specific event loop, verify it belongs to the bootstrap's event loop group */
+        if (!(s_does_event_loop_belong_to_event_loop_group(
+                bootstrap_options->requested_event_loop, bootstrap_options->bootstrap->event_loop_group))) {
+            aws_raise_error(AWS_ERROR_IO_PINNED_EVENT_LOOP_MISMATCH);
+            return NULL;
+        }
+    }
+
     struct server_connection_args *server_connection_args =
         aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
     if (!server_connection_args) {
@@ -1532,6 +1553,8 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     server_connection_args->destroy_callback = bootstrap_options->destroy_callback;
     server_connection_args->on_protocol_negotiated = bootstrap_options->bootstrap->on_protocol_negotiated;
     server_connection_args->enable_read_back_pressure = bootstrap_options->enable_read_back_pressure;
+    server_connection_args->retrieve_tls_options = s_retrieve_server_tls_options;
+    server_connection_args->requested_event_loop = bootstrap_options->requested_event_loop;
 
     aws_task_init(
         &server_connection_args->listener_destroy_task,
@@ -1594,7 +1617,8 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
     endpoint.port = bootstrap_options->port;
 
-    if (aws_socket_bind(&server_connection_args->listener, &endpoint)) {
+    if (aws_socket_bind(
+            &server_connection_args->listener, &endpoint, s_retrieve_server_tls_options, server_connection_args)) {
         goto cleanup_listener;
     }
 
