@@ -19,7 +19,8 @@
 #include <aws/io/io.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <inttypes.h>
+#include <inttypes.h> /* Required when VSOCK is used */
+#include <net/if.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -1220,7 +1221,8 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p fd=%d: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, keep-alive probe "
+        "id=%p fd=%d: setting socket options to: keep-alive %d, keep-alive timeout %d, keep-alive interval %d, "
+        "keep-alive probe "
         "count %d.",
         (void *)socket,
         socket->io_handle.data.fd,
@@ -1255,7 +1257,95 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
             socket->io_handle.data.fd,
             errno_value);
     }
-
+    size_t network_interface_length = 0;
+    if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_NAME_MAX, &network_interface_length)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: network_interface_name max length must be %d length and NULL terminated",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            AWS_NETWORK_INTERFACE_NAME_MAX);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
+    if (network_interface_length != 0) {
+#if defined(SO_BINDTODEVICE)
+        if (setsockopt(
+                socket->io_handle.data.fd,
+                SOL_SOCKET,
+                SO_BINDTODEVICE,
+                options->network_interface_name,
+                network_interface_length)) {
+            int errno_value = errno; /* Always cache errno before potential side-effect */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: setsockopt() with SO_BINDTODEVICE for \"%s\" failed with errno %d.",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                options->network_interface_name,
+                errno_value);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        }
+#elif defined(IP_BOUND_IF)
+        /*
+         * If SO_BINDTODEVICE is not supported, the alternative is IP_BOUND_IF which requires an index instead
+         * of a name. We are not using this everywhere because this requires 2 system calls instead of 1, and is
+         * dependent upon the type of sockets, which doesn't support AWS_SOCKET_LOCAL. As a future optimization, we can
+         * look into caching the result of if_nametoindex.
+         */
+        uint network_interface_index = if_nametoindex(options->network_interface_name);
+        if (network_interface_index == 0) {
+            int errno_value = errno; /* Always cache errno before potential side-effect */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: network_interface_name \"%s\" not found. if_nametoindex() failed with errno %d.",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                options->network_interface_name,
+                errno_value);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        }
+        if (options->domain == AWS_SOCKET_IPV6) {
+            if (setsockopt(
+                    socket->io_handle.data.fd,
+                    IPPROTO_IPV6,
+                    IPV6_BOUND_IF,
+                    &network_interface_index,
+                    sizeof(network_interface_index))) {
+                int errno_value = errno; /* Always cache errno before potential side-effect */
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: setsockopt() with IPV6_BOUND_IF for \"%s\" failed with errno %d.",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    options->network_interface_name,
+                    errno_value);
+                return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+            }
+        } else if (setsockopt(
+                       socket->io_handle.data.fd,
+                       IPPROTO_IP,
+                       IP_BOUND_IF,
+                       &network_interface_index,
+                       sizeof(network_interface_index))) {
+            int errno_value = errno; /* Always cache errno before potential side-effect */
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p fd=%d: setsockopt() with IP_BOUND_IF for \"%s\" failed with errno %d.",
+                (void *)socket,
+                socket->io_handle.data.fd,
+                options->network_interface_name,
+                errno_value);
+            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+        }
+#else
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: network_interface_name is not supported on this platform.",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif
+    }
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
         if (socket->options.keepalive) {
             int keep_alive = 1;
@@ -1918,4 +2008,12 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
+}
+
+bool aws_is_network_interface_name_valid(const char *interface_name) {
+    if (if_nametoindex(interface_name) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_name(%s) is invalid with errno: %d", interface_name, errno);
+        return false;
+    }
+    return true;
 }

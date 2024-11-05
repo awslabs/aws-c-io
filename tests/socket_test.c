@@ -433,6 +433,84 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
 
+static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval_sec = 1000;
+    options.keep_alive_timeout_sec = 60000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+#if defined(AWS_OS_APPLE)
+    strncpy(options.network_interface_name, "lo0", AWS_NETWORK_INTERFACE_NAME_MAX);
+#else
+    strncpy(options.network_interface_name, "lo", AWS_NETWORK_INTERFACE_NAME_MAX);
+#endif
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 8128};
+    if (s_test_socket(allocator, &options, &endpoint)) {
+#if !defined(AWS_OS_APPLE) && !defined(AWS_OS_LINUX)
+        if (aws_last_error() == AWS_ERROR_PLATFORM_NOT_SUPPORTED) {
+            return AWS_OP_SKIP;
+        }
+#endif
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
+    options.type = AWS_SOCKET_DGRAM;
+    options.domain = AWS_SOCKET_IPV4;
+    ASSERT_SUCCESS(s_test_socket(allocator, &options, &endpoint));
+
+    struct aws_socket_endpoint endpoint_ipv6 = {.address = "::1", .port = 8129};
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV6;
+    if (s_test_socket(allocator, &options, &endpoint_ipv6)) {
+        /* Skip test if server can't bind to address (e.g. Codebuild's ubuntu runners don't allow IPv6) */
+        if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
+            return AWS_OP_SKIP;
+        }
+        ASSERT_TRUE(false, "s_test_socket() failed");
+    }
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_socket_with_bind_to_interface, s_test_socket_with_bind_to_interface)
+
+static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.keepalive = true;
+    options.keep_alive_interval_sec = 1000;
+    options.keep_alive_timeout_sec = 60000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    strncpy(options.network_interface_name, "invalid", AWS_NETWORK_INTERFACE_NAME_MAX);
+    struct aws_socket outgoing;
+#if defined(AWS_OS_APPLE) || defined(AWS_OS_LINUX)
+    ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
+#else
+    ASSERT_ERROR(AWS_ERROR_PLATFORM_NOT_SUPPORTED, aws_socket_init(&outgoing, allocator, &options));
+#endif
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bind_to_invalid_interface)
+
+static int s_test_is_network_interface_name_valid(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    ASSERT_FALSE(aws_is_network_interface_name_valid("invalid_name"));
+#if defined(AWS_OS_LINUX)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo"));
+#elif !defined(AWS_OS_WINDOWS)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo0"));
+#endif
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_is_network_interface_name_valid, s_test_is_network_interface_name_valid)
+
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
 /* Without vsock loopback it's difficult to test vsock functionality.
@@ -797,8 +875,6 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket_endpoint endpoint = {
         .address = "127.0.0.1",
-        /* note: the port is completely random from testing perspective, but
-         * freebsd seems to firewall higher numbered ports so keeping it low */
         .port = 1567,
     };
 
@@ -810,20 +886,33 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    /* tcp connect is non-blocking, it should return success, but the error callback will be invoked. */
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args));
+    int result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
+#ifdef __FreeBSD__
+    /**
+     * FreeBSD doesn't seem to respect the O_NONBLOCK or SOCK_NONBLOCK flag. It fails immediately when trying to
+     * connect to a socket which is not listening. This is flaky and works sometimes, but we don't know why. Since this
+     * test does not aim to test for that, skip it in that case.
+     */
+    if (result != AWS_ERROR_SUCCESS) {
+        ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, aws_last_error());
+        result = AWS_OP_SKIP;
+        goto cleanup;
+    }
+#endif
+    ASSERT_SUCCESS(result);
     ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args));
     ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
+    result = AWS_OP_SUCCESS;
 
+    goto cleanup; /* to avoid unused label warning on systems other than FreeBSD */
+cleanup:
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
-
-    return 0;
+    return result;
 }
-
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
 
 static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void *ctx) {

@@ -2333,6 +2333,25 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 #endif
     }
 
+    size_t network_interface_length = 0;
+    if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_NAME_MAX, &network_interface_length)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: network_interface_name max length must be %d length and NULL terminated",
+            (void *)socket,
+            socket->io_handle.data.fd,
+            AWS_NETWORK_INTERFACE_NAME_MAX);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
+    if (network_interface_length != 0) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p fd=%d: network_interface_name is not supported on this platform.",
+            (void *)socket,
+            socket->io_handle.data.fd);
+        return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -3252,4 +3271,10 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
     snprintf(endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
+}
+
+bool aws_is_network_interface_name_valid(const char *interface_name) {
+    (void)interface_name;
+    AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_names are not supported on Windows");
+    return false;
 }

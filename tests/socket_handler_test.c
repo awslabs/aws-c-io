@@ -841,7 +841,7 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
 
     struct local_server_tester local_server_tester;
     if (s_local_server_tester_init(allocator, &local_server_tester, &server_args, &c_tester, socket_domain, false)) {
-        /* Skip test if server can't bind to address (e.g. Gith9ub's ubuntu runners don't allow IPv6) */
+        /* Skip test if server can't bind to address (e.g. Codebuild's ubuntu runners don't allow IPv6) */
         if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
             return AWS_OP_SKIP;
         } else {
