@@ -119,6 +119,12 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
         &el_group->ref_count, el_group, (aws_simple_completion_callback *)s_aws_event_loop_group_shutdown_async);
 
     uint16_t el_count = options->loop_count;
+    if (el_count == 0) {
+        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
+        /* cut them in half to avoid using hyper threads for the IO work. */
+        el_count = processor_count > 1 ? processor_count / 2 : processor_count;
+    }
+
     if (aws_array_list_init_dynamic(&el_group->event_loops, allocator, el_count, sizeof(struct aws_event_loop *))) {
         goto on_error;
     }
