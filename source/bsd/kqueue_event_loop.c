@@ -5,14 +5,14 @@
 
 #include <aws/io/event_loop.h>
 
-#include <aws/io/logging.h>
-
 #include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
+#include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 #    define __BSD_VISIBLE 1

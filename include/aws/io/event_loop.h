@@ -12,26 +12,8 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_event_loop;
 struct aws_event_loop_group;
+struct aws_shutdown_callback_options;
 struct aws_task;
-
-typedef void(aws_elg_shutdown_completion_callback)(void *);
-
-/**
- * Configuration for a callback to invoke when an event loop group has been completely
- * cleaned up, which includes destroying any managed threads.
- */
-struct aws_event_loop_group_shutdown_options {
-
-    /**
-     * Function to invoke when the event loop group is fully destroyed.
-     */
-    aws_elg_shutdown_completion_callback *shutdown_callback_fn;
-
-    /**
-     * User data to invoke the shutdown callback with.
-     */
-    void *shutdown_callback_user_data;
-};
 
 /**
  * Configuration to pin an event loop group to a particular CPU group
@@ -54,12 +36,6 @@ struct aws_event_loop_group_options {
      * the creation and management of an analagous amount of managed threads
      */
     uint16_t loop_count;
-
-    /**
-     * Clock function that all event loops should use.  If left null, the system's high resolution
-     * clock will be used.  Useful for injection mock time implementations when testing.
-     */
-    aws_io_clock_fn *clock_override;
 
     /**
      * Optional callback to invoke when the event loop group finishes destruction.

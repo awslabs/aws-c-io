@@ -4,7 +4,9 @@
  */
 
 #include <aws/io/event_loop.h>
+
 #include <aws/io/private/event_loop_impl.h>
+#include <aws/common/shutdown_types.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
@@ -76,11 +78,12 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
 struct aws_event_loop_group *aws_event_loop_group_new_internal(
     struct aws_allocator *allocator,
     const struct aws_event_loop_group_options *options,
+    aws_io_clock_fn *clock_override,
     aws_new_event_loop_fn *new_loop_fn,
     void *new_loop_user_data) {
     AWS_FATAL_ASSERT(new_loop_fn);
 
-    aws_io_clock_fn *clock = options->clock_override;
+    aws_io_clock_fn *clock = clock_override;
     if (!clock) {
         clock = aws_high_res_clock_get_ticks;
     }
@@ -179,6 +182,22 @@ on_error:;
     /* raise the cached error code */
     aws_raise_error(cached_error_code);
     return NULL;
+}
+
+static struct aws_event_loop *s_default_new_event_loop(
+    struct aws_allocator *allocator,
+    const struct aws_event_loop_options *options,
+    void *user_data) {
+
+    (void)user_data;
+    return aws_event_loop_new_default_with_options(allocator, options);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new(
+    struct aws_allocator *allocator,
+    const struct aws_event_loop_group_options *options) {
+
+    return aws_event_loop_group_new_internal(allocator, options, aws_high_res_clock_get_ticks, s_default_new_event_loop, NULL);
 }
 
 struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group) {

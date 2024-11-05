@@ -12,6 +12,7 @@
 
 #include <aws/io/event_loop.h>
 #include <aws/io/host_resolver.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/socket.h>
 
 #ifdef _MSC_VER
@@ -546,7 +547,10 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
 
@@ -626,7 +630,10 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
 
@@ -1058,7 +1065,10 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
