@@ -1146,7 +1146,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         }
 #endif /* AWS_USE_SECITEM */
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs$12 certificate and key has been set, setting it up now.");
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting it up now.");
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
         struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);

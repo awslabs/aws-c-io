@@ -871,7 +871,8 @@ int aws_secitem_import_pkcs12(
     sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
 
     if (sec_identity_ref != NULL) {
-        AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported identity into SecItem keychain.");
+        AWS_LOGF_INFO(
+            AWS_LS_IO_PKI, "static: Successfully imported PKCS#12 file into keychain and retrieved identity.");
     } else {
         status = errSecItemNotFound;
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to retrieve identity from PKCS#12 with OSStatus %d", (int)status);
