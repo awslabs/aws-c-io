@@ -5,8 +5,8 @@
 
 #include <aws/io/event_loop.h>
 
-#include <aws/io/private/event_loop_impl.h>
 #include <aws/common/shutdown_types.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
@@ -197,7 +197,8 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     struct aws_allocator *allocator,
     const struct aws_event_loop_group_options *options) {
 
-    return aws_event_loop_group_new_internal(allocator, options, aws_high_res_clock_get_ticks, s_default_new_event_loop, NULL);
+    return aws_event_loop_group_new_internal(
+        allocator, options, aws_high_res_clock_get_ticks, s_default_new_event_loop, NULL);
 }
 
 struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group) {

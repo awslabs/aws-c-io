@@ -1041,9 +1041,7 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 0
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 0};
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     size_t cpu_count = aws_system_info_processor_count();
@@ -1087,8 +1085,7 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
         .loop_count = UINT16_MAX,
         .pin_options = &pin_options,
     };
-    struct aws_event_loop_group *event_loop_group =
-        aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     el_count = aws_event_loop_group_get_loop_count(event_loop_group);
 
@@ -1170,8 +1167,7 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
         .shutdown_options = &async_shutdown_options,
     };
 
-    struct aws_event_loop_group *event_loop_group =
-        aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
 

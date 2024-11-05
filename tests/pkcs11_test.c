@@ -1653,9 +1653,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(
     ASSERT_SUCCESS(aws_mutex_init(&s_tls_tester.synced.mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_tls_tester.synced.cvar));
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
     ASSERT_NOT_NULL(event_loop_group);
 

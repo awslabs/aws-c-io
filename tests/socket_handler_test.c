@@ -60,9 +60,7 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     AWS_ZERO_STRUCT(*tester);
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     tester->el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -1011,10 +1009,9 @@ static int s_socket_common_tester_statistics_init(
 
     AWS_ZERO_STRUCT(*tester);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
-    tester->el_group = aws_event_loop_group_new_internal(allocator, &elg_options, s_statistic_test_clock_fn, s_default_new_event_loop, NULL);
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    tester->el_group = aws_event_loop_group_new_internal(
+        allocator, &elg_options, s_statistic_test_clock_fn, s_default_new_event_loop, NULL);
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;

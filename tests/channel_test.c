@@ -685,9 +685,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         .shutdown = false,
     };
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     /* resolve our s3 test bucket and an EC2 host with an ACL that blackholes the connection */

@@ -96,9 +96,7 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -192,9 +190,7 @@ static int s_test_default_host_resolver_ipv6_address_variations_fn(struct aws_al
 
     };
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -269,9 +265,7 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -342,9 +336,7 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -472,9 +464,7 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
 
     s_set_time(0);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -687,9 +677,7 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -882,9 +870,7 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -1065,9 +1051,7 @@ static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocato
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -1129,9 +1113,7 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -1247,9 +1229,7 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -1399,9 +1379,7 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -1464,9 +1442,7 @@ static int s_test_resolver_low_frequency_starvation_fn(struct aws_allocator *all
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = 1
-    };
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
