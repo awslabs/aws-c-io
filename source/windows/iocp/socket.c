@@ -519,7 +519,13 @@ static int s_socket_connect(
     return socket_impl->iocp_vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
-static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
+static int s_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data) {
+    (void)retrieve_tls_options;
+    (void)user_data;
     if (socket->state != INIT) {
         socket->state = ERRORED;
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
