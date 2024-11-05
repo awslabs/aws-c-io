@@ -236,6 +236,7 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
     }
 }
 
+#    ifdef AWS_USE_SECITEM
 static void s_setup_tls_options(
     nw_protocol_options_t tls_options,
     const struct aws_socket_options *options,
@@ -341,19 +342,6 @@ static void s_setup_tls_options(
 
           trust_ref = sec_trust_copy_ref(trust);
 
-          /* Insure we are using built-in anchor certificates during validation */
-          // status = SecTrustSetAnchorCertificatesOnly(trust_ref, false);
-          // if (status != errSecSuccess) {
-          //     AWS_LOGF_DEBUG(
-          //         AWS_LS_IO_TLS,
-          //         "id=%p: nw_socket verify block SecTrustSetAnchorCertificatesOnly failed with "
-          //         "OSStatus: %d",
-          //         (void *)nw_socket,
-          //         (int)status);
-          //     error_code = aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
-          //     goto verification_done;
-          // }
-
           /* Use root ca if provided. */
           if (transport_ctx->ca_cert != NULL) {
               AWS_LOGF_DEBUG(
@@ -376,18 +364,6 @@ static void s_setup_tls_options(
 
           /* Add the host name to be checked against the available Certificate Authorities */
           if (nw_socket->host_name != NULL) {
-              /*// DEBUG WIP LOG
-              AWS_LOGF_DEBUG(
-                  AWS_LS_IO_TLS,
-                  "nw_socket->host_name: " PRInSTR,
-                  AWS_BYTE_CURSOR_PRI(aws_byte_cursor_from_string(nw_socket->host_name)));
-                  */
-              // CFStringRef server_name = CFStringCreateWithBytes(
-              //     transport_ctx->wrapped_allocator,
-              //     nw_socket->host_name->bytes,
-              //     (CFIndex)nw_socket->host_name->len,
-              //     kCFStringEncodingUTF8,
-              //     false);
               CFStringRef server_name = CFStringCreateWithCString(
                   transport_ctx->wrapped_allocator, aws_string_c_str(nw_socket->host_name), kCFStringEncodingUTF8);
               policy = SecPolicyCreateSSL(true, server_name);
@@ -395,6 +371,7 @@ static void s_setup_tls_options(
           } else {
               policy = SecPolicyCreateBasicX509();
           }
+
           status = SecTrustSetPolicies(trust_ref, policy);
           if (status != errSecSuccess) {
               AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed to set trust policy %d\n", (void *)nw_socket, (int)status);
@@ -404,6 +381,7 @@ static void s_setup_tls_options(
 
           SecTrustResultType trust_result;
 
+          /* verify peer */
           bool success = SecTrustEvaluateWithError(trust_ref, &error);
           if (success) {
               status = SecTrustGetTrustResult(trust_ref, &trust_result);
@@ -471,6 +449,7 @@ static void s_setup_tls_options(
         dispatch_loop->dispatch_queue);
 }
 
+#    endif
 // DEBUG WIP
 static void s_setup_tcp_options_local(nw_protocol_options_t tcp_options, const struct aws_socket_options *options) {
     (void)tcp_options;
