@@ -437,12 +437,6 @@ static void s_setup_tls_options(
               aws_raise_error(error_code);
               CFRelease(error);
           }
-          // DEBUG WIP trigger the on_negotiation_result func w/error here?
-          // We may be able to remove on_tls_negotiation_result_fn from nw_socket
-          // if (nw_socket->on_tls_negotiation_result_fn) {
-          // nw_socket->on_tls_negotiation_result_fn(
-          //     NULL, NULL, error_code, nw_socket->on_tls_negotiation_result_user_data);
-          // }
           complete(verification_successful);
         },
         dispatch_loop->dispatch_queue);
