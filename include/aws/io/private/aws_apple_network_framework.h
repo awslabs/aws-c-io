@@ -10,6 +10,10 @@
 #ifdef AWS_OS_APPLE
 /* It's ok to include external headers because this is a PRIVATE header file */
 #    include <Security/Security.h>
+#    include <aws/common/mutex.h>
+#    include <aws/common/thread.h>
+#    include <dispatch/dispatch.h>
+
 struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
     CFAllocatorRef wrapped_allocator;
@@ -20,12 +24,6 @@ struct secure_transport_ctx {
     struct aws_string *alpn_list;
     bool verify_peer;
 };
-
-#endif /* AWS_OS_APPLE */
-
-#include <aws/common/mutex.h>
-#include <aws/common/thread.h>
-#include <dispatch/dispatch.h>
 
 struct dispatch_scheduling_state {
     /**
@@ -67,5 +65,7 @@ struct dispatch_loop {
 
     bool is_destroying;
 };
+
+#endif /* AWS_OS_APPLE */
 
 #endif /* #ifndef AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H  */
