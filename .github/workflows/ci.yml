@@ -18,7 +18,7 @@ env:
 
 jobs:
   linux-compat:
-    runs-on: ubuntu-20.04 # latest
+    runs-on: ubuntu-24.04 # latest
     strategy:
       fail-fast: false
       matrix:
