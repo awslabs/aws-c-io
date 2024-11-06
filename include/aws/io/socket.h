@@ -76,8 +76,8 @@ typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int 
 struct aws_tls_connection_options;
 
 /**
- * Called to retrieve TLS related options during socket creation/initialization. Typically the TLS
- * handshake occurs after a socket connection is established but Apple Network Framework requires
+ * Called to retrieve TLS related options during socket creation/initialization and socket listener binding.
+ * Typically the TLS handshake occurs after a socket connection is established but Apple Network Framework requires
  * the setup of TLS related parameters at creation of the connection as its internal framework
  * handles both the socket connection and the TLS handshake.
  */
