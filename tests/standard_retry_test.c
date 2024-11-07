@@ -8,7 +8,7 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
-#include <aws/common/shutdown_types.h>
+#include <aws/common/ref_count.h>
 
 #include <aws/io/event_loop.h>
 
