@@ -660,47 +660,14 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     }
 }
 
-/* Called when a socket connection attempt requires access to TLS options. Currently this is only necessary on
- * iOS/tvOS where the parameters used to create the Apple Network Framework socket requires TLS options.
- */
+/* Called when a socket connection attempt or socket bind requires access to TLS options.
+ * This is only necessary when Apple Network Framework is using Secitem
+ * where the parameters used to create the Apple Network Framework socket require TLS options. */
 static void s_retrieve_client_tls_options(struct tls_connection_context *context, void *user_data) {
     struct client_connection_args *connection_args = user_data;
     context->host_name = connection_args->channel_data.tls_options.server_name;
     context->alpn_list = connection_args->channel_data.tls_options.alpn_list;
     context->tls_ctx = connection_args->channel_data.tls_options.ctx;
-}
-
-struct server_connection_args {
-    struct aws_server_bootstrap *bootstrap;
-    struct aws_socket listener;
-    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
-    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
-    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
-    struct aws_tls_connection_options tls_options;
-    aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
-    aws_tls_on_data_read_fn *user_on_data_read;
-    aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
-    aws_tls_on_error_fn *user_on_error;
-    struct aws_task listener_destroy_task;
-    void *tls_user_data;
-    void *user_data;
-    bool use_tls;
-    bool enable_read_back_pressure;
-    struct aws_event_loop *requested_event_loop;
-    struct aws_ref_count ref_count;
-};
-
-static void s_retrieve_server_tls_options(struct tls_connection_context *context, void *user_data) {
-    struct server_connection_args *connection_args = user_data;
-    context->host_name = connection_args->tls_options.server_name;
-    context->alpn_list = connection_args->tls_options.alpn_list;
-    context->tls_ctx = connection_args->tls_options.ctx;
-
-    context->event_loop = connection_args->requested_event_loop;
-    if (context->event_loop == NULL) {
-        context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
-    }
 }
 
 struct connection_task_data {
@@ -1099,6 +1066,38 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
         &bootstrap->ref_count, bootstrap, (aws_simple_completion_callback *)s_server_bootstrap_destroy_impl);
 
     return bootstrap;
+}
+struct server_connection_args {
+    struct aws_server_bootstrap *bootstrap;
+    struct aws_socket listener;
+    aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
+    aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
+    aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+    struct aws_tls_connection_options tls_options;
+    aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
+    aws_tls_on_data_read_fn *user_on_data_read;
+    aws_tls_on_negotiation_result_fn *user_on_negotiation_result;
+    aws_tls_on_error_fn *user_on_error;
+    struct aws_task listener_destroy_task;
+    void *tls_user_data;
+    void *user_data;
+    bool use_tls;
+    bool enable_read_back_pressure;
+    struct aws_event_loop *requested_event_loop;
+    struct aws_ref_count ref_count;
+};
+
+static void s_retrieve_server_tls_options(struct tls_connection_context *context, void *user_data) {
+    struct server_connection_args *connection_args = user_data;
+    context->host_name = connection_args->tls_options.server_name;
+    context->alpn_list = connection_args->tls_options.alpn_list;
+    context->tls_ctx = connection_args->tls_options.ctx;
+
+    context->event_loop = connection_args->requested_event_loop;
+    if (context->event_loop == NULL) {
+        context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
+    }
 }
 
 struct server_channel_data {
