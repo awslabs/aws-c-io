@@ -140,9 +140,24 @@ struct aws_event_loop *aws_event_loop_new_epoll_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
 
-typedef struct aws_event_loop *(aws_new_event_loop_fn)(struct aws_allocator *alloc,
-                                                       const struct aws_event_loop_options *options,
-                                                       void *new_loop_user_data);
+/**
+ * Override default event loop type. Only used internally in tests.
+ *
+ * If the defined type is not supported on the current platform, the event loop type would reset to
+ * AWS_ELT_PLATFORM_DEFAULT.
+ */
+static int aws_event_loop_override_default_type(enum aws_event_loop_type default_type);
+
+/**
+ * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * retrieve the default type value.
+ * If `aws_event_loop_override_default_type` has been called, return the override default type.
+ */
+static enum aws_event_loop_type aws_event_loop_get_default_type(void)
+
+    typedef struct aws_event_loop *(aws_new_event_loop_fn)(struct aws_allocator *alloc,
+                                                           const struct aws_event_loop_options *options,
+                                                           void *new_loop_user_data);
 
 struct aws_event_loop_group {
     struct aws_allocator *allocator;

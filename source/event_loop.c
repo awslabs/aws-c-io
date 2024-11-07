@@ -14,6 +14,8 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
         .thread_options = NULL,
@@ -37,7 +39,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
 }
 
 static enum aws_event_loop_type aws_event_loop_get_default_type(void);
-static int aws_event_loop_validate_platform(enum aws_event_loop_type type);
+static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type);
 struct aws_event_loop *aws_event_loop_new_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
@@ -47,7 +49,7 @@ struct aws_event_loop *aws_event_loop_new_with_options(
         type = aws_event_loop_get_default_type();
     }
 
-    if (aws_event_loop_validate_platform(type)) {
+    if (aws_event_loop_type_validate_platform(type)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
         return NULL;
     }
@@ -538,14 +540,22 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     return event_loop->clock(time_nanos);
 }
 
+static int aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
+    if (aws_event_loop_type_validate_platform(default_type_override)) {
+        s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+        return;
+    }
+    s_default_event_loop_type_override = default_type_override;
+}
+
 static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
+    if (s_default_event_loop_type_override != AWS_ELT_PLATFORM_DEFAULT) {
+        return s_default_event_loop_type_override;
+    }
 /**
  * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
  * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
  */
-#ifdef AWS_OS_WINDOWS
-    return AWS_ELT_IOCP;
-#endif
 #ifdef AWS_ENABLE_KQUEUE
     return AWS_ELT_KQUEUE;
 #endif
@@ -555,9 +565,14 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_ENABLE_EPOLL
     return AWS_ELT_EPOLL;
 #endif
+#ifdef AWS_OS_WINDOWS
+    return AWS_ELT_IOCP;
+#endif
+    AWS_FATAL_ASSERT(false && "Could not find default event loop type");
+    return AWS_ELT_PLATFORM_DEFAULT;
 }
 
-static int aws_event_loop_validate_platform(enum aws_event_loop_type type) {
+static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) {
     switch (type) {
         case AWS_ELT_EPOLL:
 #ifndef AWS_ENABLE_EPOLL
@@ -598,7 +613,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     (void)alloc;
     (void)options;
     AWS_ASSERT(0);
-    
+
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Dispatch Queue is not supported on the platform");
     return NULL;
 }
