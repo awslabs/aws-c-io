@@ -15,6 +15,32 @@ struct aws_event_loop_group;
 struct aws_shutdown_callback_options;
 struct aws_task;
 
+typedef void(aws_event_loop_on_event_fn)(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    void *user_data);
+
+struct aws_event_loop_vtable {
+    void (*destroy)(struct aws_event_loop *event_loop);
+    int (*run)(struct aws_event_loop *event_loop);
+    int (*stop)(struct aws_event_loop *event_loop);
+    int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
+    void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+    void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
+    int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+    int (*subscribe_to_io_events)(
+        struct aws_event_loop *event_loop,
+        struct aws_io_handle *handle,
+        int events,
+        aws_event_loop_on_event_fn *on_event,
+        void *user_data);
+    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+    void (*free_io_event_resources)(void *user_data);
+    bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
+};
+
 /**
  * Event loop group configuration options
  */
@@ -165,6 +191,33 @@ struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_grou
     uint16_t max_threads,
     uint16_t cpu_group,
     const struct aws_shutdown_callback_options *shutdown_options);
+
+AWS_IO_API
+void *aws_event_loop_get_impl(struct aws_event_loop *event_loop);
+
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_base(
+    struct aws_allocator *allocator,
+    aws_io_clock_fn *clock,
+    struct aws_event_loop_vtable *vtable,
+    void *impl);
+
+/**
+ * Common cleanup code for all implementations.
+ * This is only called from the *destroy() function of event loop implementations.
+ */
+AWS_IO_API
+void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
+
+/**
+ * Invokes the destroy() fn for the event loop implementation.
+ * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
+ * If you do not want this function to block, call aws_event_loop_stop() manually first.
+ * If the event loop is shared by multiple threads then destroy must be called by exactly one thread. All other threads
+ * must ensure their API calls to the event loop happen-before the call to destroy.
+ */
+AWS_IO_API
+void aws_event_loop_destroy(struct aws_event_loop *event_loop);
 
 AWS_EXTERN_C_END
 
