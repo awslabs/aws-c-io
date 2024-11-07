@@ -599,7 +599,9 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     const struct aws_event_loop_options *options) {
     (void)alloc;
     (void)options;
-    AWS_ASSERT("Dispatch Queue is not supported on the platform" == NULL);
+    AWS_ASSERT(0);
+    
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Dispatch Queue is not supported on the platform");
     return NULL;
 }
 #endif // AWS_ENABLE_DISPATCH_QUEUE
@@ -610,7 +612,9 @@ struct aws_event_loop *aws_event_loop_new_iocp_with_options(
     const struct aws_event_loop_options *options) {
     (void)alloc;
     (void)options;
-    AWS_ASSERT("IOCP is not supported on the platform" == NULL);
+    AWS_ASSERT(0);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "IOCP is not supported on the platform");
     return NULL;
 }
 #endif // AWS_ENABLE_IO_COMPLETION_PORTS
@@ -621,7 +625,9 @@ struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
     const struct aws_event_loop_options *options) {
     (void)alloc;
     (void)options;
-    AWS_ASSERT("Kqueue is not supported on the platform" == NULL);
+    AWS_ASSERT(0);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Kqueue is not supported on the platform");
     return NULL;
 }
 #endif // AWS_ENABLE_EPOLL
@@ -632,7 +638,9 @@ struct aws_event_loop *aws_event_loop_new_epoll_with_options(
     const struct aws_event_loop_options *options) {
     (void)alloc;
     (void)options;
-    AWS_ASSERT("Epoll is not supported on the platform" == NULL);
+    AWS_ASSERT(0);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Epoll is not supported on the platform");
     return NULL;
 }
 #endif // AWS_ENABLE_KQUEUE
