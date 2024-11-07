@@ -331,7 +331,6 @@ AWS_IO_API
 struct aws_event_loop_group *aws_event_loop_group_new_internal(
     struct aws_allocator *allocator,
     const struct aws_event_loop_group_options *options,
-    aws_io_clock_fn *clock_override,
     aws_new_event_loop_fn *new_loop_fn,
     void *new_loop_user_data);
 

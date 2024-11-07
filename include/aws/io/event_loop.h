@@ -16,17 +16,6 @@ struct aws_shutdown_callback_options;
 struct aws_task;
 
 /**
- * Configuration to pin an event loop group to a particular CPU group
- */
-struct aws_event_loop_group_pin_options {
-
-    /**
-     * CPU group id that threads in this event loop group should be bound to
-     */
-    uint16_t cpu_group;
-};
-
-/**
  * Event loop group configuration options
  */
 struct aws_event_loop_group_options {
@@ -40,12 +29,20 @@ struct aws_event_loop_group_options {
     /**
      * Optional callback to invoke when the event loop group finishes destruction.
      */
-    struct aws_shutdown_callback_options *shutdown_options;
+    const struct aws_shutdown_callback_options *shutdown_options;
 
     /**
      * Optional configuration to control how the event loop group's threads bind to CPU groups
      */
-    struct aws_event_loop_group_pin_options *pin_options;
+    uint16_t *cpu_group;
+
+    /**
+     * Override for the clock function that event loops should use.  Defaults to the system's high resolution
+     * timer.
+     *
+     * Do not bind this value to managed code; it is only used in timing-sensitive tests.
+     */
+    aws_io_clock_fn *clock_override;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -137,6 +134,37 @@ size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
+
+/**
+ * Initializes an event loop group with platform defaults. If max_threads == 0, then the
+ * loop count will be the number of available processors on the machine / 2 (to exclude hyper-threads).
+ * Otherwise, max_threads will be the number of event loops in the group.
+ *
+ * @deprecated - use aws_event_loop_group_new() instead
+ */
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_new_default(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    const struct aws_shutdown_callback_options *shutdown_options);
+
+/** Creates an event loop group, with clock, number of loops to manage, the function to call for creating a new
+ * event loop, and also pins all loops to hw threads on the same cpu_group (e.g. NUMA nodes). Note:
+ * If el_count exceeds the number of hw threads in the cpu_group it will be clamped to the number of hw threads
+ * on the assumption that if you care about NUMA, you don't want hyper-threads doing your IO and you especially
+ * don't want IO on a different node.
+ *
+ * If max_threads == 0, then the
+ * loop count will be the number of available processors in the cpu_group / 2 (to exclude hyper-threads)
+ *
+ * @deprecated - use aws_event_loop_group_new() instead
+ */
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_group(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    uint16_t cpu_group,
+    const struct aws_shutdown_callback_options *shutdown_options);
 
 AWS_EXTERN_C_END
 
