@@ -66,7 +66,9 @@ static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_exponential_backoff_retry_options config = {
         .max_retries = 3,
@@ -158,7 +160,9 @@ static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_exponential_backoff_retry_options config = {
         .el_group = el_group,
@@ -203,7 +207,9 @@ static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_a
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_exponential_backoff_retry_options config = {
         .max_retries = 3,
@@ -256,7 +262,9 @@ static int s_test_exponential_max_backoff_retry_no_jitter_fn(struct aws_allocato
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_exponential_backoff_retry_options config = {
         .max_retries = 3,
@@ -314,7 +322,9 @@ static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_alloca
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_exponential_backoff_retry_options config = {
         .max_retries = 64,
