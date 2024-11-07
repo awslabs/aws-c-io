@@ -9,12 +9,11 @@
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
-// #include <aws/io/private/event_loop_impl.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/statistics.h>
 #include <aws/testing/aws_test_harness.h>
 
 struct testing_loop {
-    struct aws_allocator *allocator;
     struct aws_task_scheduler scheduler;
     bool mock_on_callers_thread;
 };
@@ -35,7 +34,7 @@ static int s_testing_loop_wait_for_stop_completion(struct aws_event_loop *event_
 }
 
 static void s_testing_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
-    struct testing_loop *testing_loop = aws_event_loop_get_impl(event_loop);
+    struct testing_loop *testing_loop = event_loop->impl_data;
     aws_task_scheduler_schedule_now(&testing_loop->scheduler, task);
 }
 
@@ -44,27 +43,26 @@ static void s_testing_loop_schedule_task_future(
     struct aws_task *task,
     uint64_t run_at_nanos) {
 
-    struct testing_loop *testing_loop = aws_event_loop_get_impl(event_loop);
+    struct testing_loop *testing_loop = event_loop->impl_data;
     aws_task_scheduler_schedule_future(&testing_loop->scheduler, task, run_at_nanos);
 }
 
 static void s_testing_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    struct testing_loop *testing_loop = aws_event_loop_get_impl(event_loop);
+    struct testing_loop *testing_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&testing_loop->scheduler, task);
 }
 
 static bool s_testing_loop_is_on_callers_thread(struct aws_event_loop *event_loop) {
-    struct testing_loop *testing_loop = aws_event_loop_get_impl(event_loop);
+    struct testing_loop *testing_loop = event_loop->impl_data;
     return testing_loop->mock_on_callers_thread;
 }
 
 static void s_testing_loop_destroy(struct aws_event_loop *event_loop) {
-    struct testing_loop *testing_loop = aws_event_loop_get_impl(event_loop);
-    struct aws_allocator *allocator = testing_loop->allocator;
+    struct testing_loop *testing_loop = event_loop->impl_data;
     aws_task_scheduler_clean_up(&testing_loop->scheduler);
-    aws_mem_release(allocator, testing_loop);
+    aws_mem_release(event_loop->alloc, testing_loop);
     aws_event_loop_clean_up_base(event_loop);
-    aws_mem_release(allocator, event_loop);
+    aws_mem_release(event_loop->alloc, event_loop);
 }
 
 static struct aws_event_loop_vtable s_testing_loop_vtable = {
@@ -79,11 +77,16 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
 };
 
 static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator, aws_io_clock_fn clock) {
+    struct aws_event_loop *event_loop = aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
+    aws_event_loop_init_base(event_loop, allocator, clock);
+
     struct testing_loop *testing_loop = aws_mem_calloc(allocator, 1, sizeof(struct testing_loop));
     aws_task_scheduler_init(&testing_loop->scheduler, allocator);
     testing_loop->mock_on_callers_thread = true;
+    event_loop->impl_data = testing_loop;
+    event_loop->vtable = &s_testing_loop_vtable;
 
-    return aws_event_loop_new_base(allocator, clock, &s_testing_loop_vtable, testing_loop);
+    return event_loop;
 }
 
 typedef void(testing_channel_handler_on_shutdown_fn)(
@@ -391,7 +394,7 @@ static inline int testing_channel_init(
     AWS_ZERO_STRUCT(*testing);
 
     testing->loop = s_testing_loop_new(allocator, options->clock_fn);
-    testing->loop_impl = aws_event_loop_get_impl(testing->loop);
+    testing->loop_impl = testing->loop->impl_data;
 
     struct aws_channel_options args = {
         .on_setup_completed = s_testing_channel_on_setup_completed,
