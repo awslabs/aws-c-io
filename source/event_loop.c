@@ -74,12 +74,12 @@ struct aws_event_loop *aws_event_loop_new_with_options(
     return NULL;
 }
 
-// TODO: DISPATCH QUEUE will be implemented later. 
+// TODO: DISPATCH QUEUE will be implemented later.
 struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
-    (void) alloc;
-    (void) options;
+    (void)alloc;
+    (void)options;
     AWS_ASSERT("DISPATCH QUEUE IS NOT SUPPORTED YET" == NULL);
     return NULL;
 }
@@ -197,10 +197,7 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
             struct aws_thread_options thread_options = *aws_default_thread_options();
 
             struct aws_event_loop_options el_options = {
-                .clock = clock,
-                .thread_options = &thread_options,
-                .type = options->type
-            };
+                .clock = clock, .thread_options = &thread_options, .type = options->type};
 
             if (pin_threads) {
                 thread_options.cpu_id = usable_cpus[i].cpu_id;
