@@ -110,10 +110,7 @@ elseif (APPLE)
             )
 
     file(GLOB AWS_IO_OS_SRC
-            "source/bsd/*.c"
-            "source/posix/*.c"
-            "source/darwin/darwin_pki_utils.c"
-            "source/darwin/secure_transport_tls_channel_handler.c"
+            "source/darwin/*.c"
             )
 
     find_library(SECURITY_LIB Security)
@@ -129,14 +126,16 @@ elseif (APPLE)
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
 
-     if(AWS_USE_DISPATCH_QUEUE OR IOS)
-        set(EVENT_LOOP_DEFINES "DISPATCH_QUEUE" )
-        message("use dispatch queue")
-        file(GLOB AWS_IO_DISPATCH_QUEUE_SRC
-        "source/darwin/dispatch_queue_event_loop.c"
+    set(EVENT_LOOP_DEFINES "DISPATCH_QUEUE" )
+    message("Enable dispatch queue")
+
+    # Enable KQUEUE on OSX
+    if(OSX)
+        file(GLOB AWS_IO_KUEUE_SRC
+            "source/bsd/*.c"
+            "source/posix/*.c"
         )
-        list(APPEND AWS_IO_OS_SRC ${AWS_IO_DISPATCH_QUEUE_SRC})
-     else ()
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_KUEUE_SRC})
         set(EVENT_LOOP_DEFINE "KQUEUE")
     endif()
 

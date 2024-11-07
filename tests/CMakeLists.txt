@@ -18,7 +18,7 @@ add_test_case(io_library_init)
 add_test_case(io_library_init_cleanup_init_cleanup)
 
 # DEBUG: temporarily disable the pipe related tests
-if(NOT AWS_USE_DISPATCH_QUEUE)
+if(NOT AWS_TEST_DISPATCH_QUEUE)
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
 add_pipe_test_case(pipe_read_write_large_buffer)
@@ -39,7 +39,7 @@ add_test_case(event_loop_canceled_tasks_run_in_el_thread)
 
 if(USE_IO_COMPLETION_PORTS)
     add_test_case(event_loop_completion_events)
-elseif(NOT AWS_USE_DISPATCH_QUEUE) # TODO: setup a test for dispatch queue once pipe is there.
+elseif(NOT AWS_TEST_DISPATCH_QUEUE) # TODO: setup a test for dispatch queue once pipe is there.
     add_test_case(event_loop_subscribe_unsubscribe)
     add_test_case(event_loop_writable_event_on_subscribe)
     add_test_case(event_loop_no_readable_event_before_write)

@@ -548,6 +548,7 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_OS_WINDOWS
     return AWS_ELT_IOCP;
 #endif
+// If both kqueue and dispatch queue is enabled, default to kqueue
 #ifdef AWS_ENABLE_KQUEUE
     return AWS_ELT_KQUEUE;
 #endif
@@ -557,6 +558,7 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_ENABLE_EPOLL
     return AWS_ELT_EPOLL;
 #endif
+    return AWS_ELT_PLATFORM_DEFAULT;
 }
 
 static int aws_event_loop_validate_platform(enum aws_event_loop_type type) {
@@ -600,7 +602,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     (void)alloc;
     (void)options;
     AWS_ASSERT(0);
-    
+
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Dispatch Queue is not supported on the platform");
     return NULL;
 }

@@ -2,23 +2,23 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-#ifdef AWS_USE_DISPATCH_QUEUE
 
-#    include <aws/io/event_loop.h>
+#include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 
-#    include <aws/common/atomics.h>
-#    include <aws/common/mutex.h>
-#    include <aws/common/task_scheduler.h>
-#    include <aws/common/uuid.h>
+#include <aws/common/atomics.h>
+#include <aws/common/mutex.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/uuid.h>
 
-#    include <aws/io/logging.h>
+#include <aws/io/logging.h>
 
-#    include <unistd.h>
+#include <unistd.h>
 
-#    include <Block.h>
-#    include <aws/io/private/dispatch_queue.h>
-#    include <dispatch/dispatch.h>
-#    include <dispatch/queue.h>
+#include <Block.h>
+#include <aws/io/private/dispatch_queue.h>
+#include <dispatch/dispatch.h>
+#include <dispatch/queue.h>
 
 static void s_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
@@ -42,7 +42,7 @@ static struct aws_event_loop_vtable s_vtable = {
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
-    .connect_to_completion_port = s_connect_to_dispatch_queue,
+    .connect_to_io_completion_port = s_connect_to_dispatch_queue,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_on_callers_thread,
@@ -498,5 +498,3 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     aws_mutex_unlock(&dispatch_queue->synced_data.lock);
     return result;
 }
-
-#endif /* AWS_USE_DISPATCH_QUEUE */
