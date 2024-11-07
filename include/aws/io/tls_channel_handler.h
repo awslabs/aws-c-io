@@ -88,6 +88,8 @@ struct aws_tls_ctx {
 /**
  * Invoked upon completion of the TLS handshake. If successful error_code will be AWS_OP_SUCCESS, otherwise
  * the negotiation failed and immediately after this function is invoked, the channel will be shutting down.
+ *
+ * NOTE: When using SecItem, the handler and slot will be related to sockets and not tls.
  */
 typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,

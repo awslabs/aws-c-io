@@ -130,7 +130,7 @@ struct client_connection_args {
     struct aws_event_loop *requested_event_loop;
 
     /*
-     * Apple network framework's establishment of a network connection combines both socket and TLS related
+     * Apple network framework's establishment of a network connection combines both TCP and TLS related
      * operations into a singular connection callback. This is used to store a previously received
      * TLS error_code that can be reported at a later time.
      */
@@ -488,14 +488,15 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         }
 
         if (connection_args->channel_data.use_tls) {
-/* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
- * The TCP and TLS handshake are both handled by the network parameters and its options and verification
- * block. We do not need to set up a separate TLS slot in the channel for iOS. */
 #if defined(AWS_USE_SECITEM)
+            /* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
+             * The TCP and TLS handshakes are both handled by the network parameters, its options, and verification
+             * block. We do not need to set up a separate TLS slot in the channel when using SecItem. We only get to
+             * here if a TLS connection is successfully established so we trigger a success using the TLS handshake
+             * completion path to provide access to the server name and protocol if one exists. */
             s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
             return;
-#endif
-#if !defined(AWS_USE_SECITEM)
+#endif /* AWS_USE_SECITEM */
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
             if (s_setup_client_tls(connection_args, channel)) {
@@ -503,7 +504,6 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
                 goto error;
             }
             return;
-#endif
         } else {
             s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
         }
