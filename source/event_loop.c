@@ -5,83 +5,72 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
+
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
+#include <aws/common/platform.h>
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
-
-#ifdef __APPLE__
-// DEBUG WIP we may need to wrap this for iOS specific
-#    include <TargetConditionals.h>
-#endif
-
-static const struct aws_event_loop_configuration s_available_configurations[] = {
-#ifdef AWS_USE_IO_COMPLETION_PORTS
-    {
-        .name = "WinNT IO Completion Ports",
-        .event_loop_new_fn = aws_event_loop_new_iocp_with_options,
-        .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
-        .is_default = true,
-    },
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
-#ifdef AWS_USE_DISPATCH_QUEUE
-    /* use kqueue on OSX and dispatch_queues everywhere else */
-    {
-        .name = "Apple Dispatch Queue",
-        .event_loop_new_fn = aws_event_loop_new_dispatch_queue_with_options,
-        .style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
-        .is_default = true,
-    },
-#endif /* AWS_USE_DISPATCH_QUEUE */
-#ifdef AWS_USE_KQUEUE
-    {
-        .name = "BSD Edge-Triggered KQueue",
-        .event_loop_new_fn = aws_event_loop_new_kqueue_with_options,
-        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
-        .is_default = true,
-    },
-#endif /* AWS_USE_KQUEUE */
-#ifdef AWS_USE_EPOLL
-    {
-        .name = "Linux Edge-Triggered Epoll",
-        .event_loop_new_fn = aws_event_loop_new_epoll_with_options,
-        .style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
-        .is_default = true,
-    },
-#endif /* AWS_USE_EPOLL */
-};
-
-static struct aws_event_loop_configuration_group s_available_configuration_group = {
-    .configuration_count = AWS_ARRAY_SIZE(s_available_configurations),
-    .configurations = s_available_configurations,
-};
-
-const struct aws_event_loop_configuration_group *aws_event_loop_get_available_configurations(void) {
-    return &s_available_configuration_group;
-}
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
         .thread_options = NULL,
         .clock = clock,
+        .type = AWS_ELT_PLATFORM_DEFAULT,
     };
 
-    return aws_event_loop_new_default_with_options(alloc, &options);
+    return aws_event_loop_new_with_options(alloc, &options);
 }
 
 struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
+    struct aws_event_loop_options local_options = {
+        .thread_options = options->thread_options,
+        .clock = options->clock,
+        .type = AWS_ELT_PLATFORM_DEFAULT,
+    };
 
-    const struct aws_event_loop_configuration_group *default_configs = aws_event_loop_get_available_configurations();
+    return aws_event_loop_new_with_options(alloc, &local_options);
+}
 
-    for (size_t i = 0; i < default_configs->configuration_count; ++i) {
-        if (default_configs[i].configurations->is_default) {
-            return default_configs[i].configurations->event_loop_new_fn(alloc, options);
-        }
+static enum aws_event_loop_type aws_event_loop_get_default_type(void);
+static int aws_event_loop_validate_platform(enum aws_event_loop_type type);
+struct aws_event_loop *aws_event_loop_new_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+
+    enum aws_event_loop_type type = options->type;
+    if (type == AWS_ELT_PLATFORM_DEFAULT) {
+        type = aws_event_loop_get_default_type();
     }
 
-    AWS_FATAL_ASSERT(!"no available configurations found!");
+    if (aws_event_loop_validate_platform(type)) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
+        return NULL;
+    }
+
+    switch (type) {
+        case AWS_ELT_EPOLL:
+            return aws_event_loop_new_epoll_with_options(alloc, options);
+            break;
+        case AWS_ELT_IOCP:
+            return aws_event_loop_new_iocp_with_options(alloc, options);
+            break;
+        case AWS_ELT_KQUEUE:
+            return aws_event_loop_new_kqueue_with_options(alloc, options);
+            break;
+        case AWS_ELT_DISPATCH_QUEUE:
+            return aws_event_loop_new_dispatch_queue_with_options(alloc, options);
+            break;
+        default:
+            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
+            aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+            break;
+    }
+
     return NULL;
 }
 
@@ -138,30 +127,33 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
     aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options);
 }
 
-static struct aws_event_loop_group *s_event_loop_group_new(
-    struct aws_allocator *alloc,
-    aws_io_clock_fn *clock,
-    uint16_t el_count,
-    uint16_t cpu_group,
-    bool pin_threads,
+struct aws_event_loop_group *aws_event_loop_group_new_internal(
+    struct aws_allocator *allocator,
+    const struct aws_event_loop_group_options *options,
+    aws_io_clock_fn *clock_override,
     aws_new_event_loop_fn *new_loop_fn,
-    void *new_loop_user_data,
-    const struct aws_shutdown_callback_options *shutdown_options) {
-    AWS_ASSERT(new_loop_fn);
+    void *new_loop_user_data) {
+    AWS_FATAL_ASSERT(new_loop_fn);
+
+    aws_io_clock_fn *clock = clock_override;
+    if (!clock) {
+        clock = aws_high_res_clock_get_ticks;
+    }
 
     size_t group_cpu_count = 0;
     struct aws_cpu_info *usable_cpus = NULL;
 
+    bool pin_threads = options->pin_options != NULL;
     if (pin_threads) {
+        uint16_t cpu_group = options->pin_options->cpu_group;
         group_cpu_count = aws_get_cpu_count_for_group(cpu_group);
-
         if (!group_cpu_count) {
+            // LOG THIS
             aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             return NULL;
         }
 
-        usable_cpus = aws_mem_calloc(alloc, group_cpu_count, sizeof(struct aws_cpu_info));
-
+        usable_cpus = aws_mem_calloc(allocator, group_cpu_count, sizeof(struct aws_cpu_info));
         if (usable_cpus == NULL) {
             return NULL;
         }
@@ -169,16 +161,23 @@ static struct aws_event_loop_group *s_event_loop_group_new(
         aws_get_cpu_ids_for_group(cpu_group, usable_cpus, group_cpu_count);
     }
 
-    struct aws_event_loop_group *el_group = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop_group));
+    struct aws_event_loop_group *el_group = aws_mem_calloc(allocator, 1, sizeof(struct aws_event_loop_group));
     if (el_group == NULL) {
         return NULL;
     }
 
-    el_group->allocator = alloc;
+    el_group->allocator = allocator;
     aws_ref_count_init(
         &el_group->ref_count, el_group, (aws_simple_completion_callback *)s_aws_event_loop_group_shutdown_async);
 
-    if (aws_array_list_init_dynamic(&el_group->event_loops, alloc, el_count, sizeof(struct aws_event_loop *))) {
+    uint16_t el_count = options->loop_count;
+    if (el_count == 0) {
+        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
+        /* cut them in half to avoid using hyper threads for the IO work. */
+        el_count = processor_count > 1 ? processor_count / 2 : processor_count;
+    }
+
+    if (aws_array_list_init_dynamic(&el_group->event_loops, allocator, el_count, sizeof(struct aws_event_loop *))) {
         goto on_error;
     }
 
@@ -187,10 +186,8 @@ static struct aws_event_loop_group *s_event_loop_group_new(
         if (!pin_threads || (i < group_cpu_count && !usable_cpus[i].suspected_hyper_thread)) {
             struct aws_thread_options thread_options = *aws_default_thread_options();
 
-            struct aws_event_loop_options options = {
-                .clock = clock,
-                .thread_options = &thread_options,
-            };
+            struct aws_event_loop_options el_options = {
+                .clock = clock, .thread_options = &thread_options, .type = options->type};
 
             if (pin_threads) {
                 thread_options.cpu_id = usable_cpus[i].cpu_id;
@@ -204,8 +201,7 @@ static struct aws_event_loop_group *s_event_loop_group_new(
             }
             thread_options.name = aws_byte_cursor_from_c_str(thread_name);
 
-            struct aws_event_loop *loop = new_loop_fn(alloc, &options, new_loop_user_data);
-
+            struct aws_event_loop *loop = new_loop_fn(allocator, &el_options, new_loop_user_data);
             if (!loop) {
                 goto on_error;
             }
@@ -221,12 +217,12 @@ static struct aws_event_loop_group *s_event_loop_group_new(
         }
     }
 
-    if (shutdown_options != NULL) {
-        el_group->shutdown_options = *shutdown_options;
+    if (options->shutdown_options != NULL) {
+        el_group->shutdown_options = *options->shutdown_options;
     }
 
     if (pin_threads) {
-        aws_mem_release(alloc, usable_cpus);
+        aws_mem_release(allocator, usable_cpus);
     }
 
     return el_group;
@@ -235,27 +231,13 @@ on_error:;
     /* cache the error code to prevent any potential side effects */
     int cached_error_code = aws_last_error();
 
-    aws_mem_release(alloc, usable_cpus);
+    aws_mem_release(allocator, usable_cpus);
     s_aws_event_loop_group_shutdown_sync(el_group);
     s_event_loop_group_thread_exit(el_group);
 
     /* raise the cached error code */
     aws_raise_error(cached_error_code);
     return NULL;
-}
-
-struct aws_event_loop_group *aws_event_loop_group_new(
-    struct aws_allocator *alloc,
-    aws_io_clock_fn *clock,
-    uint16_t el_count,
-    aws_new_event_loop_fn *new_loop_fn,
-    void *new_loop_user_data,
-    const struct aws_shutdown_callback_options *shutdown_options) {
-
-    AWS_ASSERT(new_loop_fn);
-    AWS_ASSERT(el_count);
-
-    return s_event_loop_group_new(alloc, clock, el_count, 0, false, new_loop_fn, new_loop_user_data, shutdown_options);
 }
 
 static struct aws_event_loop *s_default_new_event_loop(
@@ -267,80 +249,12 @@ static struct aws_event_loop *s_default_new_event_loop(
     return aws_event_loop_new_default_with_options(allocator, options);
 }
 
-struct aws_event_loop_group *aws_event_loop_group_new_default(
-    struct aws_allocator *alloc,
-    uint16_t max_threads,
-    const struct aws_shutdown_callback_options *shutdown_options) {
-    if (!max_threads) {
-        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
-        /* cut them in half to avoid using hyper threads for the IO work. */
-        max_threads = processor_count > 1 ? processor_count / 2 : processor_count;
-    }
-
-    return aws_event_loop_group_new(
-        alloc, aws_high_res_clock_get_ticks, max_threads, s_default_new_event_loop, NULL, shutdown_options);
-}
-
-static struct aws_event_loop *s_default_new_config_based_event_loop(
+struct aws_event_loop_group *aws_event_loop_group_new(
     struct aws_allocator *allocator,
-    const struct aws_event_loop_options *options,
-    void *user_data) {
+    const struct aws_event_loop_group_options *options) {
 
-    const struct aws_event_loop_configuration *config = user_data;
-    return config->event_loop_new_fn(allocator, options);
-}
-
-struct aws_event_loop_group *aws_event_loop_group_new_from_config(
-    struct aws_allocator *allocator,
-    const struct aws_event_loop_configuration *config,
-    uint16_t max_threads,
-    const struct aws_shutdown_callback_options *shutdown_options) {
-    if (!max_threads) {
-        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
-        /* cut them in half to avoid using hyper threads for the IO work. */
-        max_threads = processor_count > 1 ? processor_count / 2 : processor_count;
-    }
-
-    return s_event_loop_group_new(
-        allocator,
-        aws_high_res_clock_get_ticks,
-        max_threads,
-        0,
-        false,
-        s_default_new_config_based_event_loop,
-        (void *)config,
-        shutdown_options);
-}
-
-struct aws_event_loop_group *aws_event_loop_group_new_pinned_to_cpu_group(
-    struct aws_allocator *alloc,
-    aws_io_clock_fn *clock,
-    uint16_t el_count,
-    uint16_t cpu_group,
-    aws_new_event_loop_fn *new_loop_fn,
-    void *new_loop_user_data,
-    const struct aws_shutdown_callback_options *shutdown_options) {
-    AWS_ASSERT(new_loop_fn);
-    AWS_ASSERT(el_count);
-
-    return s_event_loop_group_new(
-        alloc, clock, el_count, cpu_group, true, new_loop_fn, new_loop_user_data, shutdown_options);
-}
-
-struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_group(
-    struct aws_allocator *alloc,
-    uint16_t max_threads,
-    uint16_t cpu_group,
-    const struct aws_shutdown_callback_options *shutdown_options) {
-
-    if (!max_threads) {
-        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
-        /* cut them in half to avoid using hyper threads for the IO work. */
-        max_threads = processor_count > 1 ? processor_count / 2 : processor_count;
-    }
-
-    return aws_event_loop_group_new_pinned_to_cpu_group(
-        alloc, aws_high_res_clock_get_ticks, max_threads, cpu_group, s_default_new_event_loop, NULL, shutdown_options);
+    return aws_event_loop_group_new_internal(
+        allocator, options, aws_high_res_clock_get_ticks, s_default_new_event_loop, NULL);
 }
 
 struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group) {
@@ -355,13 +269,6 @@ void aws_event_loop_group_release(struct aws_event_loop_group *el_group) {
     if (el_group != NULL) {
         aws_ref_count_release(&el_group->ref_count);
     }
-}
-
-enum aws_event_loop_style aws_event_loop_group_get_style(struct aws_event_loop_group *el_group) {
-    AWS_PRECONDITION(aws_event_loop_group_get_loop_count(el_group) > 0);
-
-    struct aws_event_loop *event_loop = aws_event_loop_group_get_loop_at(el_group, 0);
-    return event_loop->vtable->event_loop_style;
 }
 
 size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group) {
@@ -588,11 +495,15 @@ void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_ta
     event_loop->vtable->cancel_task(event_loop, task);
 }
 
-int aws_event_loop_connect_handle_to_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    AWS_ASSERT(
-        event_loop->vtable && event_loop->vtable->event_loop_style == AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED &&
-        event_loop->vtable->register_style.connect_to_completion_port);
-    return event_loop->vtable->register_style.connect_to_completion_port(event_loop, handle);
+int aws_event_loop_connect_handle_to_io_completion_port(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle) {
+
+    if (event_loop->vtable && event_loop->vtable->connect_to_io_completion_port) {
+        return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
+    }
+
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
 
 int aws_event_loop_subscribe_to_io_events(
@@ -602,10 +513,10 @@ int aws_event_loop_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    AWS_ASSERT(
-        event_loop->vtable && event_loop->vtable->event_loop_style == AWS_EVENT_LOOP_STYLE_POLL_BASED &&
-        event_loop->vtable->register_style.subscribe_to_io_events);
-    return event_loop->vtable->register_style.subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
+    if (event_loop->vtable && event_loop->vtable->subscribe_to_io_events) {
+        return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
+    }
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
@@ -628,3 +539,108 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     AWS_ASSERT(event_loop->clock);
     return event_loop->clock(time_nanos);
 }
+
+static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
+/**
+ * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
+ * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
+ */
+#ifdef AWS_OS_WINDOWS
+    return AWS_ELT_IOCP;
+#endif
+#ifdef AWS_ENABLE_KQUEUE
+    return AWS_ELT_KQUEUE;
+#endif
+#ifdef AWS_ENABLE_DISPATCH_QUEUE
+    return AWS_ELT_DISPATCH_QUEUE;
+#endif
+#ifdef AWS_ENABLE_EPOLL
+    return AWS_ELT_EPOLL;
+#endif
+}
+
+static int aws_event_loop_validate_platform(enum aws_event_loop_type type) {
+    switch (type) {
+        case AWS_ELT_EPOLL:
+#ifndef AWS_ENABLE_EPOLL
+            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type EPOLL is not supported on the platform.");
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_ENABLE_EPOLL
+            break;
+        case AWS_ELT_IOCP:
+#ifndef AWS_ENABLE_IO_COMPLETION_PORTS
+            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type IOCP is not supported on the platform.");
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_ENABLE_IO_COMPLETION_PORTS
+            break;
+        case AWS_ELT_KQUEUE:
+#ifndef AWS_ENABLE_KQUEUE
+            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type KQUEUE is not supported on the platform.");
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_ENABLE_KQUEUE
+            break;
+        case AWS_ELT_DISPATCH_QUEUE:
+#ifndef AWS_ENABLE_DISPATCH_QUEUE
+            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type Dispatch Queue is not supported on the platform.");
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_ENABLE_DISPATCH_QUEUE
+            break;
+        default:
+            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type.");
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+            break;
+    }
+    return AWS_OP_SUCCESS;
+}
+
+#ifndef AWS_ENABLE_DISPATCH_QUEUE
+struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT(0);
+    
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Dispatch Queue is not supported on the platform");
+    return NULL;
+}
+#endif // AWS_ENABLE_DISPATCH_QUEUE
+
+#ifndef AWS_ENABLE_IO_COMPLETION_PORTS
+struct aws_event_loop *aws_event_loop_new_iocp_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT(0);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "IOCP is not supported on the platform");
+    return NULL;
+}
+#endif // AWS_ENABLE_IO_COMPLETION_PORTS
+
+#ifndef AWS_ENABLE_KQUEUE
+struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT(0);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Kqueue is not supported on the platform");
+    return NULL;
+}
+#endif // AWS_ENABLE_EPOLL
+
+#ifndef AWS_ENABLE_EPOLL
+struct aws_event_loop *aws_event_loop_new_epoll_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT(0);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Epoll is not supported on the platform");
+    return NULL;
+}
+#endif // AWS_ENABLE_KQUEUE

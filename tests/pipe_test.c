@@ -8,6 +8,7 @@
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/pipe.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/testing/aws_test_harness.h>
 
 enum pipe_loop_setup {

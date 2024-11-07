@@ -26,6 +26,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/pipe.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <aws/io/io.h>
 #include <errno.h>
