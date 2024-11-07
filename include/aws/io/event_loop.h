@@ -16,6 +16,25 @@ struct aws_shutdown_callback_options;
 struct aws_task;
 
 /**
+ * Event Loop Type.  If set to `AWS_ELT_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s default
+ * event loop type.
+ *
+ * Default Event Loop Type
+ * Linux       | AWS_ELT_EPOLL
+ * Windows	   | AWS_ELT_IOCP
+ * BSD Variants| AWS_ELT_KQUEUE
+ * MacOS	   | AWS_ELT_KQUEUE
+ * iOS         | AWS_ELT_DISPATCH_QUEUE
+ */
+enum aws_event_loop_type {
+    AWS_ELT_PLATFORM_DEFAULT = 0,
+    AWS_ELT_EPOLL,
+    AWS_ELT_IOCP,
+    AWS_ELT_KQUEUE,
+    AWS_ELT_DISPATCH_QUEUE,
+};
+
+/**
  * Configuration to pin an event loop group to a particular CPU group
  */
 struct aws_event_loop_group_pin_options {
@@ -36,6 +55,12 @@ struct aws_event_loop_group_options {
      * the creation and management of an analagous amount of managed threads
      */
     uint16_t loop_count;
+
+    /**
+     * Event loop type. If the event loop type is set to AWS_ELT_PLATFORM_DEFAULT, the
+     * creation function will automatically use the platform’s default event loop type.
+     */
+    enum aws_event_loop_type type;
 
     /**
      * Optional callback to invoke when the event loop group finishes destruction.

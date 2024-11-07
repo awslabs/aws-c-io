@@ -112,7 +112,7 @@ enum {
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
 
 /* Setup edge triggered epoll with a scheduler. */
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_epoll_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_PRECONDITION(options);

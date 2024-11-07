@@ -5,11 +5,12 @@
 
 #include <aws/io/event_loop.h>
 
-#include <aws/common/shutdown_types.h>
+#include <aws/io/logging.h>
 #include <aws/io/private/event_loop_impl.h>
 
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
+#include <aws/common/platform.h>
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
@@ -17,9 +18,68 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     struct aws_event_loop_options options = {
         .thread_options = NULL,
         .clock = clock,
+        .type = AWS_ELT_PLATFORM_DEFAULT,
     };
 
     return aws_event_loop_new_default_with_options(alloc, &options);
+}
+
+struct aws_event_loop *aws_event_loop_new_default_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    struct aws_event_loop_options local_options = {
+        .thread_options = options->thread_options,
+        .clock = options->clock,
+        .type = AWS_ELT_PLATFORM_DEFAULT,
+    };
+
+    return aws_event_loop_new_with_options(alloc, &local_options);
+}
+
+static enum aws_event_loop_type aws_event_loop_get_default_type(void);
+static int aws_event_loop_validate_platform(enum aws_event_loop_type type);
+struct aws_event_loop *aws_event_loop_new_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+
+    enum aws_event_loop_type type = options->type;
+    if (type == AWS_ELT_PLATFORM_DEFAULT) {
+        type = aws_event_loop_get_default_type();
+    }
+
+    if (aws_event_loop_validate_platform(type)) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
+        return NULL;
+    }
+
+    switch (type) {
+        case AWS_ELT_EPOLL:
+            return aws_event_loop_new_epoll_with_options(alloc, options);
+            break;
+        case AWS_ELT_IOCP:
+            return aws_event_loop_new_iocp_with_options(alloc, options);
+            break;
+        case AWS_ELT_KQUEUE:
+            return aws_event_loop_new_kqueue_with_options(alloc, options);
+            break;
+        case AWS_ELT_DISPATCH_QUEUE:
+            return aws_event_loop_new_dispatch_queue_with_options(alloc, options);
+            break;
+        default:
+            break;
+    }
+
+    return NULL;
+}
+
+// TODO: DISPATCH QUEUE will be implemented later. 
+struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void) alloc;
+    (void) options;
+    AWS_ASSERT("DISPATCH QUEUE IS NOT SUPPORTED YET" == NULL);
+    return NULL;
 }
 
 static void s_event_loop_group_thread_exit(void *user_data) {
@@ -488,4 +548,57 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) 
 int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos) {
     AWS_ASSERT(event_loop->clock);
     return event_loop->clock(time_nanos);
+}
+
+static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
+/**
+ * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
+ * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
+ */
+#ifdef AWS_OS_WINDOWS
+    return AWS_ELT_IOCP;
+#endif
+#ifdef AWS_USE_KQUEUE
+    return AWS_ELT_KQUEUE;
+#endif
+#ifdef AWS_USE_DISPATCH_QUEUE
+    return AWS_ELT_DISPATCH_QUEUE;
+#endif
+#ifdef AWS_USE_EPOLL
+    return AWS_ELT_DISPATCH_QUEUE;
+#endif
+}
+
+static int aws_event_loop_validate_platform(enum aws_event_loop_type type) {
+    switch (type) {
+        case AWS_ELT_EPOLL:
+#ifndef AWS_USE_EPOLL
+            AWS_ASSERT("Event loop type EPOLL is not supported on the platform." == NULL);
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_USE_EPOLL
+            break;
+        case AWS_ELT_IOCP:
+#ifndef AWS_USE_IO_COMPLETION_PORTS
+            AWS_ASSERT("Event loop type IOCP is not supported on the platform." == NULL);
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_USE_IO_COMPLETION_PORTS
+            break;
+        case AWS_ELT_KQUEUE:
+#ifndef AWS_USE_KQUEUE
+            AWS_ASSERT("Event loop type KQUEUE is not supported on the platform." == NULL);
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_USE_KQUEUE
+            break;
+        case AWS_ELT_DISPATCH_QUEUE:
+#ifndef AWS_USE_DISPATCH_QUEUE
+            AWS_ASSERT("Event loop type Dispatch Queue is not supported on the platform." == NULL);
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+#endif // AWS_USE_DISPATCH_QUEUE
+            break;
+        default:
+            AWS_ASSERT("Invalid event loop type." == NULL);
+            return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+            break;
+    }
+    return AWS_OP_SUCCESS;
 }
