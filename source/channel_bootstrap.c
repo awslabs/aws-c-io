@@ -498,7 +498,6 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
                 err_code = aws_last_error();
                 goto error;
             }
-            return;
         } else {
             s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
         }
@@ -589,33 +588,11 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, socket);
 
-        /* if this is the last attempted connection and it failed, notify the user */
-        if (connection_args->failed_count == connection_args->addresses_count) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                "id=%p: Connection failed with error_code %d.",
-                (void *)connection_args->bootstrap,
-                error_code);
-
-#ifdef AWS_USE_SECITEM
-            /* If a Apple Network connection has already failed with a TLS related error,
-             * the TLS error should be reported over a socket timeout as the TLS error is
-             * the reason why this connection attempt has failed.
-             */
-            if (connection_args->tls_error_code != AWS_ERROR_SUCCESS) {
-                error_code = connection_args->tls_error_code;
-            }
-#endif /* AWS_USE_SECITEM */
-
-            /* connection_args will be released after setup_callback */
-            s_connection_args_setup_callback(connection_args, error_code, NULL);
-        }
-
-#ifdef AWS_USE_SECITEM
-        // DEBUG WIP if we get a connection error originating from TLS, we need to cancel
-        // all other ongoing connection attempts related to this one because a socket was
-        // established and the TLS was what failed.
-        // DEBUG TODO on a TLS negotiation error, cancel all ongoing timeout tasks and wrap up
+#if defined(AWS_USE_SECITEM)
+        /* If Apple Network Framework Secitem is being used, it's possible at this point that
+         * a TCP connection was successful but it failed a TLS negotiation handshake. If the error
+         * indicates a TLS negotiation error, we store it to report the TLS failure once all connection
+         * addresses fail rather than the final TCP Socket timeout failure error code. */
         if (aws_tls_error_code_check(error_code)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -626,6 +603,22 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             connection_args->channel_data.socket = socket;
         }
 #endif /* AWS_USE_SECITEM */
+
+        /* if this is the last attempted connection and it failed, notify the user */
+        if (connection_args->failed_count == connection_args->addresses_count) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: Connection failed with error_code %d.",
+                (void *)connection_args->bootstrap,
+                error_code);
+
+            if (connection_args->tls_error_code != AWS_ERROR_SUCCESS) {
+                error_code = connection_args->tls_error_code;
+            }
+
+            /* connection_args will be released after setup_callback */
+            s_connection_args_setup_callback(connection_args, error_code, NULL);
+        }
 
         /* every connection task adds a ref, so every failure or cancel needs to dec one */
         s_client_connection_args_release(connection_args);
