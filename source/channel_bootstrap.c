@@ -368,10 +368,6 @@ static void s_tls_client_on_error(
     }
 }
 
-/* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
- * The TCP and TLS handshake are both handled by the network parameters and its options and verification block.
- * We do not need to set up a separate TLS slot in the channel for iOS. */
-#if !defined(AWS_USE_SECITEM)
 static inline int s_setup_client_tls(struct client_connection_args *connection_args, struct aws_channel *channel) {
     struct aws_channel_slot *tls_slot = aws_channel_slot_new(channel);
 
@@ -440,7 +436,6 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
 
     return AWS_OP_SUCCESS;
 }
-#endif //! AWS_USE_SECITEM
 
 static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
@@ -1221,10 +1216,6 @@ static void s_tls_server_on_error(
     }
 }
 
-/* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
- * The TCP and TLS handshake are both handled by the network parameters and its options and verification block.
- * We do not need to set up a separate TLS slot in the channel for iOS. */
-#if !defined(AWS_USE_SECITEM)
 static inline int s_setup_server_tls(struct server_channel_data *channel_data, struct aws_channel *channel) {
     struct aws_channel_slot *tls_slot = NULL;
     struct aws_channel_handler *tls_handler = NULL;
@@ -1308,7 +1299,6 @@ static inline int s_setup_server_tls(struct server_channel_data *channel_data, s
 
     return AWS_OP_SUCCESS;
 }
-#endif /* !AWS_USE_SECITEM */
 
 static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
     struct server_channel_data *channel_data = user_data;
@@ -1383,14 +1373,12 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
         return;
 
 #endif /* AWS_USE_SECITEM */
-#if !defined(AWS_USE_SECITEM)
         /* incoming callback will be invoked upon the negotiation completion so don't do it
          * here. */
         if (s_setup_server_tls(channel_data, channel)) {
             err_code = aws_last_error();
             goto error;
         }
-#endif /* !AWS_USE_SECITEM */
     } else {
         s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
     }
