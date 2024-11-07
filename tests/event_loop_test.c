@@ -172,7 +172,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
 
 AWS_TEST_CASE(event_loop_canceled_tasks_run_in_el_thread, s_test_event_loop_canceled_tasks_run_in_el_thread)
 
-#if AWS_USE_IO_COMPLETION_PORTS
+#if AWS_ENABLE_IO_COMPLETION_PORTS
 
 int aws_pipe_get_unique_name(char *dst, size_t dst_size);
 
@@ -311,7 +311,7 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
-#else /* !AWS_USE_IO_COMPLETION_PORTS */
+#else /* !AWS_ENABLE_IO_COMPLETION_PORTS */
 
 #    include <unistd.h>
 
@@ -971,7 +971,7 @@ static int s_test_event_loop_readable_event_on_2nd_time_readable(struct aws_allo
 }
 AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_readable_event_on_2nd_time_readable);
 
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
+#endif /* AWS_ENABLE_IO_COMPLETION_PORTS */
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

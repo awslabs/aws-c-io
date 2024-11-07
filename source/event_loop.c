@@ -74,16 +74,6 @@ struct aws_event_loop *aws_event_loop_new_with_options(
     return NULL;
 }
 
-// TODO: DISPATCH QUEUE will be implemented later.
-struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options) {
-    (void)alloc;
-    (void)options;
-    AWS_ASSERT("DISPATCH QUEUE IS NOT SUPPORTED YET" == NULL);
-    return NULL;
-}
-
 static void s_event_loop_group_thread_exit(void *user_data) {
     struct aws_event_loop_group *el_group = user_data;
 
@@ -505,17 +495,16 @@ void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_ta
     event_loop->vtable->cancel_task(event_loop, task);
 }
 
-#if AWS_USE_IO_COMPLETION_PORTS
-
 int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle) {
 
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->connect_to_io_completion_port);
-    return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
-}
+    if (event_loop->vtable && event_loop->vtable->connect_to_io_completion_port) {
+        return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
+    }
 
-#else  /* !AWS_USE_IO_COMPLETION_PORTS */
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+}
 
 int aws_event_loop_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
@@ -524,10 +513,11 @@ int aws_event_loop_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->subscribe_to_io_events);
-    return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
+    if (event_loop->vtable && event_loop->vtable->subscribe_to_io_events) {
+        return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
+    }
+    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
@@ -558,13 +548,13 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_OS_WINDOWS
     return AWS_ELT_IOCP;
 #endif
-#ifdef AWS_USE_KQUEUE
+#ifdef AWS_ENABLE_KQUEUE
     return AWS_ELT_KQUEUE;
 #endif
-#ifdef AWS_USE_DISPATCH_QUEUE
+#ifdef AWS_ENABLE_DISPATCH_QUEUE
     return AWS_ELT_DISPATCH_QUEUE;
 #endif
-#ifdef AWS_USE_EPOLL
+#ifdef AWS_ENABLE_EPOLL
     return AWS_ELT_DISPATCH_QUEUE;
 #endif
 }
@@ -572,28 +562,28 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 static int aws_event_loop_validate_platform(enum aws_event_loop_type type) {
     switch (type) {
         case AWS_ELT_EPOLL:
-#ifndef AWS_USE_EPOLL
+#ifndef AWS_ENABLE_EPOLL
             AWS_ASSERT("Event loop type EPOLL is not supported on the platform." == NULL);
             return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
-#endif // AWS_USE_EPOLL
+#endif // AWS_ENABLE_EPOLL
             break;
         case AWS_ELT_IOCP:
-#ifndef AWS_USE_IO_COMPLETION_PORTS
+#ifndef AWS_ENABLE_IO_COMPLETION_PORTS
             AWS_ASSERT("Event loop type IOCP is not supported on the platform." == NULL);
             return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
-#endif // AWS_USE_IO_COMPLETION_PORTS
+#endif // AWS_ENABLE_IO_COMPLETION_PORTS
             break;
         case AWS_ELT_KQUEUE:
-#ifndef AWS_USE_KQUEUE
+#ifndef AWS_ENABLE_KQUEUE
             AWS_ASSERT("Event loop type KQUEUE is not supported on the platform." == NULL);
             return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
-#endif // AWS_USE_KQUEUE
+#endif // AWS_ENABLE_KQUEUE
             break;
         case AWS_ELT_DISPATCH_QUEUE:
-#ifndef AWS_USE_DISPATCH_QUEUE
+#ifndef AWS_ENABLE_DISPATCH_QUEUE
             AWS_ASSERT("Event loop type Dispatch Queue is not supported on the platform." == NULL);
             return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
-#endif // AWS_USE_DISPATCH_QUEUE
+#endif // AWS_ENABLE_DISPATCH_QUEUE
             break;
         default:
             AWS_ASSERT("Invalid event loop type." == NULL);
@@ -602,3 +592,47 @@ static int aws_event_loop_validate_platform(enum aws_event_loop_type type) {
     }
     return AWS_OP_SUCCESS;
 }
+
+#ifndef AWS_ENABLE_DISPATCH_QUEUE
+struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT("Dispatch Queue is not supported on the platform" == NULL);
+    return NULL;
+}
+#endif // AWS_ENABLE_DISPATCH_QUEUE
+
+#ifndef AWS_ENABLE_IO_COMPLETION_PORTS
+struct aws_event_loop *aws_event_loop_new_iocp_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT("IOCP is not supported on the platform" == NULL);
+    return NULL;
+}
+#endif // AWS_ENABLE_IO_COMPLETION_PORTS
+
+#ifndef AWS_ENABLE_KQUEUE
+struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT("Kqueue is not supported on the platform" == NULL);
+    return NULL;
+}
+#endif // AWS_ENABLE_EPOLL
+
+#ifndef AWS_ENABLE_EPOLL
+struct aws_event_loop *aws_event_loop_new_epoll_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+    AWS_ASSERT("Epoll is not supported on the platform" == NULL);
+    return NULL;
+}
+#endif // AWS_ENABLE_KQUEUE
