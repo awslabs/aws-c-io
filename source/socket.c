@@ -16,7 +16,6 @@ int aws_socket_connect(
     aws_socket_on_connection_result_fn *on_connection_result,
     void *user_data) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_connect_fn);
-    AWS_PRECONDITION(socket->event_loop_style & event_loop->vtable->event_loop_style);
     return socket->vtable->socket_connect_fn(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
@@ -61,7 +60,6 @@ int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_op
 
 int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_loop *event_loop) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_assign_to_event_loop_fn);
-    AWS_PRECONDITION(socket->event_loop_style & event_loop->vtable->event_loop_style);
     return socket->vtable->socket_assign_to_event_loop_fn(socket, event_loop);
 }
 

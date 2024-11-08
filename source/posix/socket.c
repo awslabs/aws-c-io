@@ -264,7 +264,6 @@ static int s_socket_init(
     socket->options = *options;
     socket->impl = posix_socket;
     socket->vtable = &s_vtable;
-    socket->event_loop_style = AWS_EVENT_LOOP_STYLE_POLL_BASED;
 
     if (existing_socket_fd < 0) {
         int err = s_create_socket(socket, options);

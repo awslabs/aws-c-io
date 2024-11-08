@@ -164,7 +164,6 @@ struct aws_socket {
     struct aws_event_loop *event_loop;
     struct aws_channel_handler *handler;
     int state;
-    enum aws_event_loop_style event_loop_style;
     aws_socket_on_readable_fn *readable_fn;
     void *readable_user_data;
     aws_socket_on_connection_result_fn *connection_result_fn;

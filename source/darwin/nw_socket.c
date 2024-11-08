@@ -9,6 +9,7 @@
 #include <aws/common/string.h>
 #include <aws/common/uuid.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <Network/Network.h>
 #include <aws/io/private/dispatch_queue.h>
@@ -17,7 +18,6 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-#ifdef AWS_USE_DISPATCH_QUEUE
 static int s_determine_socket_error(int error) {
     switch (error) {
         case ECONNREFUSED:
@@ -355,7 +355,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
     socket->options = *options;
     socket->impl = nw_socket;
     socket->vtable = &s_vtable;
-    socket->event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED;
 
     aws_mutex_init(&nw_socket->synced_data.lock);
     aws_mutex_lock(&nw_socket->synced_data.lock);
@@ -833,7 +832,7 @@ static int s_socket_connect_fn(
     socket->io_handle.set_queue = s_client_set_dispatch_queue;
     socket->io_handle.clear_queue = s_client_clear_dispatch_queue;
 
-    aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
+    aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
     socket->event_loop = event_loop;
 
     nw_socket->on_connection_result_fn = on_connection_result;
@@ -1144,7 +1143,7 @@ static int s_socket_start_accept_fn(
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    aws_event_loop_connect_handle_to_completion_port(accept_loop, &socket->io_handle);
+    aws_event_loop_connect_handle_to_io_completion_port(accept_loop, &socket->io_handle);
     socket->event_loop = accept_loop;
     socket->accept_result_fn = on_accept_result;
     socket->connect_accept_user_data = user_data;
@@ -1314,7 +1313,7 @@ static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aw
         // aws_mutex_lock(&nw_socket->synced_data.lock);
         nw_socket->synced_data.event_loop = event_loop;
 
-        if (!aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle)) {
+        if (!aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle)) {
             nw_connection_start(socket->io_handle.data.handle);
             aws_mutex_unlock(&nw_socket->synced_data.lock);
             return AWS_OP_SUCCESS;
@@ -1609,4 +1608,3 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
     *out_address = socket->local_endpoint;
     return AWS_OP_SUCCESS;
 }
-#endif // AWS_USE_DISPATCH_QUEUE
