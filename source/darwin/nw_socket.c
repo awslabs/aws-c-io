@@ -326,8 +326,7 @@ static void s_setup_tls_options(
 
           /* Since we manually handle the verification of the peer, the value set using
            * sec_protocol_options_set_peer_authentication_required is ignored and this block is
-           * run instead. We must manually skip the verification at this point if verify_peer is
-           * false. */
+           * run instead. We manually skip the verification at this point if verify_peer is false. */
           if (!transport_ctx->verify_peer) {
               AWS_LOGF_WARN(
                   AWS_LS_IO_TLS,
@@ -447,10 +446,6 @@ static void s_setup_tcp_options_local(nw_protocol_options_t tcp_options, const s
     (void)tcp_options;
     (void)options;
 }
-// DEBUG WIP
-// static void s_setup_tls_options_local(nw_protocol_options_t tls_options) {
-//     (void)tls_options;
-// }
 
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
 
@@ -508,18 +503,6 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                     });
             }
         } else if (options->domain == AWS_SOCKET_LOCAL) {
-            // DEBUG WIP issues with local sockets and potential permissions
-            /*
-            nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                // TLS options Block disabled
-                ^(nw_protocol_options_t tls_options) {
-                  s_setup_tls_options_local(tls_options);
-                },
-                // TCP options Block
-                ^(nw_protocol_options_t tcp_options) {
-                  s_setup_tcp_options_local(tcp_options, options);
-                });
-            */
             if (setup_tls) {
                 nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     // TLS options block
@@ -528,14 +511,14 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                     },
                     // TCP options block
                     ^(nw_protocol_options_t tcp_options) {
-                      s_setup_tcp_options(tcp_options, options);
+                      s_setup_tcp_options_local(tcp_options, options);
                     });
 
             } else {
                 nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     NW_PARAMETERS_DISABLE_PROTOCOL,
                     // TCP options Block
-                    ^(nw_protocol_options_t tcp_options) { // try setup with nothing inside.
+                    ^(nw_protocol_options_t tcp_options) {
                       s_setup_tcp_options_local(tcp_options, options);
                     });
             }
@@ -544,16 +527,9 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
         nw_socket->nw_parameters = nw_parameters_create_secure_udp(
             NW_PARAMETERS_DISABLE_PROTOCOL,
             // TCP options Block
-            ^(nw_protocol_options_t tcp_options) { // try setup with nothing inside. DEBUG WIP
+            ^(nw_protocol_options_t tcp_options) {
               s_setup_tcp_options_local(tcp_options, options);
             });
-
-        // DEBUG WIP
-        //  NW_PARAMETERS_DEFAULT_CONFIGURATION); // DEBUG WIP local should not have tcp options set for Apple
-
-        // ^(nw_protocol_options_t tcp_options) {
-        //   s_setup_tcp_options(tcp_options, options);
-        // });
     }
 
     if (!nw_socket->nw_parameters) {
