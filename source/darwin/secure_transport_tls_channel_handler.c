@@ -850,9 +850,7 @@ struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *hand
      * and an aws_channel using it does not have a TLS slot. The server_name is stored
      * in the nw_socket and must be retrieved from the socket rather than a secure_transport_handler. */
     const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
-    if (socket->vtable->socket_get_server_name_fn) {
-        server_name = socket->vtable->socket_get_server_name_fn(socket);
-    }
+    server_name = socket->vtable->socket_get_server_name_fn(socket);
 #else
     struct secure_transport_handler *secure_transport_handler = handler->impl;
     server_name = secure_transport_handler->server_name;
