@@ -581,8 +581,6 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_OS_WINDOWS
     return AWS_ELT_IOCP;
 #endif
-    AWS_FATAL_ASSERT(false && "Could not find default event loop type");
-    return AWS_ELT_PLATFORM_DEFAULT;
 }
 
 static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) {
