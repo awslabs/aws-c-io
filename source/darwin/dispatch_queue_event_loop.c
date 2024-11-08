@@ -465,7 +465,6 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     (void)event_loop;
     (void)handle;
-#ifdef AWS_USE_DISPATCH_QUEUE
     AWS_PRECONDITION(handle->set_queue && handle->clear_queue);
 
     AWS_LOGF_TRACE(
@@ -475,7 +474,6 @@ static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct
         (void *)handle->data.handle);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
     handle->set_queue(handle, dispatch_loop->dispatch_queue);
-#endif //    #ifdef AWS_USE_DISPATCH_QUEUE
     return AWS_OP_SUCCESS;
 }
 
@@ -485,9 +483,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: un-subscribing from events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
-#ifdef AWS_USE_DISPATCH_QUEUE
     handle->clear_queue(handle);
-#endif
     return AWS_OP_SUCCESS;
 }
 

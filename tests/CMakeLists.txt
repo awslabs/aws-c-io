@@ -83,7 +83,7 @@ add_test_case(cleanup_in_write_cb_doesnt_explode)
 add_test_case(sock_write_cb_is_async)
 add_test_case(socket_validate_port)
 
-if(NOT AWS_USE_DISPATCH_QUEUE)
+if(NOT AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE)
 # Apple Network Framework does not support bind+connect
 add_test_case(udp_bind_connect_communication)
 # The read/write will always run a different thread for Apple Network Framework

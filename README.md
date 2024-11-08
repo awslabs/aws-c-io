@@ -646,8 +646,7 @@ All exported functions, simply shim into the v-table and return.
 
 We include a cross-platform API for sockets. We support TCP and UDP using IPv4 and IPv6, and Unix Domain sockets. On Windows,
 we use Named Pipes to support the functionality of Unix Domain sockets. On Windows, this is implemented with winsock2, and on
-all unix platforms we use the posix API. We can also enable Apple Network Framework along with the Apple Dispatch Queue by setting
-the preprocessing flag `AWS_USE_DISPATCH_QUEUE`. Then we will use Apple Network Framework on Apple platforms. 
+all unix platforms we use the posix API. Then we will use Apple Network Framework on Apple platforms. 
 
 Upon a connection being established, the new socket (either as the result of a `connect()` or `start_accept()` call)
 will not be attached to any event loops. It is your responsibility to register it with an event loop to begin receiving
