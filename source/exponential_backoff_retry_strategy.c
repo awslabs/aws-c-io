@@ -11,6 +11,7 @@
 #include <aws/common/device_random.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
+#include <aws/common/ref_count.h>
 
 #include <inttypes.h>
 
@@ -55,7 +56,7 @@ static void s_exponential_retry_destroy(struct aws_retry_strategy *retry_strateg
         if (completion_callback != NULL) {
             completion_callback(completion_user_data);
         }
-        aws_ref_count_release(&el_group->ref_count);
+        aws_event_loop_group_release(el_group);
     }
 }
 
@@ -361,7 +362,7 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     aws_atomic_init_int(&exponential_backoff_strategy->base.ref_count, 1);
     exponential_backoff_strategy->config = *config;
     exponential_backoff_strategy->config.el_group =
-        aws_ref_count_acquire(&exponential_backoff_strategy->config.el_group->ref_count);
+        aws_event_loop_group_acquire(exponential_backoff_strategy->config.el_group);
 
     if (!exponential_backoff_strategy->config.generate_random &&
         !exponential_backoff_strategy->config.generate_random_impl) {

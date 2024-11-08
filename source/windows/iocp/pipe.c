@@ -7,6 +7,7 @@
 
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -251,7 +252,7 @@ int aws_pipe_init(
         }
     }
 
-    int err = aws_event_loop_connect_handle_to_completion_port(write_end_event_loop, &write_impl->handle);
+    int err = aws_event_loop_connect_handle_to_io_completion_port(write_end_event_loop, &write_impl->handle);
     if (err) {
         goto clean_up;
     }
@@ -282,7 +283,7 @@ int aws_pipe_init(
         goto clean_up;
     }
 
-    err = aws_event_loop_connect_handle_to_completion_port(read_end_event_loop, &read_impl->handle);
+    err = aws_event_loop_connect_handle_to_io_completion_port(read_end_event_loop, &read_impl->handle);
     if (err) {
         goto clean_up;
     }

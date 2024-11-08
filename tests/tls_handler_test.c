@@ -10,6 +10,7 @@
 #    include <aws/io/file_utils.h>
 #    include <aws/io/host_resolver.h>
 #    include <aws/io/logging.h>
+#    include <aws/io/private/event_loop_impl.h>
 #    include <aws/io/socket.h>
 #    include <aws/io/tls_channel_handler.h>
 
@@ -177,7 +178,10 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    tester->el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = tester->el_group,
@@ -535,7 +539,11 @@ static int s_tls_channel_server_client_tester_init(struct aws_allocator *allocat
     AWS_ZERO_STRUCT(s_server_client_tester);
     ASSERT_SUCCESS(aws_mutex_init(&s_server_client_tester.server_mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_server_client_tester.server_condition_variable));
-    s_server_client_tester.client_el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    s_server_client_tester.client_el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     ASSERT_SUCCESS(s_tls_rw_args_init(
         &s_server_client_tester.server_rw_args,
@@ -1910,8 +1918,11 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    tester->el_group =
-        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+        .clock_override = s_statistic_test_clock_fn,
+    };
+    tester->el_group = aws_event_loop_group_new_internal(allocator, &elg_options, s_default_new_event_loop, NULL);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = tester->el_group,

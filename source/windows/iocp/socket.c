@@ -26,6 +26,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/pipe.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <aws/io/io.h>
 #include <errno.h>
@@ -2610,7 +2611,7 @@ static int s_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_e
     }
 
     socket->event_loop = event_loop;
-    return aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
+    return aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
 }
 
 struct read_cb_args {

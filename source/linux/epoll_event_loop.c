@@ -3,17 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/event_loop.h>
-
 #include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/private/tracing.h>
-
+#include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
+#include <aws/io/private/tracing.h>
 
 #include <sys/epoll.h>
 
@@ -72,8 +71,7 @@ static struct aws_event_loop_vtable s_vtable = {
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
-    .register_style.subscribe_to_io_events = s_subscribe_to_io_events,
-    .event_loop_style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
+    .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_on_callers_thread,

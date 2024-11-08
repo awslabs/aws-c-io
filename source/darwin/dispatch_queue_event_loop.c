@@ -4,6 +4,7 @@
  */
 
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <aws/common/atomics.h>
 #include <aws/common/mutex.h>
@@ -41,8 +42,7 @@ static struct aws_event_loop_vtable s_vtable = {
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
-    .register_style.connect_to_completion_port = s_connect_to_dispatch_queue,
-    .event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
+    .connect_to_io_completion_port = s_connect_to_dispatch_queue,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_on_callers_thread,

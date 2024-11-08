@@ -1,10 +1,6 @@
 
-cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.9)
 project(aws-c-io C)
-
-if (POLICY CMP0069)
-    cmake_policy(SET CMP0069 NEW) # Enable LTO/IPO if available in the compiler, see AwsCFlags
-endif()
 
 if (DEFINED CMAKE_PREFIX_PATH)
     file(TO_CMAKE_PATH "${CMAKE_PREFIX_PATH}" CMAKE_PREFIX_PATH)
@@ -78,7 +74,7 @@ if (WIN32)
                 )
          list(APPEND AWS_IO_OS_SRC ${AWS_IO_IOCP_SRC})
 
-         set(EVENT_LOOP_DEFINES "AWS_USE_IO_COMPLETION_PORTS")
+         set(EVENT_LOOP_DEFINE "IO_COMPLETION_PORTS")
     endif ()
 
     if (MSVC)
@@ -105,7 +101,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Androi
             )
     set(PLATFORM_LIBS "")
 
-    set(EVENT_LOOP_DEFINES "-DAWS_USE_EPOLL")
+    set(EVENT_LOOP_DEFINE "EPOLL")
     set(USE_S2N ON)
 
 elseif (APPLE)
@@ -114,8 +110,6 @@ elseif (APPLE)
             )
 
     file(GLOB AWS_IO_OS_SRC
-            "source/bsd/*.c"
-            "source/posix/*.c"
             "source/darwin/*.c"
             )
 
@@ -131,12 +125,16 @@ elseif (APPLE)
 
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
+    set(EVENT_LOOP_DEFINES "DISPATCH_QUEUE" )
 
-     if(AWS_USE_DISPATCH_QUEUE OR IOS)
-        set(EVENT_LOOP_DEFINES "-DAWS_USE_DISPATCH_QUEUE" )
-        message("use dispatch queue")
-     else ()
-         set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+    # Enable KQUEUE on MacOS 
+    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        file(GLOB AWS_IO_KUEUE_SRC
+            "source/bsd/*.c"
+            "source/posix/*.c"
+        )
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_KUEUE_SRC})
+        set(EVENT_LOOP_DEFINE "KQUEUE")
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
@@ -148,7 +146,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
             "source/posix/*.c"
             )
 
-    set(EVENT_LOOP_DEFINES "-DAWS_USE_KQUEUE")
+    set(EVENT_LOOP_DEFINE "KQUEUE")
     set(USE_S2N ON)
 
 endif()
@@ -201,7 +199,7 @@ aws_add_sanitizers(${PROJECT_NAME})
 # We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC "${EVENT_LOOP_DEFINES}")
+target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
