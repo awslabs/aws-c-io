@@ -2556,7 +2556,7 @@ int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_event_
     }
 
     socket->event_loop = event_loop;
-    return aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
+    return aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
 }
 
 struct aws_event_loop *aws_socket_get_event_loop(struct aws_socket *socket) {
