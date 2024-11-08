@@ -525,7 +525,13 @@ done:
 }
 
 int aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec_identity_t *out_identity) {
-
+#if !defined(AWS_USE_SECITEM)
+    (void)cf_alloc;
+    (void)serial_data;
+    (void)out_identity;
+    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#else
     int result = AWS_OP_ERR;
     OSStatus status;
     CFMutableDictionaryRef search_query = NULL;
@@ -569,6 +575,7 @@ done:
         CFRelease(sec_identity_ref);
 
     return result;
+#endif
 }
 
 int aws_secitem_import_cert_and_key(
@@ -581,9 +588,15 @@ int aws_secitem_import_cert_and_key(
 
 // We currently only support Apple's network framework and SecItem keychain API on iOS.
 #if !defined(AWS_USE_SECITEM)
+    (void)alloc;
+    (void)cf_alloc;
+    (void)public_cert_chain;
+    (void)private_key;
+    (void)secitem_identity;
+    (void)secitem_options;
     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif /* !AWS_USE_SECITEM */
+#else
 
     AWS_PRECONDITION(public_cert_chain != NULL);
     AWS_PRECONDITION(private_key != NULL);
@@ -762,9 +775,9 @@ int aws_secitem_import_cert_and_key(
     }
 
     // Add the certificate and private key to keychain then retrieve identity
-#if !defined(AWS_OS_IOS)
+#    if !defined(AWS_OS_IOS)
     aws_mutex_lock(&s_sec_mutex);
-#endif /* !AWS_OS_IOS */
+#    endif /* !AWS_OS_IOS */
 
     if (aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
         goto done;
@@ -781,9 +794,9 @@ int aws_secitem_import_cert_and_key(
     result = AWS_OP_SUCCESS;
 
 done:
-#if !defined(AWS_OS_IOS)
+#    if !defined(AWS_OS_IOS)
     aws_mutex_unlock(&s_sec_mutex);
-#endif /* !AWS_OS_IOS */
+#    endif /* !AWS_OS_IOS */
 
     // cleanup
     if (error != NULL)
@@ -814,6 +827,7 @@ done:
     aws_pem_objects_clean_up(&decoded_key_buffer_list);
 
     return result;
+#endif
 }
 
 int aws_secitem_import_pkcs12(
@@ -821,7 +835,15 @@ int aws_secitem_import_pkcs12(
     const struct aws_byte_cursor *pkcs12_cursor,
     const struct aws_byte_cursor *password,
     sec_identity_t *out_identity) {
-
+// We currently only support Apple's network framework and SecItem keychain API on iOS.
+#if !defined(AWS_USE_SECITEM)
+    (void)cf_alloc;
+    (void)pkcs12_cursor;
+    (void)password;
+    (void)out_identity;
+    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#else
     int result = AWS_OP_ERR;
     CFArrayRef items = NULL;
     CFDataRef pkcs12_data = NULL;
@@ -878,6 +900,7 @@ done:
     if (items)
         CFRelease(items);
     return result;
+#endif
 }
 
 int aws_import_trusted_certificates(
