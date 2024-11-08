@@ -540,15 +540,17 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     return event_loop->clock(time_nanos);
 }
 
-static int aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
+static void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
     if (aws_event_loop_type_validate_platform(default_type_override)) {
         s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
-        return;
     }
     s_default_event_loop_type_override = default_type_override;
 }
 
 static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
+#ifdef AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
+    aws_event_loop_override_default_type(AWS_ELT_DISPATCH_QUEUE);
+#endif // AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
     if (s_default_event_loop_type_override != AWS_ELT_PLATFORM_DEFAULT) {
         return s_default_event_loop_type_override;
     }
