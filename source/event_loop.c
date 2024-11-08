@@ -540,13 +540,26 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     return event_loop->clock(time_nanos);
 }
 
-static void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
+
+/**
+ * Override default event loop type. Only used internally in tests.
+ *
+ * If the defined type is not supported on the current platform, the event loop type would reset to
+ * AWS_ELT_PLATFORM_DEFAULT.
+ */
+void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
     if (aws_event_loop_type_validate_platform(default_type_override)) {
         s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
     }
     s_default_event_loop_type_override = default_type_override;
 }
 
+
+/**
+ * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * retrieve the default type value.
+ * If `aws_event_loop_override_default_type` has been called, return the override default type.
+ */
 static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
     aws_event_loop_override_default_type(AWS_ELT_DISPATCH_QUEUE);
