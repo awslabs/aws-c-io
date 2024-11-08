@@ -236,6 +236,11 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
     }
 }
 
+static void s_setup_tcp_options_local(nw_protocol_options_t tcp_options, const struct aws_socket_options *options) {
+    (void)tcp_options;
+    (void)options;
+}
+
 static void s_setup_tls_options(
     nw_protocol_options_t tls_options,
     const struct aws_socket_options *options,
@@ -439,12 +444,6 @@ static void s_setup_tls_options(
           complete(verification_successful);
         },
         dispatch_loop->dispatch_queue);
-}
-
-// DEBUG WIP
-static void s_setup_tcp_options_local(nw_protocol_options_t tcp_options, const struct aws_socket_options *options) {
-    (void)tcp_options;
-    (void)options;
 }
 
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
@@ -887,7 +886,6 @@ static void s_schedule_on_connection_result(struct nw_socket *nw_socket, int err
 
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 }
-// DEBUG WIP might need to schedule a tls_result the same way we schedule a connection_result()
 
 static void s_process_listener_success_task(struct aws_task *task, void *args, enum aws_task_status status) {
     (void)status;
@@ -1091,6 +1089,66 @@ static void s_schedule_write_fn(
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 }
 
+static int s_setup_tls_options_from_context(
+    struct nw_socket *nw_socket,
+    struct tls_connection_context *tls_connection_context) {
+    if (tls_connection_context->host_name != NULL) {
+        if (nw_socket->host_name != NULL) {
+            aws_string_destroy(nw_socket->host_name);
+            nw_socket->host_name = NULL;
+        }
+        nw_socket->host_name =
+            aws_string_new_from_string(tls_connection_context->host_name->allocator, tls_connection_context->host_name);
+        if (nw_socket->host_name == NULL) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    if (tls_connection_context->tls_ctx != NULL) {
+        struct aws_string *alpn_list = NULL;
+        struct secure_transport_ctx *transport_ctx = tls_connection_context->tls_ctx->impl;
+        if (tls_connection_context->alpn_list != NULL) {
+            alpn_list = tls_connection_context->alpn_list;
+        } else if (transport_ctx->alpn_list != NULL) {
+            alpn_list = transport_ctx->alpn_list;
+        }
+
+        if (alpn_list != NULL) {
+            if (nw_socket->alpn_list != NULL) {
+                aws_string_destroy(nw_socket->alpn_list);
+                nw_socket->alpn_list = NULL;
+            }
+            nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
+            if (nw_socket->alpn_list == NULL) {
+                return AWS_OP_ERR;
+            }
+        }
+    }
+
+    if (tls_connection_context->host_name != NULL) {
+        if (nw_socket->host_name != NULL) {
+            aws_string_destroy(nw_socket->host_name);
+            nw_socket->host_name = NULL;
+        }
+        nw_socket->host_name =
+            aws_string_new_from_string(tls_connection_context->host_name->allocator, tls_connection_context->host_name);
+        if (nw_socket->host_name == NULL) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    if (tls_connection_context->tls_ctx) {
+        if (nw_socket->tls_ctx) {
+            aws_tls_ctx_release(nw_socket->tls_ctx);
+            nw_socket->tls_ctx = NULL;
+        }
+        nw_socket->tls_ctx = tls_connection_context->tls_ctx;
+        aws_tls_ctx_acquire(nw_socket->tls_ctx);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_socket_connect_fn(
     struct aws_socket *socket,
     const struct aws_socket_endpoint *remote_endpoint,
@@ -1110,60 +1168,12 @@ static int s_socket_connect_fn(
     if (retrieve_tls_options != NULL) {
         struct tls_connection_context tls_connection_context;
         AWS_ZERO_STRUCT(tls_connection_context);
-
         retrieve_tls_options(&tls_connection_context, user_data);
 
-        if (tls_connection_context.host_name != NULL) {
-            if (nw_socket->host_name != NULL) {
-                aws_string_destroy(nw_socket->host_name);
-                nw_socket->host_name = NULL;
-            }
-            nw_socket->host_name = aws_string_new_from_string(
-                tls_connection_context.host_name->allocator, tls_connection_context.host_name);
-            if (nw_socket->host_name == NULL) {
-                return AWS_OP_ERR;
-            }
-        }
-        if (tls_connection_context.tls_ctx != NULL) {
-            struct aws_string *alpn_list = NULL;
-            struct secure_transport_ctx *transport_ctx = tls_connection_context.tls_ctx->impl;
-            if (tls_connection_context.alpn_list != NULL) {
-                alpn_list = tls_connection_context.alpn_list;
-            } else if (transport_ctx->alpn_list != NULL) {
-                alpn_list = transport_ctx->alpn_list;
-            }
-
-            if (alpn_list != NULL) {
-                if (nw_socket->alpn_list != NULL) {
-                    aws_string_destroy(nw_socket->alpn_list);
-                    nw_socket->alpn_list = NULL;
-                }
-                nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
-                if (nw_socket->alpn_list == NULL) {
-                    return AWS_OP_ERR;
-                }
-            }
-        }
-
-        if (tls_connection_context.host_name != NULL) {
-            if (nw_socket->host_name != NULL) {
-                aws_string_destroy(nw_socket->host_name);
-                nw_socket->host_name = NULL;
-            }
-            nw_socket->host_name = aws_string_new_from_string(
-                tls_connection_context.host_name->allocator, tls_connection_context.host_name);
-            if (nw_socket->host_name == NULL) {
-                return AWS_OP_ERR;
-            }
-        }
-
-        if (tls_connection_context.tls_ctx) {
-            if (nw_socket->tls_ctx) {
-                aws_tls_ctx_release(nw_socket->tls_ctx);
-                nw_socket->tls_ctx = NULL;
-            }
-            nw_socket->tls_ctx = tls_connection_context.tls_ctx;
-            aws_tls_ctx_acquire(nw_socket->tls_ctx);
+        if (s_setup_tls_options_from_context(nw_socket, &tls_connection_context)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET, "id=%p: Error encounterd during setup of tls options from context.", (void *)socket);
+            return aws_last_error();
         }
     }
 
@@ -1483,58 +1493,12 @@ static int s_socket_bind_fn(
             AWS_ZERO_STRUCT(tls_connection_context);
             retrieve_tls_options(&tls_connection_context, user_data);
 
-            if (tls_connection_context.host_name != NULL) {
-                if (nw_socket->host_name != NULL) {
-                    aws_string_destroy(nw_socket->host_name);
-                    nw_socket->host_name = NULL;
-                }
-                nw_socket->host_name = aws_string_new_from_string(
-                    tls_connection_context.host_name->allocator, tls_connection_context.host_name);
-                if (nw_socket->host_name == NULL) {
-                    return AWS_OP_ERR;
-                }
-            }
-
-            if (tls_connection_context.tls_ctx != NULL) {
-                struct aws_string *alpn_list = NULL;
-                struct secure_transport_ctx *transport_ctx = tls_connection_context.tls_ctx->impl;
-                if (tls_connection_context.alpn_list != NULL) {
-                    alpn_list = tls_connection_context.alpn_list;
-                } else if (transport_ctx->alpn_list != NULL) {
-                    alpn_list = transport_ctx->alpn_list;
-                }
-
-                if (alpn_list != NULL) {
-                    if (nw_socket->alpn_list != NULL) {
-                        aws_string_destroy(nw_socket->alpn_list);
-                        nw_socket->alpn_list = NULL;
-                    }
-                    nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
-                    if (nw_socket->alpn_list == NULL) {
-                        return AWS_OP_ERR;
-                    }
-                }
-            }
-
-            if (tls_connection_context.host_name != NULL) {
-                if (nw_socket->host_name != NULL) {
-                    aws_string_destroy(nw_socket->host_name);
-                    nw_socket->host_name = NULL;
-                }
-                nw_socket->host_name = aws_string_new_from_string(
-                    tls_connection_context.host_name->allocator, tls_connection_context.host_name);
-                if (nw_socket->host_name == NULL) {
-                    return AWS_OP_ERR;
-                }
-            }
-
-            if (tls_connection_context.tls_ctx) {
-                if (nw_socket->tls_ctx) {
-                    aws_tls_ctx_release(nw_socket->tls_ctx);
-                    nw_socket->tls_ctx = NULL;
-                }
-                nw_socket->tls_ctx = tls_connection_context.tls_ctx;
-                aws_tls_ctx_acquire(nw_socket->tls_ctx);
+            if (s_setup_tls_options_from_context(nw_socket, &tls_connection_context)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p: Error encounterd during setup of tls options from context.",
+                    (void *)socket);
+                return aws_last_error();
             }
 
             if (tls_connection_context.event_loop) {
