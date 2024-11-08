@@ -43,7 +43,7 @@ enum aws_socket_type {
  * iOS         | AWS_SIT_APPLE_NETWORK_FRAMEWORK
  */
 enum aws_socket_impl_type {
-    AWS_SIT_PLATFORM_DEFAULT,
+    AWS_SIT_PLATFORM_DEFAULT = 0,
     AWS_SIT_POSIX,
     AWS_SIT_WINSOCK,
     AWS_SIT_APPLE_NETWORK_FRAMEWORK,
