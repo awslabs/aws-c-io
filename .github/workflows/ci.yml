@@ -181,7 +181,7 @@ jobs:
     runs-on: macos-14 # latest
     strategy:
       matrix:
-        eventloop: ["-DAWS_ENABLE_DISPATCH_QUEUE=ON", "-DAWS_ENABLE_DISPATCH_QUEUE=OFF"]
+        eventloop: ["-DAWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE=ON", "-DAWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE=OFF"]
     steps:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |

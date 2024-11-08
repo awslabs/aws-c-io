@@ -78,11 +78,11 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
-// The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-// therefore we do not validate the thread id for dispatch queue.
-#ifndef AWS_TEST_DISPATCH_QUEUE
-    ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
-#endif
+    // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
+    // therefore we do not validate the thread id for dispatch queue.
+    if (aws_event_loop_get_default_type() != AWS_ELT_DISPATCH_QUEUE) {
+        ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
+    }
 
     /* Test "now" tasks */
     task_args.invoked = false;
@@ -154,11 +154,11 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
         &task1_args.condition_variable, &task1_args.mutex, s_task_ran_predicate, &task1_args));
     ASSERT_TRUE(task1_args.invoked);
     ASSERT_TRUE(task1_args.was_in_thread);
-// The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-// therefore we do not validate the thread id for dispatch queue.
-#ifndef AWS_TEST_DISPATCH_QUEUE
-    ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
-#endif
+    // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
+    // therefore we do not validate the thread id for dispatch queue.
+    if (aws_event_loop_get_default_type() != AWS_ELT_DISPATCH_QUEUE) {
+        ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
+    }
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
     aws_mutex_unlock(&task1_args.mutex);
 
@@ -172,11 +172,11 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     aws_mutex_unlock(&task2_args.mutex);
 
     ASSERT_TRUE(task2_args.was_in_thread);
-// The dispatch queue will schedule tasks on thread pools, it is unpredictable which thread we run the task on,
-// therefore we do not validate the thread id for dispatch queue.
-#ifndef AWS_TEST_DISPATCH_QUEUE
-    ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
-#endif
+    // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
+    // therefore we do not validate the thread id for dispatch queue.
+    if (aws_event_loop_get_default_type() != AWS_ELT_DISPATCH_QUEUE) {
+        ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
+    }
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
 
     return AWS_OP_SUCCESS;
@@ -282,7 +282,7 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(s_async_pipe_init(&read_handle, &write_handle));
 
     /* Connect to event-loop */
-    ASSERT_SUCCESS(aws_event_loop_connect_handle_to_completion_port(event_loop, &write_handle));
+    ASSERT_SUCCESS(aws_event_loop_connect_handle_to_io_completion_port(event_loop, &write_handle));
 
     /* Set up an async (overlapped) write that will result in s_on_overlapped_operation_complete() getting run
      * and filling out `completion_data` */

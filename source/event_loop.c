@@ -38,7 +38,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     return aws_event_loop_new_with_options(alloc, &local_options);
 }
 
-static enum aws_event_loop_type aws_event_loop_get_default_type(void);
 static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type);
 struct aws_event_loop *aws_event_loop_new_with_options(
     struct aws_allocator *alloc,
@@ -553,12 +552,7 @@ void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_
     s_default_event_loop_type_override = default_type_override;
 }
 
-/**
- * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
- * retrieve the default type value.
- * If `aws_event_loop_override_default_type` has been called, return the override default type.
- */
-static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
+enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
     aws_event_loop_override_default_type(AWS_ELT_DISPATCH_QUEUE);
 #endif // AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
@@ -580,6 +574,8 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #endif
 #ifdef AWS_OS_WINDOWS
     return AWS_ELT_IOCP;
+#else
+    return AWS_ELT_PLATFORM_DEFAULT;
 #endif
 }
 
