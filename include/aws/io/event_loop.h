@@ -16,8 +16,7 @@ struct aws_shutdown_callback_options;
 struct aws_task;
 
 /**
- * Event Loop Type.  If set to `AWS_ELT_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s default
- * event loop type.
+ * Event Loop Type.  If set to `AWS_ELT_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s default.
  *
  * Default Event Loop Type
  * Linux       | AWS_ELT_EPOLL

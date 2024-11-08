@@ -6,6 +6,7 @@
  */
 
 #include <aws/io/channel.h>
+#include <aws/io/event_loop.h>
 #include <aws/io/io.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
@@ -30,11 +31,30 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
+/**
+ * Socket Implementation type. Decides which socket implementation is used. If set to `AWS_SIT_PLATFORM_DEFAULT`, it
+ * will automatically use the platform’s default.
+ *
+ * PLATFORM DEFAULT SOCKET IMPLEMENTATION TYPE
+ * Linux       | AWS_SIT_POSIX
+ * Windows	   | AWS_SIT_WINSOCK
+ * BSD Variants| AWS_SIT_POSIX
+ * MacOS	   | AWS_SIT_POSIX
+ * iOS         | AWS_SIT_APPLE_NETWORK_FRAMEWORK
+ */
+enum aws_socket_impl_type {
+    AWS_SIT_PLATFORM_DEFAULT,
+    AWS_SIT_POSIX,
+    AWS_SIT_WINSOCK,
+    AWS_SIT_APPLE_NETWORK_FRAMEWORK,
+};
+
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
 
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
+    enum aws_socket_impl_type impl_type;
     uint32_t connect_timeout_ms;
     /* Keepalive properties are TCP only.
      * Set keepalive true to periodically transmit messages for detecting a disconnected peer.
@@ -52,8 +72,9 @@ struct aws_socket_options {
      * This property is used to bind the socket to a particular network interface by name, such as eth0 and ens32.
      * If this is empty, the socket will not be bound to any interface and will use OS defaults. If the provided name
      * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
-     * supported on Linux, macOS, and platforms that have either SO_BINDTODEVICE or IP_BOUND_IF. It is not supported on
-     * Windows. `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised on unsupported platforms.
+     * supported on Linux, macOS(bsd socket), and platforms that have either SO_BINDTODEVICE or IP_BOUND_IF. It is not
+     * supported on Windows and Apple Network Framework. `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised on
+     * unsupported platforms.
      */
     char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
 };
@@ -78,7 +99,7 @@ typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int 
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations.
+ * performing IO operations. The user is responsible to releasing the socket memory after use.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -94,6 +115,8 @@ typedef void(aws_socket_on_accept_result_fn)(
 /**
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
+ *
+ * socket is possible to be a NULL pointer in the callback.
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
@@ -114,7 +137,49 @@ struct aws_socket_endpoint {
     uint32_t port;
 };
 
+struct aws_socket;
+
+struct aws_socket_vtable {
+    int (*socket_init_fn)(
+        struct aws_socket *socket,
+        struct aws_allocator *alloc,
+        const struct aws_socket_options *options);
+    void (*socket_cleanup_fn)(struct aws_socket *socket);
+    int (*socket_connect_fn)(
+        struct aws_socket *socket,
+        const struct aws_socket_endpoint *remote_endpoint,
+        struct aws_event_loop *event_loop,
+        aws_socket_on_connection_result_fn *on_connection_result,
+        void *user_data);
+    int (*socket_bind_fn)(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+    int (*socket_listen_fn)(struct aws_socket *socket, int backlog_size);
+    int (*socket_start_accept_fn)(
+        struct aws_socket *socket,
+        struct aws_event_loop *accept_loop,
+        aws_socket_on_accept_result_fn *on_accept_result,
+        void *user_data);
+    int (*socket_stop_accept_fn)(struct aws_socket *socket);
+    int (*socket_close_fn)(struct aws_socket *socket);
+    int (*socket_shutdown_dir_fn)(struct aws_socket *socket, enum aws_channel_direction dir);
+    int (*socket_set_options_fn)(struct aws_socket *socket, const struct aws_socket_options *options);
+    int (*socket_assign_to_event_loop_fn)(struct aws_socket *socket, struct aws_event_loop *event_loop);
+    int (*socket_subscribe_to_readable_events_fn)(
+        struct aws_socket *socket,
+        aws_socket_on_readable_fn *on_readable,
+        void *user_data);
+    int (*socket_read_fn)(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
+    int (*socket_write_fn)(
+        struct aws_socket *socket,
+        const struct aws_byte_cursor *cursor,
+        aws_socket_on_write_completed_fn *written_fn,
+        void *user_data);
+    int (*socket_get_error_fn)(struct aws_socket *socket);
+    bool (*socket_is_open_fn)(struct aws_socket *socket);
+    int (*socket_get_bound_address_fn)(const struct aws_socket *socket, struct aws_socket_endpoint *out_address);
+};
+
 struct aws_socket {
+    struct aws_socket_vtable *vtable;
     struct aws_allocator *allocator;
     struct aws_socket_endpoint local_endpoint;
     struct aws_socket_endpoint remote_endpoint;
@@ -172,10 +237,15 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * In TCP, LOCAL and VSOCK this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
  *
+ * The function will failed with error if the endpoint is invalid, except for Apple Network Framework. In Apple network
+ * framework, as connect is an async api, we would not know if the local endpoint is valid until we have the connection
+ * state returned in callback. The error will returned in `on_connection_result` callback
+ *
  * If an event_loop is provided for UDP sockets, a notification will be sent on
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
+ *
  */
 AWS_IO_API int aws_socket_connect(
     struct aws_socket *socket,
@@ -207,6 +277,7 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
  * connections or errors will arrive via the `on_accept_result` callback.
  *
  * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
+ *
  */
 AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,
@@ -260,7 +331,7 @@ AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct
 AWS_IO_API struct aws_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
 
 /**
- * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be recieved
+ * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be received
  * in the callback.
  *
  * Note! This function is technically not thread safe, but we do not enforce which thread you call from.

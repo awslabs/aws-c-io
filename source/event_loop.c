@@ -559,9 +559,9 @@ void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_
  * If `aws_event_loop_override_default_type` has been called, return the override default type.
  */
 static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
-#ifdef AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_event_loop_override_default_type(AWS_ELT_DISPATCH_QUEUE);
-#endif // AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
+#endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
     if (s_default_event_loop_type_override != AWS_ELT_PLATFORM_DEFAULT) {
         return s_default_event_loop_type_override;
     }
