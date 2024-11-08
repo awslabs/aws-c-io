@@ -1053,7 +1053,9 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {.loop_count = 0};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     size_t cpu_count = aws_system_info_processor_count();
@@ -1089,13 +1091,10 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
 
     /* pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more threads
      * than hw cpus available */
-    struct aws_event_loop_group_pin_options pin_options = {
-        .cpu_group = 0,
-    };
-
+    uint16_t cpu_group = 0;
     struct aws_event_loop_group_options elg_options = {
         .loop_count = UINT16_MAX,
-        .pin_options = &pin_options,
+        .cpu_group = &cpu_group,
     };
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 

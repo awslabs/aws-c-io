@@ -14,6 +14,8 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
         .thread_options = NULL,
@@ -37,7 +39,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
 }
 
 static enum aws_event_loop_type aws_event_loop_get_default_type(void);
-static int aws_event_loop_validate_platform(enum aws_event_loop_type type);
+static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type);
 struct aws_event_loop *aws_event_loop_new_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
@@ -47,7 +49,7 @@ struct aws_event_loop *aws_event_loop_new_with_options(
         type = aws_event_loop_get_default_type();
     }
 
-    if (aws_event_loop_validate_platform(type)) {
+    if (aws_event_loop_type_validate_platform(type)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
         return NULL;
     }
@@ -130,12 +132,11 @@ static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *e
 struct aws_event_loop_group *aws_event_loop_group_new_internal(
     struct aws_allocator *allocator,
     const struct aws_event_loop_group_options *options,
-    aws_io_clock_fn *clock_override,
     aws_new_event_loop_fn *new_loop_fn,
     void *new_loop_user_data) {
     AWS_FATAL_ASSERT(new_loop_fn);
 
-    aws_io_clock_fn *clock = clock_override;
+    aws_io_clock_fn *clock = options->clock_override;
     if (!clock) {
         clock = aws_high_res_clock_get_ticks;
     }
@@ -143,9 +144,9 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
     size_t group_cpu_count = 0;
     struct aws_cpu_info *usable_cpus = NULL;
 
-    bool pin_threads = options->pin_options != NULL;
+    bool pin_threads = options->cpu_group != NULL;
     if (pin_threads) {
-        uint16_t cpu_group = options->pin_options->cpu_group;
+        uint16_t cpu_group = *options->cpu_group;
         group_cpu_count = aws_get_cpu_count_for_group(cpu_group);
         if (!group_cpu_count) {
             // LOG THIS
@@ -253,8 +254,7 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     struct aws_allocator *allocator,
     const struct aws_event_loop_group_options *options) {
 
-    return aws_event_loop_group_new_internal(
-        allocator, options, aws_high_res_clock_get_ticks, s_default_new_event_loop, NULL);
+    return aws_event_loop_group_new_internal(allocator, options, s_default_new_event_loop, NULL);
 }
 
 struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group) {
@@ -540,15 +540,35 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     return event_loop->clock(time_nanos);
 }
 
+/**
+ * Override default event loop type. Only used internally in tests.
+ *
+ * If the defined type is not supported on the current platform, the event loop type would reset to
+ * AWS_ELT_PLATFORM_DEFAULT.
+ */
+void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
+    if (aws_event_loop_type_validate_platform(default_type_override)) {
+        s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+    }
+    s_default_event_loop_type_override = default_type_override;
+}
+
+/**
+ * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * retrieve the default type value.
+ * If `aws_event_loop_override_default_type` has been called, return the override default type.
+ */
 static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
+#ifdef AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
+    aws_event_loop_override_default_type(AWS_ELT_DISPATCH_QUEUE);
+#endif // AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE
+    if (s_default_event_loop_type_override != AWS_ELT_PLATFORM_DEFAULT) {
+        return s_default_event_loop_type_override;
+    }
 /**
  * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
  * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
  */
-#ifdef AWS_OS_WINDOWS
-    return AWS_ELT_IOCP;
-#endif
-// If both kqueue and dispatch queue is enabled, default to kqueue
 #ifdef AWS_ENABLE_KQUEUE
     return AWS_ELT_KQUEUE;
 #endif
@@ -558,10 +578,12 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_ENABLE_EPOLL
     return AWS_ELT_EPOLL;
 #endif
-    return AWS_ELT_PLATFORM_DEFAULT;
+#ifdef AWS_OS_WINDOWS
+    return AWS_ELT_IOCP;
+#endif
 }
 
-static int aws_event_loop_validate_platform(enum aws_event_loop_type type) {
+static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) {
     switch (type) {
         case AWS_ELT_EPOLL:
 #ifndef AWS_ENABLE_EPOLL
@@ -646,3 +668,31 @@ struct aws_event_loop *aws_event_loop_new_epoll_with_options(
     return NULL;
 }
 #endif // AWS_ENABLE_KQUEUE
+
+struct aws_event_loop_group *aws_event_loop_group_new_default(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = max_threads,
+        .shutdown_options = shutdown_options,
+    };
+
+    return aws_event_loop_group_new(alloc, &elg_options);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_group(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    uint16_t cpu_group,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = max_threads,
+        .shutdown_options = shutdown_options,
+        .cpu_group = &cpu_group,
+    };
+
+    return aws_event_loop_group_new(alloc, &elg_options);
+}
