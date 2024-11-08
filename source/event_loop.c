@@ -540,7 +540,6 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
     return event_loop->clock(time_nanos);
 }
 
-
 /**
  * Override default event loop type. Only used internally in tests.
  *
@@ -553,7 +552,6 @@ void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_
     }
     s_default_event_loop_type_override = default_type_override;
 }
-
 
 /**
  * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
