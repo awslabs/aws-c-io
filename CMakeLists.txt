@@ -125,12 +125,10 @@ elseif (APPLE)
 
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
-
     set(EVENT_LOOP_DEFINES "DISPATCH_QUEUE" )
-    message("Enable dispatch queue")
 
-    # Enable KQUEUE on OSX
-    if(OSX)
+    # Enable KQUEUE on MacOS 
+    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         file(GLOB AWS_IO_KUEUE_SRC
             "source/bsd/*.c"
             "source/posix/*.c"
