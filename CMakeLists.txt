@@ -111,8 +111,6 @@ elseif (APPLE)
             )
 
     file(GLOB AWS_IO_OS_SRC
-            "source/bsd/*.c"
-            "source/posix/*.c"
             "source/darwin/*.c"
             )
 
@@ -121,9 +119,24 @@ elseif (APPLE)
         message(FATAL_ERROR "Security framework not found")
     endif ()
 
+    find_library(NETWORK_LIB Network)
+    if (NOT NETWORK_LIB)
+        message(FATAL_ERROR "Network framework not found")
+    endif ()
+
     #No choice on TLS for apple, darwinssl will always be used.
-    list(APPEND PLATFORM_LIBS "-framework Security")
-    set(EVENT_LOOP_DEFINE "KQUEUE")
+    list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
+    set(EVENT_LOOP_DEFINES "DISPATCH_QUEUE" )
+
+    # Enable KQUEUE on MacOS 
+    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        file(GLOB AWS_IO_KUEUE_SRC
+            "source/bsd/*.c"
+            "source/posix/*.c"
+        )
+        list(APPEND AWS_IO_OS_SRC ${AWS_IO_KUEUE_SRC})
+        set(EVENT_LOOP_DEFINE "KQUEUE")
+    endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
