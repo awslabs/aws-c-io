@@ -69,6 +69,14 @@ struct aws_event_loop_group_options {
     aws_io_clock_fn *clock_override;
 };
 
+/**
+ * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * retrieve the default type value.
+ * If `aws_event_loop_override_default_type` has been called, return the override default type.
+ */
+AWS_IO_API
+enum aws_event_loop_type aws_event_loop_get_default_type(void);
+
 AWS_EXTERN_C_BEGIN
 
 /**

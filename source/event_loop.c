@@ -38,7 +38,6 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     return aws_event_loop_new_with_options(alloc, &local_options);
 }
 
-static enum aws_event_loop_type aws_event_loop_get_default_type(void);
 static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type);
 struct aws_event_loop *aws_event_loop_new_with_options(
     struct aws_allocator *alloc,
@@ -558,7 +557,7 @@ void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_
  * retrieve the default type value.
  * If `aws_event_loop_override_default_type` has been called, return the override default type.
  */
-static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
+enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_event_loop_override_default_type(AWS_ELT_DISPATCH_QUEUE);
 #endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
