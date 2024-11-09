@@ -8,11 +8,6 @@
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
 
-// socket vtables, defined in socket implementation files.
-extern struct aws_socket_vtable g_posix_socket_vtable;
-extern struct aws_socket_vtable g_winsock_vtable;
-// TODO: support extern struct aws_socket_vtable g_apple_nw_vtable;
-
 void aws_socket_clean_up(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_cleanup_fn);
     socket->vtable->socket_cleanup_fn(socket);
@@ -127,28 +122,21 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
     // 2. setup vtable based on socket type
     switch (type) {
         case AWS_SIT_POSIX:
-#ifdef g_posix_socket_vtable
-            socket->vtable = &g_posix_socket_vtable;
-#endif
+            return aws_socket_init_posix(socket, alloc, options);
             break;
         case AWS_SIT_WINSOCK:
-#ifdef g_winsock_vtable
-            socket->vtable = &g_winsock_vtable;
+            return aws_socket_init_winsock(socket, alloc, options);
             break;
-#endif
+
         case AWS_SIT_APPLE_NETWORK_FRAMEWORK:
             AWS_ASSERT(false && "Invalid socket implementation on platform.");
-            // TODO:
-            // Apple network framework is not supported yet.
-            // socket->vtable = g_apple_nw_vtable;
+            return aws_socket_init_apple_nw_socket(socket, alloc, options);
             break;
         default:
-            AWS_ASSERT(false && "Invalid socket implementation on platform.");
+        break;
     }
-
-    // 3. init the socket
-    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_init_fn);
-    return socket->vtable->socket_init_fn(socket, alloc, options);
+    AWS_ASSERT(false && "Invalid socket implementation on platform.");
+    return AWS_ERROR_PLATFORM_NOT_SUPPORTED;
 }
 
 int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
@@ -216,7 +204,7 @@ static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
 static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type) {
     switch (type) {
         case AWS_SIT_POSIX:
-#if !defined(AWS_ENABLE_EPOLL) || !defined(AWS_ENABLE_KQUEUE)
+#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE)
             AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_SIT_POSIX
@@ -240,3 +228,42 @@ static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type
     }
     return AWS_OP_SUCCESS;
 }
+
+#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE)
+int aws_socket_init_posix(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
+    (void)socket;
+    (void)alloc;
+    (void)options;
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
+#endif
+
+#ifndef AWS_ENABLE_IO_COMPLETION_PORTS
+int aws_socket_init_winsock(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
+    (void)socket;
+    (void)alloc;
+    (void)options;
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "WINSOCK is not supported on the platform.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
+#endif
+
+#ifndef AWS_ENABLE_DISPATCH_QUEUE
+int aws_socket_init_apple_nw_socket(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
+    (void)socket;
+    (void)alloc;
+    (void)options;
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Apple Network Framework is not supported on the platform.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
+#endif

@@ -144,10 +144,6 @@ static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket
 static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
-static int s_aws_socket_init(
-    struct aws_socket *socket,
-    struct aws_allocator *alloc,
-    const struct aws_socket_options *options);
 static void s_socket_clean_up(struct aws_socket *socket);
 static int s_socket_connect(
     struct aws_socket *socket,
@@ -274,8 +270,7 @@ static struct winsock_vtable s_winsock_vtables[3][2] = {
         },
 };
 
-static struct aws_socket_vtable g_winsock_vtable = {
-    .socket_init_fn = s_aws_socket_init,
+struct aws_socket_vtable g_winsock_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
     .socket_connect_fn = s_socket_connect,
     .socket_bind_fn = s_socket_bind,
@@ -449,7 +444,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_socket_init(
+int aws_socket_init_winsock(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options) {

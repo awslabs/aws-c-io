@@ -188,10 +188,6 @@ struct posix_socket {
     bool *close_happened;
 };
 
-static int s_aws_socket_init(
-    struct aws_socket *socket,
-    struct aws_allocator *alloc,
-    const struct aws_socket_options *options);
 static void s_socket_clean_up(struct aws_socket *socket);
 static int s_socket_connect(
     struct aws_socket *socket,
@@ -224,8 +220,7 @@ static int s_socket_write(
 static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
 
-static struct aws_socket_vtable g_posix_socket_vtable = {
-    .socket_init_fn = s_aws_socket_init,
+struct aws_socket_vtable g_posix_socket_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
     .socket_connect_fn = s_socket_connect,
     .socket_bind_fn = s_socket_bind,
@@ -297,7 +292,7 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-static int s_aws_socket_init(
+int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options) {

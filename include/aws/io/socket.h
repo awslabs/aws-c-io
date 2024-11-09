@@ -140,10 +140,6 @@ struct aws_socket_endpoint {
 struct aws_socket;
 
 struct aws_socket_vtable {
-    int (*socket_init_fn)(
-        struct aws_socket *socket,
-        struct aws_allocator *alloc,
-        const struct aws_socket_options *options);
     void (*socket_cleanup_fn)(struct aws_socket *socket);
     int (*socket_connect_fn)(
         struct aws_socket *socket,
@@ -209,6 +205,25 @@ void aws_check_and_init_winsock(void);
 aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 #endif
+
+
+AWS_IO_API int aws_socket_init_posix(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options);
+
+
+AWS_IO_API int aws_socket_init_winsock(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options);
+
+
+AWS_IO_API int aws_socket_init_apple_nw_socket(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options);
+
 
 AWS_EXTERN_C_BEGIN
 
