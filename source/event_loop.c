@@ -617,7 +617,6 @@ static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) 
     return AWS_OP_SUCCESS;
 }
 
-#ifndef AWS_ENABLE_DISPATCH_QUEUE
 struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
@@ -628,7 +627,6 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Dispatch Queue is not supported on the platform");
     return NULL;
 }
-#endif // AWS_ENABLE_DISPATCH_QUEUE
 
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
 struct aws_event_loop *aws_event_loop_new_iocp_with_options(

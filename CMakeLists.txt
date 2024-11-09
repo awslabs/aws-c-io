@@ -75,7 +75,7 @@ if (WIN32)
                 )
          list(APPEND AWS_IO_OS_SRC ${AWS_IO_IOCP_SRC})
 
-         set(EVENT_LOOP_DEFINE "IO_COMPLETION_PORTS")
+         list(APPEND EVENT_LOOP_DEFINES "IO_COMPLETION_PORTS")
     endif ()
 
     if (MSVC)
@@ -102,7 +102,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Androi
             )
     set(PLATFORM_LIBS "")
 
-    set(EVENT_LOOP_DEFINE "EPOLL")
+    list(APPEND EVENT_LOOP_DEFINES "EPOLL")
     set(USE_S2N ON)
 
 elseif (APPLE)
@@ -126,7 +126,7 @@ elseif (APPLE)
 
     #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
-    set(EVENT_LOOP_DEFINES "DISPATCH_QUEUE" )
+    list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
 
     # Enable KQUEUE on MacOS 
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
@@ -135,7 +135,7 @@ elseif (APPLE)
             "source/posix/*.c"
         )
         list(APPEND AWS_IO_OS_SRC ${AWS_IO_KUEUE_SRC})
-        set(EVENT_LOOP_DEFINE "KQUEUE")
+        list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
@@ -147,7 +147,7 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
             "source/posix/*.c"
             )
 
-    set(EVENT_LOOP_DEFINE "KQUEUE")
+    list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
     set(USE_S2N ON)
 
 endif()
@@ -200,7 +200,9 @@ aws_add_sanitizers(${PROJECT_NAME})
 # We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
-target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
+foreach(EVENT_LOOP_DEFINE IN LISTS EVENT_LOOP_DEFINES)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
+endforeach()
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
