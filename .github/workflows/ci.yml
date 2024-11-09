@@ -159,6 +159,7 @@ jobs:
   macos:
     runs-on: macos-14 # latest
     strategy:
+      fail-fast: false
       matrix:
         eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
     steps:
@@ -180,6 +181,7 @@ jobs:
   macos-debug:
     runs-on: macos-14 # latest
     strategy:
+      fail-fast: false
       matrix:
         eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
     steps:
