@@ -127,9 +127,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
         case AWS_SIT_WINSOCK:
             return aws_socket_init_winsock(socket, alloc, options);
             break;
-
         case AWS_SIT_APPLE_NETWORK_FRAMEWORK:
-            AWS_ASSERT(false && "Invalid socket implementation on platform.");
             return aws_socket_init_apple_nw_socket(socket, alloc, options);
             break;
         default:
@@ -159,6 +157,11 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     char uuid_str[AWS_UUID_STR_LEN] = {0};
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
+
+#if defined(WS_USE_APPLE_NETWORK_FRAMEWORK)
+    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
+    return;
+#endif
 
 #if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));

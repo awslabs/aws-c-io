@@ -18,7 +18,7 @@ add_test_case(io_library_init)
 add_test_case(io_library_init_cleanup_init_cleanup)
 
 # Dispatch Queue does not support pipe
-if(NOT AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE)
+if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
 add_pipe_test_case(pipe_open_close)
 add_pipe_test_case(pipe_read_write)
 add_pipe_test_case(pipe_read_write_large_buffer)
@@ -39,7 +39,7 @@ add_test_case(event_loop_canceled_tasks_run_in_el_thread)
 
 if(USE_IO_COMPLETION_PORTS)
     add_test_case(event_loop_completion_events)
-elseif(NOT AWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE) # Dispatch Queue does not support pipe
+elseif(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK) # Dispatch Queue does not support pipe
     add_test_case(event_loop_subscribe_unsubscribe)
     add_test_case(event_loop_writable_event_on_subscribe)
     add_test_case(event_loop_no_readable_event_before_write)
@@ -63,7 +63,6 @@ add_net_test_case(udp_socket_communication)
 add_net_test_case(test_socket_with_bind_to_interface)
 add_net_test_case(test_socket_with_bind_to_invalid_interface)
 add_net_test_case(test_is_network_interface_name_valid)
-add_test_case(udp_bind_connect_communication)
 add_net_test_case(connect_timeout)
 add_net_test_case(connect_timeout_cancelation)
 
@@ -75,16 +74,25 @@ endif()
 add_test_case(outgoing_local_sock_errors)
 add_test_case(outgoing_tcp_sock_error)
 add_test_case(incoming_tcp_sock_errors)
-add_test_case(incoming_duplicate_tcp_bind_errors)
 add_net_test_case(bind_on_zero_port_tcp_ipv4)
 add_net_test_case(bind_on_zero_port_udp_ipv4)
 add_test_case(incoming_udp_sock_errors)
-add_test_case(wrong_thread_read_write_fails)
 add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 add_test_case(cleanup_in_accept_doesnt_explode)
 add_test_case(cleanup_in_write_cb_doesnt_explode)
 add_test_case(sock_write_cb_is_async)
 add_test_case(socket_validate_port)
+
+if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
+# Apple Network Framework does not support bind+connect
+add_test_case(udp_bind_connect_communication)
+# The read/write will always run a different thread for Apple Network Framework
+add_test_case(wrong_thread_read_write_fails)
+# Apple Network Framework would not validate the binding endpoint until we start the
+# listen. The test does not apply here.
+add_test_case(incoming_duplicate_tcp_bind_errors)
+endif()
+
 
 if(WIN32)
     add_test_case(local_socket_pipe_connected_race)

@@ -221,6 +221,9 @@ endif()
 
 if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
         target_compile_definitions(${PROJECT_NAME} PRIVATE "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
+        option(AWS_USE_APPLE_NETWORK_FRAMEWORK 
+        "Use apple network framework as default event loop and socket options."
+        ON)
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
