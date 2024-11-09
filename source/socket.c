@@ -255,7 +255,6 @@ int aws_socket_init_winsock(
 }
 #endif
 
-#ifndef AWS_ENABLE_DISPATCH_QUEUE
 int aws_socket_init_apple_nw_socket(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -266,4 +265,3 @@ int aws_socket_init_apple_nw_socket(
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Apple Network Framework is not supported on the platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
-#endif
