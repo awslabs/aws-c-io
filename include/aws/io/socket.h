@@ -171,7 +171,6 @@ struct aws_socket_vtable {
         void *user_data);
     int (*socket_get_error_fn)(struct aws_socket *socket);
     bool (*socket_is_open_fn)(struct aws_socket *socket);
-    int (*socket_get_bound_address_fn)(const struct aws_socket *socket, struct aws_socket_endpoint *out_address);
 };
 
 struct aws_socket {
