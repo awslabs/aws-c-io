@@ -323,7 +323,10 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     nw_socket = NULL;
 }
 
-int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
+int aws_socket_init_apple_nw_socket(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
 
