@@ -159,8 +159,9 @@ jobs:
   macos:
     runs-on: macos-14 # latest
     strategy:
+      fail-fast: false
       matrix:
-        eventloop: ["-DAWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE=ON", "-DAWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE=OFF"]
+        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
     steps:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
@@ -180,8 +181,9 @@ jobs:
   macos-debug:
     runs-on: macos-14 # latest
     strategy:
+      fail-fast: false
       matrix:
-        eventloop: ["-DAWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE=ON", "-DAWS_EVENT_LOOP_DISPATCH_QUEUE_OVERRIDE=OFF"]
+        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
     steps:
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
