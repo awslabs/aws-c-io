@@ -117,8 +117,8 @@ static int s_exponential_retry_acquire_token(
     /* no resource contention here so no timeouts. */
     (void)timeout_ms;
     struct exponential_backoff_strategy *exponential_backoff_strategy = retry_strategy->impl;
-    if(exponential_backoff_strategy->config.no_retries) {
-        return aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED); 
+    if (exponential_backoff_strategy->config.no_retries) {
+        return aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
     }
 
     struct exponential_backoff_retry_token *backoff_retry_token =

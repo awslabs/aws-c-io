@@ -328,8 +328,7 @@ static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_alloca
 }
 AWS_TEST_CASE(test_exponential_backoff_retry_invalid_options, s_test_exponential_backoff_retry_invalid_options_fn)
 
-static int s_test_exponential_backoff_no_retries_fn(
-    struct aws_allocator *allocator, void *ctx) {
+static int s_test_exponential_backoff_no_retries_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_io_library_init(allocator);
@@ -352,8 +351,10 @@ static int s_test_exponential_backoff_no_retries_fn(
     };
 
     ASSERT_SUCCESS(aws_mutex_lock(&test_data.mutex));
-    ASSERT_ERROR(AWS_IO_RETRY_PERMISSION_DENIED, aws_retry_strategy_acquire_retry_token(
-        retry_strategy, NULL, s_too_many_retries_test_token_acquired, &test_data, 0));
+    ASSERT_ERROR(
+        AWS_IO_RETRY_PERMISSION_DENIED,
+        aws_retry_strategy_acquire_retry_token(
+            retry_strategy, NULL, s_too_many_retries_test_token_acquired, &test_data, 0));
 
     aws_mutex_unlock(&test_data.mutex);
 
