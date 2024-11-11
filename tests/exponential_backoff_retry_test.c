@@ -327,4 +327,3 @@ static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_alloca
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_exponential_backoff_retry_invalid_options, s_test_exponential_backoff_retry_invalid_options_fn)
-
