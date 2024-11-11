@@ -16,7 +16,7 @@
 #include <unistd.h>
 
 #include <Block.h>
-#include <aws/io/private/dispatch_queue.h>
+#include "dispatch_queue.h"
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
 
