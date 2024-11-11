@@ -79,7 +79,8 @@ static struct aws_event_loop_vtable s_testing_loop_vtable = {
 };
 
 static struct aws_event_loop *s_testing_loop_new(struct aws_allocator *allocator, aws_io_clock_fn clock) {
-    struct testing_loop *testing_loop = (struct testing_loop *)aws_mem_calloc(allocator, 1, sizeof(struct testing_loop));
+    struct testing_loop *testing_loop =
+        (struct testing_loop *)aws_mem_calloc(allocator, 1, sizeof(struct testing_loop));
 
     aws_task_scheduler_init(&testing_loop->scheduler, allocator);
     testing_loop->mock_on_callers_thread = true;
