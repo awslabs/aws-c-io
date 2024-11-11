@@ -221,7 +221,7 @@ if (USE_VSOCK)
 endif()
 
 if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
+        target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
