@@ -4,12 +4,12 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
-
-#include <Security/Security.h>
-#include <aws/common/mutex.h>
-#include <aws/common/thread.h>
-#include <aws/io/tls_channel_handler.h>
-#include <dispatch/dispatch.h>
+#ifdef __APPLE__
+#    include <Security/Security.h>
+#    include <aws/common/mutex.h>
+#    include <aws/common/thread.h>
+#    include <aws/io/tls_channel_handler.h>
+#    include <dispatch/dispatch.h>
 
 struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
@@ -63,4 +63,5 @@ struct dispatch_loop {
     bool is_destroying;
 };
 
+#endif
 #endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H */
