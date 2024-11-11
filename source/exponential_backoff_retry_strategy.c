@@ -27,7 +27,6 @@ struct exponential_backoff_retry_token {
     size_t max_retries;
     uint64_t backoff_scale_factor_ns;
     uint64_t maximum_backoff_ns;
-    bool no_retries;
     enum aws_exponential_backoff_jitter_mode jitter_mode;
     /* Let's not make this worse by constantly moving across threads if we can help it */
     struct aws_event_loop *bound_loop;
@@ -117,9 +116,6 @@ static int s_exponential_retry_acquire_token(
     /* no resource contention here so no timeouts. */
     (void)timeout_ms;
     struct exponential_backoff_strategy *exponential_backoff_strategy = retry_strategy->impl;
-    if (exponential_backoff_strategy->config.no_retries) {
-        return aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
-    }
 
     struct exponential_backoff_retry_token *backoff_retry_token =
         aws_mem_calloc(retry_strategy->allocator, 1, sizeof(struct exponential_backoff_retry_token));
