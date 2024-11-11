@@ -192,9 +192,20 @@ struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_grou
     uint16_t cpu_group,
     const struct aws_shutdown_callback_options *shutdown_options);
 
+/**
+ * Returns the opaque internal user data of an event loop.  Can be cast into a specific implementation by
+ * privileged consumers.
+ *
+ * @internal - Don't use outside of testing.
+ */
 AWS_IO_API
 void *aws_event_loop_get_impl(struct aws_event_loop *event_loop);
 
+/**
+ * Initializes the base structure used by all event loop implementations with test-oriented overrides.
+ *
+ * @internal - Don't use outside of testing.
+ */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_base(
     struct aws_allocator *allocator,
@@ -205,6 +216,8 @@ struct aws_event_loop *aws_event_loop_new_base(
 /**
  * Common cleanup code for all implementations.
  * This is only called from the *destroy() function of event loop implementations.
+ *
+ * @internal - Don't use outside of testing.
  */
 AWS_IO_API
 void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
@@ -215,6 +228,8 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
  * If you do not want this function to block, call aws_event_loop_stop() manually first.
  * If the event loop is shared by multiple threads then destroy must be called by exactly one thread. All other threads
  * must ensure their API calls to the event loop happen-before the call to destroy.
+ *
+ * @internal - Don't use outside of testing.
  */
 AWS_IO_API
 void aws_event_loop_destroy(struct aws_event_loop *event_loop);
