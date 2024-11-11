@@ -456,7 +456,6 @@ int aws_socket_init_winsock(
 
     return err;
 }
-#endif // AWS_USE_IO_COMPLETION_PORTS
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {

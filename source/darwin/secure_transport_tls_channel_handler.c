@@ -6,7 +6,6 @@
 
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
-#include <aws/io/private/dispatch_queue.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
@@ -24,6 +23,8 @@
 #include <Security/Security.h>
 #include <dlfcn.h>
 #include <math.h>
+
+#include "dispatch_queue.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"

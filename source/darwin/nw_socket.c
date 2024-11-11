@@ -12,11 +12,12 @@
 #include <aws/io/private/event_loop_impl.h>
 
 #include <Network/Network.h>
-#include <aws/io/private/dispatch_queue.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
+
+#include "dispatch_queue.h"
 
 static int s_determine_socket_error(int error) {
     switch (error) {

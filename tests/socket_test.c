@@ -687,7 +687,7 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
     options.domain = AWS_SOCKET_IPV4;
     strncpy(options.network_interface_name, "invalid", AWS_NETWORK_INTERFACE_NAME_MAX);
     struct aws_socket outgoing;
-#if (defined(AWS_OS_APPLE) && defined(AWS_USE_KQUEUE)) || defined(AWS_OS_LINUX)
+#if (defined(AWS_OS_APPLE) && !defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)) || defined(AWS_OS_LINUX)
     ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
 #else
     ASSERT_ERROR(AWS_ERROR_PLATFORM_NOT_SUPPORTED, aws_socket_init(&outgoing, allocator, &options));
