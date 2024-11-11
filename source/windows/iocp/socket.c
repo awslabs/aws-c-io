@@ -525,7 +525,6 @@ static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endp
     struct iocp_socket *socket_impl = socket->impl;
     return socket_impl->winsock_vtable->bind(socket, local_endpoint);
 }
-#endif // AWS_USE_IO_COMPLETION_PORTS
 
 /* Update IPV4 or IPV6 socket->local_endpoint based on the results of getsockname() */
 static int s_update_local_endpoint_ipv4_ipv6(struct aws_socket *socket) {
