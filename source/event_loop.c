@@ -14,7 +14,11 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
-static enum aws_event_loop_type s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    static enum aws_event_loop_type s_default_event_loop_type_override = AWS_ELT_DISPATCH_QUEUE;
+#else
+    static enum aws_event_loop_type s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+#endif
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
@@ -559,9 +563,6 @@ void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_
  * If `aws_event_loop_override_default_type` has been called, return the override default type.
  */
 static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    aws_event_loop_override_default_type(AWS_ELT_DISPATCH_QUEUE);
-#endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
     if (s_default_event_loop_type_override != AWS_ELT_PLATFORM_DEFAULT) {
         return s_default_event_loop_type_override;
     }
@@ -625,6 +626,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     AWS_ASSERT(0);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Dispatch Queue is not supported on the platform");
+    aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     return NULL;
 }
 
@@ -637,6 +639,7 @@ struct aws_event_loop *aws_event_loop_new_iocp_with_options(
     AWS_ASSERT(0);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "IOCP is not supported on the platform");
+    aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     return NULL;
 }
 #endif // AWS_ENABLE_IO_COMPLETION_PORTS
@@ -650,6 +653,7 @@ struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
     AWS_ASSERT(0);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Kqueue is not supported on the platform");
+    aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     return NULL;
 }
 #endif // AWS_ENABLE_EPOLL

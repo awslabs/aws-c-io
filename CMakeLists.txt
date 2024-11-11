@@ -124,7 +124,6 @@ elseif (APPLE)
         message(FATAL_ERROR "Network framework not found")
     endif ()
 
-    #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
     list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
 

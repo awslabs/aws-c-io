@@ -12,6 +12,7 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_event_loop;
 struct aws_event_loop_group;
+struct aws_event_loop_options;
 struct aws_shutdown_callback_options;
 struct aws_task;
 
@@ -245,6 +246,14 @@ struct aws_event_loop *aws_event_loop_new_base(
  */
 AWS_IO_API
 void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
+
+/**
+ * Creates an instance of the event loop implementation from the options.
+ */
+AWS_IO_API
+struct aws_event_loop *aws_event_loop_new_with_options(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
 
 /**
  * Invokes the destroy() fn for the event loop implementation.
