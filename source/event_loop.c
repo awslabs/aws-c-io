@@ -694,3 +694,20 @@ struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_grou
 
     return aws_event_loop_group_new(alloc, &elg_options);
 }
+
+void *aws_event_loop_get_impl(struct aws_event_loop *event_loop) {
+    return event_loop->impl_data;
+}
+
+struct aws_event_loop *aws_event_loop_new_base(
+    struct aws_allocator *allocator,
+    aws_io_clock_fn *clock,
+    struct aws_event_loop_vtable *vtable,
+    void *impl) {
+    struct aws_event_loop *event_loop = aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
+    aws_event_loop_init_base(event_loop, allocator, clock);
+    event_loop->impl_data = impl;
+    event_loop->vtable = vtable;
+
+    return event_loop;
+}
