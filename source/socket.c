@@ -116,7 +116,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
     if (aws_socket_impl_type_validate_platform(type)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Invalid event loop type on the platform.");
-        return AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+        return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     }
 
     // 2. setup vtable based on socket type

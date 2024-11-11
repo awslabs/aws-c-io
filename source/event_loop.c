@@ -61,23 +61,17 @@ struct aws_event_loop *aws_event_loop_new_with_options(
     switch (type) {
         case AWS_ELT_EPOLL:
             return aws_event_loop_new_epoll_with_options(alloc, options);
-            break;
         case AWS_ELT_IOCP:
             return aws_event_loop_new_iocp_with_options(alloc, options);
-            break;
         case AWS_ELT_KQUEUE:
             return aws_event_loop_new_kqueue_with_options(alloc, options);
-            break;
         case AWS_ELT_DISPATCH_QUEUE:
             return aws_event_loop_new_dispatch_queue_with_options(alloc, options);
-            break;
         default:
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
             aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-            break;
+            return NULL;
     }
-
-    return NULL;
 }
 
 static void s_event_loop_group_thread_exit(void *user_data) {
@@ -551,10 +545,11 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
  * AWS_ELT_PLATFORM_DEFAULT.
  */
 void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
-    if (aws_event_loop_type_validate_platform(default_type_override)) {
+    if (aws_event_loop_type_validate_platform(default_type_override) == AWS_OP_SUCCESS) {
+        s_default_event_loop_type_override = default_type_override;
+    } else {
         s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
     }
-    s_default_event_loop_type_override = default_type_override;
 }
 
 /**
