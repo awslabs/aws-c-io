@@ -141,6 +141,14 @@ struct aws_exponential_backoff_retry_options {
     const struct aws_shutdown_callback_options *shutdown_options;
 };
 
+struct aws_no_retry_options {
+    /**
+     * Optional shutdown callback that gets invoked, with appropriate user data,
+     * when the resources used by the retry_strategy are no longer in use.
+     */
+    const struct aws_shutdown_callback_options *shutdown_options;
+};
+
 struct aws_standard_retry_options {
     struct aws_exponential_backoff_retry_options backoff_retry_options;
     /** capacity for partitions. Defaults to 500 */
@@ -236,6 +244,10 @@ AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff
 AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_standard(
     struct aws_allocator *allocator,
     const struct aws_standard_retry_options *config);
+
+AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_no_retry(
+    struct aws_allocator *allocator,
+    const struct aws_no_retry_options *config);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
