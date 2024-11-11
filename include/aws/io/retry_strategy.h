@@ -114,7 +114,7 @@ struct aws_exponential_backoff_retry_options {
     uint32_t backoff_scale_factor_ms;
     /* Max retry backoff in seconds. Default is 20 seconds */
     uint32_t max_backoff_secs;
-    /* Sets max_retries to 0 to disable retries altogether */
+    /* Disables retries completely. Attempts to acquire_token will fail with `AWS_IO_RETRY_PERMISSION_DENIED` */
     bool no_retries;
     /** Jitter mode to use, see comments for aws_exponential_backoff_jitter_mode.
      * Default is AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT */
