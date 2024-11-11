@@ -327,3 +327,44 @@ static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_alloca
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_exponential_backoff_retry_invalid_options, s_test_exponential_backoff_retry_invalid_options_fn)
+
+static int s_test_exponential_backoff_no_retries_fn(
+    struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_exponential_backoff_retry_options config = {
+        .max_retries = 3,
+        .no_retries = true,
+        .el_group = el_group,
+    };
+
+    struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
+    ASSERT_NOT_NULL(retry_strategy);
+
+    struct exponential_backoff_test_data test_data = {
+        .retry_count = 0,
+        .failure_error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .cvar = AWS_CONDITION_VARIABLE_INIT,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_data.mutex));
+    ASSERT_ERROR(AWS_IO_RETRY_PERMISSION_DENIED, aws_retry_strategy_acquire_retry_token(
+        retry_strategy, NULL, s_too_many_retries_test_token_acquired, &test_data, 0));
+
+    aws_mutex_unlock(&test_data.mutex);
+
+    ASSERT_UINT_EQUALS(0, test_data.retry_count);
+
+    aws_retry_strategy_release(retry_strategy);
+    aws_event_loop_group_release(el_group);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_exponential_backoff_no_retries, s_test_exponential_backoff_no_retries_fn)

@@ -106,14 +106,16 @@ enum aws_exponential_backoff_jitter_mode {
  * "use defaults"
  */
 struct aws_exponential_backoff_retry_options {
-    /** Event loop group to use for scheduling tasks. */
+    /* Event loop group to use for scheduling tasks. */
     struct aws_event_loop_group *el_group;
-    /** Max retries to allow. The default value is 10 */
+    /* Max retries to allow. The default value is 10 */
     size_t max_retries;
-    /** Scaling factor to add for the backoff. Default is 500ms */
+    /* Scaling factor to add for the backoff. Default is 500ms */
     uint32_t backoff_scale_factor_ms;
-    /** Max retry backoff in seconds. Default is 20 seconds */
+    /* Max retry backoff in seconds. Default is 20 seconds */
     uint32_t max_backoff_secs;
+    /* Sets max_retries to 0 to disable retries altogether */
+    bool no_retries;
     /** Jitter mode to use, see comments for aws_exponential_backoff_jitter_mode.
      * Default is AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT */
     enum aws_exponential_backoff_jitter_mode jitter_mode;
