@@ -219,7 +219,7 @@ void aws_event_loop_group_release(struct aws_event_loop_group *el_group) {
     }
 }
 
-size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group) {
+size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group) {
     return aws_array_list_length(&el_group->event_loops);
 }
 
@@ -483,7 +483,7 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) 
     return event_loop->vtable->is_on_callers_thread(event_loop);
 }
 
-int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos) {
+int aws_event_loop_current_clock_time(const struct aws_event_loop *event_loop, uint64_t *time_nanos) {
     AWS_ASSERT(event_loop->clock);
     return event_loop->clock(time_nanos);
 }

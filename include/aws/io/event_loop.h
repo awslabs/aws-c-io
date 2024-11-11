@@ -15,12 +15,18 @@ struct aws_event_loop_group;
 struct aws_shutdown_callback_options;
 struct aws_task;
 
+/**
+ * @internal
+ */
 typedef void(aws_event_loop_on_event_fn)(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
     void *user_data);
 
+/**
+ * @internal
+ */
 struct aws_event_loop_vtable {
     void (*destroy)(struct aws_event_loop *event_loop);
     int (*run)(struct aws_event_loop *event_loop);
@@ -60,7 +66,7 @@ struct aws_event_loop_group_options {
     /**
      * Optional configuration to control how the event loop group's threads bind to CPU groups
      */
-    uint16_t *cpu_group;
+    const uint16_t *cpu_group;
 
     /**
      * Override for the clock function that event loops should use.  Defaults to the system's high resolution
@@ -68,7 +74,7 @@ struct aws_event_loop_group_options {
      *
      * Do not bind this value to managed code; it is only used in timing-sensitive tests.
      */
-    aws_io_clock_fn *clock_override;
+    const aws_io_clock_fn *clock_override;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -116,7 +122,7 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
  * Gets the current timestamp for the event loop's clock, in nanoseconds. This function is thread-safe.
  */
 AWS_IO_API
-int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos);
+int aws_event_loop_current_clock_time(const struct aws_event_loop *event_loop, uint64_t *time_nanos);
 
 /**
  * Creation function for event loop groups.
@@ -151,7 +157,7 @@ struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_gr
  * Gets the number of event loops managed by an event loop group.
  */
 AWS_IO_API
-size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group);
+size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group);
 
 /**
  * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
@@ -162,10 +168,6 @@ AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
 
 /**
- * Initializes an event loop group with platform defaults. If max_threads == 0, then the
- * loop count will be the number of available processors on the machine / 2 (to exclude hyper-threads).
- * Otherwise, max_threads will be the number of event loops in the group.
- *
  * @deprecated - use aws_event_loop_group_new() instead
  */
 AWS_IO_API
@@ -174,15 +176,7 @@ struct aws_event_loop_group *aws_event_loop_group_new_default(
     uint16_t max_threads,
     const struct aws_shutdown_callback_options *shutdown_options);
 
-/** Creates an event loop group, with clock, number of loops to manage, the function to call for creating a new
- * event loop, and also pins all loops to hw threads on the same cpu_group (e.g. NUMA nodes). Note:
- * If el_count exceeds the number of hw threads in the cpu_group it will be clamped to the number of hw threads
- * on the assumption that if you care about NUMA, you don't want hyper-threads doing your IO and you especially
- * don't want IO on a different node.
- *
- * If max_threads == 0, then the
- * loop count will be the number of available processors in the cpu_group / 2 (to exclude hyper-threads)
- *
+/**
  * @deprecated - use aws_event_loop_group_new() instead
  */
 AWS_IO_API
@@ -193,18 +187,18 @@ struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_grou
     const struct aws_shutdown_callback_options *shutdown_options);
 
 /**
+ * @internal - Don't use outside of testing.
+ *
  * Returns the opaque internal user data of an event loop.  Can be cast into a specific implementation by
  * privileged consumers.
- *
- * @internal - Don't use outside of testing.
  */
 AWS_IO_API
 void *aws_event_loop_get_impl(struct aws_event_loop *event_loop);
 
 /**
- * Initializes the base structure used by all event loop implementations with test-oriented overrides.
- *
  * @internal - Don't use outside of testing.
+ *
+ * Initializes the base structure used by all event loop implementations with test-oriented overrides.
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_base(
@@ -214,22 +208,22 @@ struct aws_event_loop *aws_event_loop_new_base(
     void *impl);
 
 /**
+ * @internal - Don't use outside of testing.
+ *
  * Common cleanup code for all implementations.
  * This is only called from the *destroy() function of event loop implementations.
- *
- * @internal - Don't use outside of testing.
  */
 AWS_IO_API
 void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
 
 /**
+ * @internal - Don't use outside of testing.
+ *
  * Invokes the destroy() fn for the event loop implementation.
  * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
  * If you do not want this function to block, call aws_event_loop_stop() manually first.
  * If the event loop is shared by multiple threads then destroy must be called by exactly one thread. All other threads
  * must ensure their API calls to the event loop happen-before the call to destroy.
- *
- * @internal - Don't use outside of testing.
  */
 AWS_IO_API
 void aws_event_loop_destroy(struct aws_event_loop *event_loop);
