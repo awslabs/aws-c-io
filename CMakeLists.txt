@@ -110,6 +110,8 @@ elseif (APPLE)
             )
 
     file(GLOB AWS_IO_OS_SRC
+            "source/bsd/*.c"
+            "source/posix/*.c"
             "source/darwin/*.c"
             )
 
@@ -128,11 +130,6 @@ elseif (APPLE)
 
     # Enable KQUEUE on MacOS 
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        file(GLOB AWS_IO_KUEUE_SRC
-            "source/bsd/*.c"
-            "source/posix/*.c"
-        )
-        list(APPEND AWS_IO_OS_SRC ${AWS_IO_KUEUE_SRC})
         list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
     endif()
 
