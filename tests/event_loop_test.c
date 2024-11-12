@@ -8,9 +8,9 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/system_info.h>
 #include <aws/common/task_scheduler.h>
-#include <aws/io/event_loop.h>
-
 #include <aws/common/thread.h>
+#include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/testing/aws_test_harness.h>
 
 struct task_args {
@@ -1041,7 +1041,10 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     size_t cpu_count = aws_system_info_processor_count();
     size_t el_count = aws_event_loop_group_get_loop_count(event_loop_group);
@@ -1074,10 +1077,16 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
     size_t cpus_for_group = aws_get_cpu_count_for_group(0);
     size_t el_count = 1;
 
-    /* pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more threads
-     * than hw cpus available */
-    struct aws_event_loop_group *event_loop_group =
-        aws_event_loop_group_new_default_pinned_to_cpu_group(allocator, UINT16_MAX, 0, NULL);
+    uint16_t cpu_group = 0;
+    struct aws_event_loop_group_options elg_options = {
+        /*
+         * pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more
+         * threads than hw cpus available
+         */
+        .loop_count = UINT16_MAX,
+        .cpu_group = &cpu_group,
+    };
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     el_count = aws_event_loop_group_get_loop_count(event_loop_group);
 
@@ -1154,8 +1163,12 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
     async_shutdown_options.shutdown_callback_user_data = &task_args;
     async_shutdown_options.shutdown_callback_fn = s_async_shutdown_complete_callback;
 
-    struct aws_event_loop_group *event_loop_group =
-        aws_event_loop_group_new_default(allocator, 0, &async_shutdown_options);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+        .shutdown_options = &async_shutdown_options,
+    };
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
 
