@@ -11,6 +11,7 @@
 #include <aws/common/thread.h>
 
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <Windows.h>
 

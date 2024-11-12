@@ -8,6 +8,7 @@
 
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
+#include <aws/common/shutdown_types.h>
 
 #include <aws/io/event_loop.h>
 
@@ -49,7 +50,12 @@ static int s_fixture_setup(struct aws_allocator *allocator, void *ctx) {
         .shutdown_callback_user_data = ctx,
     };
 
-    test_data->el_group = aws_event_loop_group_new_default(allocator, 1, &shutdown_options);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+        .shutdown_options = &shutdown_options,
+    };
+    test_data->el_group = aws_event_loop_group_new(allocator, &elg_options);
+
     ASSERT_NOT_NULL(test_data->el_group);
     struct aws_standard_retry_options retry_options = {
         .initial_bucket_capacity = 15,

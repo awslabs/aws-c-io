@@ -4,6 +4,7 @@
  */
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/statistics.h>
@@ -59,7 +60,10 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     AWS_ZERO_STRUCT(*tester);
     aws_io_library_init(allocator);
 
-    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    tester->el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = tester->el_group,
@@ -1006,8 +1010,13 @@ static int s_socket_common_tester_statistics_init(
     aws_io_library_init(allocator);
 
     AWS_ZERO_STRUCT(*tester);
-    tester->el_group =
-        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+        .clock_override = s_statistic_test_clock_fn,
+    };
+    tester->el_group = aws_event_loop_group_new_internal(allocator, &elg_options, s_default_new_event_loop, NULL);
+
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;

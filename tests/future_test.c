@@ -10,6 +10,7 @@
 #include <aws/common/thread.h>
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/testing/aws_test_harness.h>
 
 #include "future_test.h"
