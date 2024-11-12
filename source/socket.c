@@ -126,8 +126,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
         case AWS_SOCKET_IMPL_WINSOCK:
             return aws_socket_init_winsock(socket, alloc, options);
         case AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK:
-            // Apple Network Framework is not implemented yet. We should not use it yet.
-            AWS_ASSERT(false && "Invalid socket implementation on platform.");
             return aws_socket_init_apple_nw_socket(socket, alloc, options);
         default:
             AWS_ASSERT(false && "Invalid socket implementation on platform.");
