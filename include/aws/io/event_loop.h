@@ -74,7 +74,7 @@ struct aws_event_loop_group_options {
      *
      * Do not bind this value to managed code; it is only used in timing-sensitive tests.
      */
-    const aws_io_clock_fn *clock_override;
+    aws_io_clock_fn *clock_override;
 };
 
 AWS_EXTERN_C_BEGIN
