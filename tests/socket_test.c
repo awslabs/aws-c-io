@@ -247,7 +247,7 @@ static int s_test_socket_ex(
 
     // The Apple Network Framework always require a "start listener/start connection"
     // for setup a server socket
-    if (options->type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_ELT_DISPATCH_QUEUE) {
+    if (options->type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
         ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
     }
@@ -262,7 +262,7 @@ static int s_test_socket_ex(
     }
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
-    if (listener.options.type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_ELT_DISPATCH_QUEUE) {
+    if (listener.options.type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         ASSERT_SUCCESS(
             aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -275,7 +275,7 @@ static int s_test_socket_ex(
 
     struct aws_socket *server_sock = &listener;
 
-    if (options->type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_ELT_DISPATCH_QUEUE) {
+    if (options->type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_TRUE(listener_args.incoming_invoked);
         ASSERT_FALSE(listener_args.error_invoked);
         server_sock = listener_args.incoming;
@@ -486,7 +486,7 @@ static int s_test_socket_udp_dispatch_queue(
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
 
-    if (listener.options.type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_ELT_DISPATCH_QUEUE) {
+    if (listener.options.type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         ASSERT_SUCCESS(
             aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -586,7 +586,7 @@ static int s_test_socket(
     struct aws_socket_options *options,
     struct aws_socket_endpoint *endpoint) {
 
-    if (aws_event_loop_get_default_type() == AWS_ELT_DISPATCH_QUEUE && options->type == AWS_SOCKET_DGRAM)
+    if (aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE && options->type == AWS_SOCKET_DGRAM)
         return s_test_socket_udp_dispatch_queue(allocator, options, endpoint);
     else
         return s_test_socket_ex(allocator, options, NULL, endpoint);
@@ -1049,7 +1049,7 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
 
     int socket_connect_result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
     // As Apple network framework has a async API design, we would not get the error back on connect
-    if(aws_event_loop_get_default_type() != AWS_ELT_DISPATCH_QUEUE){
+    if(aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE){
         ASSERT_FAILS(socket_connect_result);
         ASSERT_TRUE(
             aws_last_error() == AWS_IO_SOCKET_CONNECTION_REFUSED || aws_last_error() == AWS_ERROR_FILE_INVALID_PATH);
@@ -1263,7 +1263,7 @@ static int s_test_bind_on_zero_port(
 
     ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
 
-    if (aws_event_loop_get_default_type() == AWS_ELT_DISPATCH_QUEUE) {
+    if (aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         struct aws_mutex mutex = AWS_MUTEX_INIT;
         struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
 
