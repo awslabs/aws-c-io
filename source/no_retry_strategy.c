@@ -73,11 +73,6 @@ struct aws_retry_strategy *aws_retry_strategy_new_no_retry(
     const struct aws_no_retry_options *config) {
     struct aws_retry_strategy_no_retries *strategy =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_retry_strategy_no_retries));
-
-    if (!strategy) {
-        return NULL;
-    }
-
     strategy->base.allocator = allocator;
     strategy->base.impl = strategy;
     strategy->base.vtable = &s_exponential_retry_vtable;

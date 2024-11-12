@@ -244,7 +244,7 @@ AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_standard(
     const struct aws_standard_retry_options *config);
 
 /**
- * This retry strategy is used to disable retries.
+ * This retry strategy is used to disable retries. Passed config can be null.
  * Calling `aws_retry_strategy_acquire_retry_token` will raise error `AWS_IO_RETRY_PERMISSION_DENIED`.
  * Calling any function apart from the `aws_retry_strategy_acquire_retry_token` and `aws_retry_strategy_release` will
  * result in a fatal error.
