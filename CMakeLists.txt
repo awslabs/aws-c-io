@@ -123,7 +123,6 @@ elseif (APPLE)
         message(FATAL_ERROR "Network framework not found")
     endif ()
 
-    #No choice on TLS for apple, darwinssl will always be used.
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
     list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
 
@@ -220,10 +219,7 @@ if (USE_VSOCK)
 endif()
 
 if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
-        target_compile_definitions(${PROJECT_NAME} PRIVATE "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
-        option(AWS_USE_APPLE_NETWORK_FRAMEWORK 
-        "Use apple network framework as default event loop and socket options."
-        ON)
+        target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC

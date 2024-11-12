@@ -80,7 +80,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
 
     // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
     // therefore we do not validate the thread id for dispatch queue.
-    if (aws_event_loop_get_default_type() != AWS_ELT_DISPATCH_QUEUE) {
+    if (aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
     }
 
@@ -156,7 +156,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     ASSERT_TRUE(task1_args.was_in_thread);
     // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
     // therefore we do not validate the thread id for dispatch queue.
-    if (aws_event_loop_get_default_type() != AWS_ELT_DISPATCH_QUEUE) {
+    if (aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
     }
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
@@ -174,7 +174,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     ASSERT_TRUE(task2_args.was_in_thread);
     // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
     // therefore we do not validate the thread id for dispatch queue.
-    if (aws_event_loop_get_default_type() != AWS_ELT_DISPATCH_QUEUE) {
+    if (aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
     }
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
@@ -1089,10 +1089,12 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
     size_t cpus_for_group = aws_get_cpu_count_for_group(0);
     size_t el_count = 1;
 
-    /* pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more threads
-     * than hw cpus available */
     uint16_t cpu_group = 0;
     struct aws_event_loop_group_options elg_options = {
+        /*
+         * pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more
+         * threads than hw cpus available
+         */
         .loop_count = UINT16_MAX,
         .cpu_group = &cpu_group,
     };

@@ -32,21 +32,21 @@ enum aws_socket_type {
 };
 
 /**
- * Socket Implementation type. Decides which socket implementation is used. If set to `AWS_SIT_PLATFORM_DEFAULT`, it
- * will automatically use the platform’s default.
+ * Socket Implementation type. Decides which socket implementation is used. If set to
+ * `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, it will automatically use the platform’s default.
  *
  * PLATFORM DEFAULT SOCKET IMPLEMENTATION TYPE
- * Linux       | AWS_SIT_POSIX
- * Windows	   | AWS_SIT_WINSOCK
- * BSD Variants| AWS_SIT_POSIX
- * MacOS	   | AWS_SIT_POSIX
- * iOS         | AWS_SIT_APPLE_NETWORK_FRAMEWORK
+ * Linux       | AWS_SOCKET_IMPL_POSIX
+ * Windows	   | AWS_SOCKET_IMPL_WINSOCK
+ * BSD Variants| AWS_SOCKET_IMPL_POSIX
+ * MacOS	   | AWS_SOCKET_IMPL_POSIX
+ * iOS         | AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK
  */
 enum aws_socket_impl_type {
-    AWS_SIT_PLATFORM_DEFAULT = 0,
-    AWS_SIT_POSIX,
-    AWS_SIT_WINSOCK,
-    AWS_SIT_APPLE_NETWORK_FRAMEWORK,
+    AWS_SOCKET_IMPL_PLATFORM_DEFAULT = 0,
+    AWS_SOCKET_IMPL_POSIX,
+    AWS_SOCKET_IMPL_WINSOCK,
+    AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK,
 };
 
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
@@ -99,7 +99,7 @@ typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int 
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations. The user is responsible to releasing the socket memory after use.
+ * performing IO operations. The user must call `aws_socket_release()` when they're done with the socket, to free it.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -116,7 +116,8 @@ typedef void(aws_socket_on_accept_result_fn)(
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
  *
- * socket is possible to be a NULL pointer in the callback.
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before a callback is triggered.
+ * by the system I/O handler,
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
@@ -205,17 +206,17 @@ aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 #endif
 
-AWS_IO_API int aws_socket_init_posix(
+int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
 
-AWS_IO_API int aws_socket_init_winsock(
+int aws_socket_init_winsock(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
 
-AWS_IO_API int aws_socket_init_apple_nw_socket(
+int aws_socket_init_apple_nw_socket(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
