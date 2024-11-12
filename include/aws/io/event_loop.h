@@ -104,6 +104,8 @@ struct aws_event_loop_group_options {
 };
 
 /**
+ * @internal - Don't use outside of testing.
+ *
  * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
  * retrieve the default type value.
  * If `aws_event_loop_override_default_type` has been called, return the override default type.
