@@ -270,6 +270,8 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
 #ifndef ANDROID
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             return true;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
+            return true;
 #endif
 
         default:
@@ -1535,6 +1537,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             security_policy = "PQ-TLS-1-0-2021-05-26";
+            break;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
             break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
