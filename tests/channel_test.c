@@ -11,6 +11,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/socket.h>
 #include <aws/testing/aws_test_harness.h>
 
@@ -684,7 +685,10 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         .shutdown = false,
     };
 
-    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     /* resolve our s3 test bucket and an EC2 host with an ACL that blackholes the connection */
     const struct aws_string *addr1_ipv4 = NULL;

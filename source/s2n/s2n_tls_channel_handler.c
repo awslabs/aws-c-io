@@ -5,20 +5,19 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/encoding.h>
 #include <aws/common/mutex.h>
-
+#include <aws/common/string.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/thread.h>
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
-
-#include <aws/common/encoding.h>
-#include <aws/common/string.h>
-#include <aws/common/task_scheduler.h>
-#include <aws/common/thread.h>
 
 #include <s2n.h>
 #ifdef AWS_S2N_INSOURCE_PATH

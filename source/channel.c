@@ -12,6 +12,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/message_pool.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/statistics.h>
 
 #ifdef _MSC_VER

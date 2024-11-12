@@ -6,6 +6,7 @@
 #include <aws/io/pipe.h>
 
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #ifdef __GLIBC__
 #    define __USE_GNU
