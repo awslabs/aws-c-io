@@ -292,7 +292,7 @@ clean_up:
     }
     return NULL;
 }
-#endif //AWS_ENABLE_KQUEUE
+#endif // AWS_ENABLE_KQUEUE
 
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event_loop", (void *)event_loop);
