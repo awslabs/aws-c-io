@@ -49,7 +49,8 @@ struct aws_event_loop_vtable {
 };
 
 /**
- * Event Loop Type.  If set to `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s default.
+ * Event Loop Type.  If set to `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s
+ * default.
  *
  * Default Event Loop Type
  * Linux       | AWS_EVENT_LOOP_EPOLL
