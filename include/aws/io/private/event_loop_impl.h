@@ -11,6 +11,7 @@
 #include <aws/common/atomics.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/ref_count.h>
+#include <aws/io/event_loop.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
 
@@ -57,38 +58,12 @@ struct aws_overlapped {
     void *user_data;
 };
 
-typedef void(aws_event_loop_on_event_fn)(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle,
-    int events,
-    void *user_data);
-
 enum aws_io_event_type {
     AWS_IO_EVENT_TYPE_READABLE = 1,
     AWS_IO_EVENT_TYPE_WRITABLE = 2,
     AWS_IO_EVENT_TYPE_REMOTE_HANG_UP = 4,
     AWS_IO_EVENT_TYPE_CLOSED = 8,
     AWS_IO_EVENT_TYPE_ERROR = 16,
-};
-
-struct aws_event_loop_vtable {
-    void (*destroy)(struct aws_event_loop *event_loop);
-    int (*run)(struct aws_event_loop *event_loop);
-    int (*stop)(struct aws_event_loop *event_loop);
-    int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
-    void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
-    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
-    void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
-    int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-    int (*subscribe_to_io_events)(
-        struct aws_event_loop *event_loop,
-        struct aws_io_handle *handle,
-        int events,
-        aws_event_loop_on_event_fn *on_event,
-        void *user_data);
-    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-    void (*free_io_event_resources)(void *user_data);
-    bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
 struct aws_event_loop {
@@ -117,25 +92,21 @@ struct aws_event_loop_options {
     struct aws_thread_options *thread_options;
 
     /**
-     * Event loop type. If the event loop type is set to AWS_ELT_PLATFORM_DEFAULT, the
+     * Event loop type. If the event loop type is set to AWS_EVENT_LOOP_PLATFORM_DEFAULT, the
      * creation function will automatically use the platform’s default event loop type.
      */
     enum aws_event_loop_type type;
 };
 
-AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_iocp_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
-AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
-AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
-AWS_IO_API
 struct aws_event_loop *aws_event_loop_new_epoll_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
@@ -217,31 +188,9 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system using
  * extendable options.
- *
- * Please note the event loop type defined in the options will be ignored.
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_new_default_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options);
-
-/**
- * Creates an instance of the event loop implementation from the options.
- */
-AWS_IO_API
-struct aws_event_loop *aws_event_loop_new_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options);
-
-/**
- * Invokes the destroy() fn for the event loop implementation.
- * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
- * If you do not want this function to block, call aws_event_loop_stop() manually first.
- * If the event loop is shared by multiple threads then destroy must be called by exactly one thread. All other threads
- * must ensure their API calls to the event loop happen-before the call to destroy.
- */
-AWS_IO_API
-void aws_event_loop_destroy(struct aws_event_loop *event_loop);
+struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
 
 /**
  * Initializes common event-loop data structures.
@@ -249,13 +198,6 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock);
-
-/**
- * Common cleanup code for all implementations.
- * This is only called from the *destroy() function of event loop implementations.
- */
-AWS_IO_API
-void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
 
 /**
  * Fetches an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to

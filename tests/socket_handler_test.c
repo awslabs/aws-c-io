@@ -60,7 +60,9 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     AWS_ZERO_STRUCT(*tester);
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
     tester->el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
@@ -992,7 +994,7 @@ static struct aws_event_loop *s_default_new_event_loop(
     void *user_data) {
 
     (void)user_data;
-    return aws_event_loop_new_default_with_options(allocator, options);
+    return aws_event_loop_new(allocator, options);
 }
 
 static int s_statistic_test_clock_fn(uint64_t *timestamp) {
