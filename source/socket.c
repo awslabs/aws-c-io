@@ -110,7 +110,7 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
     // 1. get socket type & validate type is avliable the platform
     enum aws_socket_impl_type type = options->impl_type;
-    if (type == AWS_SIT_PLATFORM_DEFAULT) {
+    if (type == AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
         type = aws_socket_get_default_impl_type();
     }
 
@@ -121,22 +121,18 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
     // 2. setup vtable based on socket type
     switch (type) {
-        case AWS_SIT_POSIX:
+        case AWS_SOCKET_IMPL_POSIX:
             return aws_socket_init_posix(socket, alloc, options);
-            break;
-        case AWS_SIT_WINSOCK:
+        case AWS_SOCKET_IMPL_WINSOCK:
             return aws_socket_init_winsock(socket, alloc, options);
-            break;
-
-        case AWS_SIT_APPLE_NETWORK_FRAMEWORK:
+        case AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK:
+            // Apple Network Framework is not implemented yet. We should not use it yet.
             AWS_ASSERT(false && "Invalid socket implementation on platform.");
             return aws_socket_init_apple_nw_socket(socket, alloc, options);
-            break;
         default:
-            break;
+            AWS_ASSERT(false && "Invalid socket implementation on platform.");
+            return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     }
-    AWS_ASSERT(false && "Invalid socket implementation on platform.");
-    return AWS_ERROR_PLATFORM_NOT_SUPPORTED;
 }
 
 int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
@@ -172,16 +168,16 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
 }
 
 /**
- * Return the default socket implementation type. If the return value is `AWS_SIT_PLATFORM_DEFAULT`, the function failed
- * to retrieve the default type value.
+ * Return the default socket implementation type. If the return value is `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, the
+ * function failed to retrieve the default type value.
  */
 static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
-    enum aws_socket_impl_type type = AWS_SIT_PLATFORM_DEFAULT;
+    enum aws_socket_impl_type type = AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
 // override default socket
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    type = AWS_SIT_APPLE_NETWORK_FRAMEWORK;
+    type = AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
 #endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
-    if (type != AWS_SIT_PLATFORM_DEFAULT) {
+    if (type != AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
         return type;
     }
 /**
@@ -189,33 +185,33 @@ static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
  * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
  */
 #if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
-    return AWS_SIT_POSIX;
+    return AWS_SOCKET_IMPL_POSIX;
 #endif
 #ifdef AWS_ENABLE_DISPATCH_QUEUE
-    return AWS_SIT_APPLE_NETWORK_FRAMEWORK;
+    return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
 #endif
 #ifdef AWS_ENABLE_IO_COMPLETION_PORTS
-    return AWS_SIT_WINSOCK;
+    return AWS_SOCKET_IMPL_WINSOCK;
 #else
-    return AWS_SIT_PLATFORM_DEFAULT;
+    return AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
 #endif
 }
 
 static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type) {
     switch (type) {
-        case AWS_SIT_POSIX:
+        case AWS_SOCKET_IMPL_POSIX:
 #if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE)
             AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif // AWS_SIT_POSIX
+#endif // AWS_SOCKET_IMPL_POSIX
             break;
-        case AWS_SIT_WINSOCK:
+        case AWS_SOCKET_IMPL_WINSOCK:
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
             AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "WINSOCK is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_IO_COMPLETION_PORTS
             break;
-        case AWS_SIT_APPLE_NETWORK_FRAMEWORK:
+        case AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK:
 #ifndef AWS_ENABLE_DISPATCH_QUEUE
             AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Apple Network Framework is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);

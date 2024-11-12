@@ -15,16 +15,16 @@
 #include <aws/common/thread.h>
 
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    static enum aws_event_loop_type s_default_event_loop_type_override = AWS_ELT_DISPATCH_QUEUE;
+    static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
 #else
-    static enum aws_event_loop_type s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+    static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
 #endif
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
         .thread_options = NULL,
         .clock = clock,
-        .type = AWS_ELT_PLATFORM_DEFAULT,
+        .type = AWS_EVENT_LOOP_PLATFORM_DEFAULT,
     };
 
     return aws_event_loop_new_with_options(alloc, &options);
@@ -36,7 +36,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     struct aws_event_loop_options local_options = {
         .thread_options = options->thread_options,
         .clock = options->clock,
-        .type = AWS_ELT_PLATFORM_DEFAULT,
+        .type = AWS_EVENT_LOOP_PLATFORM_DEFAULT,
     };
 
     return aws_event_loop_new_with_options(alloc, &local_options);
@@ -49,7 +49,7 @@ struct aws_event_loop *aws_event_loop_new_with_options(
     const struct aws_event_loop_options *options) {
 
     enum aws_event_loop_type type = options->type;
-    if (type == AWS_ELT_PLATFORM_DEFAULT) {
+    if (type == AWS_EVENT_LOOP_PLATFORM_DEFAULT) {
         type = aws_event_loop_get_default_type();
     }
 
@@ -59,13 +59,13 @@ struct aws_event_loop *aws_event_loop_new_with_options(
     }
 
     switch (type) {
-        case AWS_ELT_EPOLL:
+        case AWS_EVENT_LOOP_EPOLL:
             return aws_event_loop_new_epoll_with_options(alloc, options);
-        case AWS_ELT_IOCP:
+        case AWS_EVENT_LOOP_IOCP:
             return aws_event_loop_new_iocp_with_options(alloc, options);
-        case AWS_ELT_KQUEUE:
+        case AWS_EVENT_LOOP_KQUEUE:
             return aws_event_loop_new_kqueue_with_options(alloc, options);
-        case AWS_ELT_DISPATCH_QUEUE:
+        case AWS_EVENT_LOOP_DISPATCH_QUEUE:
             return aws_event_loop_new_dispatch_queue_with_options(alloc, options);
         default:
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
@@ -542,23 +542,23 @@ int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_
  * Override default event loop type. Only used internally in tests.
  *
  * If the defined type is not supported on the current platform, the event loop type would reset to
- * AWS_ELT_PLATFORM_DEFAULT.
+ * AWS_EVENT_LOOP_PLATFORM_DEFAULT.
  */
 void aws_event_loop_override_default_type(enum aws_event_loop_type default_type_override) {
     if (aws_event_loop_type_validate_platform(default_type_override) == AWS_OP_SUCCESS) {
         s_default_event_loop_type_override = default_type_override;
     } else {
-        s_default_event_loop_type_override = AWS_ELT_PLATFORM_DEFAULT;
+        s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
     }
 }
 
 /**
- * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * Return the default event loop type. If the return value is `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the function failed to
  * retrieve the default type value.
  * If `aws_event_loop_override_default_type` has been called, return the override default type.
  */
 static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
-    if (s_default_event_loop_type_override != AWS_ELT_PLATFORM_DEFAULT) {
+    if (s_default_event_loop_type_override != AWS_EVENT_LOOP_PLATFORM_DEFAULT) {
         return s_default_event_loop_type_override;
     }
 /**
@@ -566,40 +566,40 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
  * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
  */
 #ifdef AWS_ENABLE_KQUEUE
-    return AWS_ELT_KQUEUE;
+    return AWS_EVENT_LOOP_KQUEUE;
 #endif
 #ifdef AWS_ENABLE_DISPATCH_QUEUE
-    return AWS_ELT_DISPATCH_QUEUE;
+    return AWS_EVENT_LOOP_DISPATCH_QUEUE;
 #endif
 #ifdef AWS_ENABLE_EPOLL
-    return AWS_ELT_EPOLL;
+    return AWS_EVENT_LOOP_EPOLL;
 #endif
 #ifdef AWS_OS_WINDOWS
-    return AWS_ELT_IOCP;
+    return AWS_EVENT_LOOP_IOCP;
 #endif
 }
 
 static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) {
     switch (type) {
-        case AWS_ELT_EPOLL:
+        case AWS_EVENT_LOOP_EPOLL:
 #ifndef AWS_ENABLE_EPOLL
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type EPOLL is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_EPOLL
             break;
-        case AWS_ELT_IOCP:
+        case AWS_EVENT_LOOP_IOCP:
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type IOCP is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_IO_COMPLETION_PORTS
             break;
-        case AWS_ELT_KQUEUE:
+        case AWS_EVENT_LOOP_KQUEUE:
 #ifndef AWS_ENABLE_KQUEUE
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type KQUEUE is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_KQUEUE
             break;
-        case AWS_ELT_DISPATCH_QUEUE:
+        case AWS_EVENT_LOOP_DISPATCH_QUEUE:
 #ifndef AWS_ENABLE_DISPATCH_QUEUE
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type Dispatch Queue is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);

@@ -92,7 +92,7 @@ struct aws_event_loop_options {
     struct aws_thread_options *thread_options;
 
     /**
-     * Event loop type. If the event loop type is set to AWS_ELT_PLATFORM_DEFAULT, the
+     * Event loop type. If the event loop type is set to AWS_EVENT_LOOP_PLATFORM_DEFAULT, the
      * creation function will automatically use the platform’s default event loop type.
      */
     enum aws_event_loop_type type;

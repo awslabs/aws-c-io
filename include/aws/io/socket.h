@@ -32,21 +32,21 @@ enum aws_socket_type {
 };
 
 /**
- * Socket Implementation type. Decides which socket implementation is used. If set to `AWS_SIT_PLATFORM_DEFAULT`, it
+ * Socket Implementation type. Decides which socket implementation is used. If set to `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, it
  * will automatically use the platform’s default.
  *
  * PLATFORM DEFAULT SOCKET IMPLEMENTATION TYPE
- * Linux       | AWS_SIT_POSIX
- * Windows	   | AWS_SIT_WINSOCK
- * BSD Variants| AWS_SIT_POSIX
- * MacOS	   | AWS_SIT_POSIX
- * iOS         | AWS_SIT_APPLE_NETWORK_FRAMEWORK
+ * Linux       | AWS_SOCKET_IMPL_POSIX
+ * Windows	   | AWS_SOCKET_IMPL_WINSOCK
+ * BSD Variants| AWS_SOCKET_IMPL_POSIX
+ * MacOS	   | AWS_SOCKET_IMPL_POSIX
+ * iOS         | AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK
  */
 enum aws_socket_impl_type {
-    AWS_SIT_PLATFORM_DEFAULT = 0,
-    AWS_SIT_POSIX,
-    AWS_SIT_WINSOCK,
-    AWS_SIT_APPLE_NETWORK_FRAMEWORK,
+    AWS_SOCKET_IMPL_PLATFORM_DEFAULT = 0,
+    AWS_SOCKET_IMPL_POSIX,
+    AWS_SOCKET_IMPL_WINSOCK,
+    AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK,
 };
 
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
