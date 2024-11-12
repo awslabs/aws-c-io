@@ -28,26 +28,12 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
         .type = AWS_EVENT_LOOP_PLATFORM_DEFAULT,
     };
 
-    return aws_event_loop_new_with_options(alloc, &options);
-}
-
-struct aws_event_loop *aws_event_loop_new_default_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options) {
-    struct aws_event_loop_options local_options = {
-        .thread_options = options->thread_options,
-        .clock = options->clock,
-        .type = AWS_EVENT_LOOP_PLATFORM_DEFAULT,
-    };
-
-    return aws_event_loop_new_with_options(alloc, &local_options);
+    return aws_event_loop_new(alloc, &options);
 }
 
 static enum aws_event_loop_type aws_event_loop_get_default_type(void);
 static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type);
-struct aws_event_loop *aws_event_loop_new_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options) {
+struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const struct aws_event_loop_options *options) {
 
     enum aws_event_loop_type type = options->type;
     if (type == AWS_EVENT_LOOP_PLATFORM_DEFAULT) {
@@ -246,7 +232,7 @@ static struct aws_event_loop *s_default_new_event_loop(
     void *user_data) {
 
     (void)user_data;
-    return aws_event_loop_new_default_with_options(allocator, options);
+    return aws_event_loop_new(allocator, options);
 }
 
 struct aws_event_loop_group *aws_event_loop_group_new(

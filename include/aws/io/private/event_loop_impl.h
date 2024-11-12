@@ -192,9 +192,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
  * Please note the event loop type defined in the options will be ignored.
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_new_default_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options);
+struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
 
 /**
  * Initializes common event-loop data structures.

@@ -243,16 +243,6 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
 
 /**
  * @internal - Don't use outside of testing.
- * 
- * Creates an instance of the event loop implementation from the options.
- */
-AWS_IO_API
-struct aws_event_loop *aws_event_loop_new_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options);
-
-/**
- * @internal - Don't use outside of testing.
  *
  * Invokes the destroy() fn for the event loop implementation.
  * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
