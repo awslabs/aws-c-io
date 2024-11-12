@@ -32,8 +32,8 @@ enum aws_socket_type {
 };
 
 /**
- * Socket Implementation type. Decides which socket implementation is used. If set to `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, it
- * will automatically use the platform’s default.
+ * Socket Implementation type. Decides which socket implementation is used. If set to
+ * `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, it will automatically use the platform’s default.
  *
  * PLATFORM DEFAULT SOCKET IMPLEMENTATION TYPE
  * Linux       | AWS_SOCKET_IMPL_POSIX
@@ -206,24 +206,20 @@ aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 #endif
 
-
 int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
-
 
 int aws_socket_init_winsock(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
 
-
 int aws_socket_init_apple_nw_socket(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
-
 
 AWS_EXTERN_C_BEGIN
 
