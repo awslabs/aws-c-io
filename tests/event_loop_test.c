@@ -1077,10 +1077,12 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
     size_t cpus_for_group = aws_get_cpu_count_for_group(0);
     size_t el_count = 1;
 
-    /* pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more threads
-     * than hw cpus available */
     uint16_t cpu_group = 0;
     struct aws_event_loop_group_options elg_options = {
+        /*
+         * pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more
+         * threads than hw cpus available
+         */
         .loop_count = UINT16_MAX,
         .cpu_group = &cpu_group,
     };

@@ -5,6 +5,7 @@
 
 #include <aws/io/event_loop.h>
 
+#include <aws/common/shutdown_types.h>
 #include <aws/io/logging.h>
 #include <aws/io/private/event_loop_impl.h>
 
@@ -269,7 +270,7 @@ void aws_event_loop_group_release(struct aws_event_loop_group *el_group) {
     }
 }
 
-size_t aws_event_loop_group_get_loop_count(struct aws_event_loop_group *el_group) {
+size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group) {
     return aws_array_list_length(&el_group->event_loops);
 }
 
@@ -533,9 +534,54 @@ bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) 
     return event_loop->vtable->is_on_callers_thread(event_loop);
 }
 
-int aws_event_loop_current_clock_time(struct aws_event_loop *event_loop, uint64_t *time_nanos) {
+int aws_event_loop_current_clock_time(const struct aws_event_loop *event_loop, uint64_t *time_nanos) {
     AWS_ASSERT(event_loop->clock);
     return event_loop->clock(time_nanos);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new_default(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = max_threads,
+        .shutdown_options = shutdown_options,
+    };
+
+    return aws_event_loop_group_new(alloc, &elg_options);
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_group(
+    struct aws_allocator *alloc,
+    uint16_t max_threads,
+    uint16_t cpu_group,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = max_threads,
+        .shutdown_options = shutdown_options,
+        .cpu_group = &cpu_group,
+    };
+
+    return aws_event_loop_group_new(alloc, &elg_options);
+}
+
+void *aws_event_loop_get_impl(struct aws_event_loop *event_loop) {
+    return event_loop->impl_data;
+}
+
+struct aws_event_loop *aws_event_loop_new_base(
+    struct aws_allocator *allocator,
+    aws_io_clock_fn *clock,
+    struct aws_event_loop_vtable *vtable,
+    void *impl) {
+    struct aws_event_loop *event_loop = aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
+    aws_event_loop_init_base(event_loop, allocator, clock);
+    event_loop->impl_data = impl;
+    event_loop->vtable = vtable;
+
+    return event_loop;
 }
 
 /**
@@ -666,47 +712,4 @@ struct aws_event_loop *aws_event_loop_new_epoll_with_options(
 }
 #endif // AWS_ENABLE_KQUEUE
 
-struct aws_event_loop_group *aws_event_loop_group_new_default(
-    struct aws_allocator *alloc,
-    uint16_t max_threads,
-    const struct aws_shutdown_callback_options *shutdown_options) {
 
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = max_threads,
-        .shutdown_options = shutdown_options,
-    };
-
-    return aws_event_loop_group_new(alloc, &elg_options);
-}
-
-struct aws_event_loop_group *aws_event_loop_group_new_default_pinned_to_cpu_group(
-    struct aws_allocator *alloc,
-    uint16_t max_threads,
-    uint16_t cpu_group,
-    const struct aws_shutdown_callback_options *shutdown_options) {
-
-    struct aws_event_loop_group_options elg_options = {
-        .loop_count = max_threads,
-        .shutdown_options = shutdown_options,
-        .cpu_group = &cpu_group,
-    };
-
-    return aws_event_loop_group_new(alloc, &elg_options);
-}
-
-void *aws_event_loop_get_impl(struct aws_event_loop *event_loop) {
-    return event_loop->impl_data;
-}
-
-struct aws_event_loop *aws_event_loop_new_base(
-    struct aws_allocator *allocator,
-    aws_io_clock_fn *clock,
-    struct aws_event_loop_vtable *vtable,
-    void *impl) {
-    struct aws_event_loop *event_loop = aws_mem_acquire(allocator, sizeof(struct aws_event_loop));
-    aws_event_loop_init_base(event_loop, allocator, clock);
-    event_loop->impl_data = impl;
-    event_loop->vtable = vtable;
-
-    return event_loop;
-}

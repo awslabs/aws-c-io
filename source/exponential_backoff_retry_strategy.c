@@ -10,6 +10,7 @@
 #include <aws/common/clock.h>
 #include <aws/common/device_random.h>
 #include <aws/common/mutex.h>
+#include <aws/common/shutdown_types.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/ref_count.h>
 
