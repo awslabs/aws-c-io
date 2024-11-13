@@ -160,7 +160,7 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
 
-#if defined(WS_USE_APPLE_NETWORK_FRAMEWORK)
+#if defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)
     snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
     return;
 #endif
