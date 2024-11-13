@@ -98,16 +98,19 @@ struct aws_event_loop_options {
     enum aws_event_loop_type type;
 };
 
-struct aws_event_loop *aws_event_loop_new_iocp_with_options(
+struct aws_event_loop *aws_event_loop_new_with_iocp(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
-struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+
+struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
-struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
+
+struct aws_event_loop *aws_event_loop_new_with_kqueue(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
-struct aws_event_loop *aws_event_loop_new_epoll_with_options(
+
+struct aws_event_loop *aws_event_loop_new_with_epoll(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options);
 

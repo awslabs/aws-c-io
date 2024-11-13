@@ -47,13 +47,13 @@ struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const str
 
     switch (type) {
         case AWS_EVENT_LOOP_EPOLL:
-            return aws_event_loop_new_epoll_with_options(alloc, options);
+            return aws_event_loop_new_with_epoll(alloc, options);
         case AWS_EVENT_LOOP_IOCP:
-            return aws_event_loop_new_iocp_with_options(alloc, options);
+            return aws_event_loop_new_with_iocp(alloc, options);
         case AWS_EVENT_LOOP_KQUEUE:
-            return aws_event_loop_new_kqueue_with_options(alloc, options);
+            return aws_event_loop_new_with_kqueue(alloc, options);
         case AWS_EVENT_LOOP_DISPATCH_QUEUE:
-            return aws_event_loop_new_dispatch_queue_with_options(alloc, options);
+            return aws_event_loop_new_with_dispatch_queue(alloc, options);
         default:
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
             aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
@@ -645,7 +645,7 @@ static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) 
     return AWS_OP_SUCCESS;
 }
 
-struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
+struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     (void)alloc;
@@ -658,7 +658,7 @@ struct aws_event_loop *aws_event_loop_new_dispatch_queue_with_options(
 }
 
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
-struct aws_event_loop *aws_event_loop_new_iocp_with_options(
+struct aws_event_loop *aws_event_loop_new_with_iocp(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     (void)alloc;
@@ -672,7 +672,7 @@ struct aws_event_loop *aws_event_loop_new_iocp_with_options(
 #endif // AWS_ENABLE_IO_COMPLETION_PORTS
 
 #ifndef AWS_ENABLE_KQUEUE
-struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
+struct aws_event_loop *aws_event_loop_new_with_kqueue(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     (void)alloc;
@@ -686,7 +686,7 @@ struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
 #endif // AWS_ENABLE_EPOLL
 
 #ifndef AWS_ENABLE_EPOLL
-struct aws_event_loop *aws_event_loop_new_epoll_with_options(
+struct aws_event_loop *aws_event_loop_new_with_epoll(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     (void)alloc;

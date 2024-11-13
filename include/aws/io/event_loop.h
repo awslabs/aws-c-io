@@ -54,9 +54,9 @@ struct aws_event_loop_vtable {
  *
  * Default Event Loop Type
  * Linux       | AWS_EVENT_LOOP_EPOLL
- * Windows	   | AWS_EVENT_LOOP_IOCP
+ * Windows     | AWS_EVENT_LOOP_IOCP
  * BSD Variants| AWS_EVENT_LOOP_KQUEUE
- * MacOS	   | AWS_EVENT_LOOP_KQUEUE
+ * MacOS       | AWS_EVENT_LOOP_KQUEUE
  * iOS         | AWS_EVENT_LOOP_DISPATCH_QUEUE
  */
 enum aws_event_loop_type {
