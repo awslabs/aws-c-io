@@ -5,14 +5,14 @@
 
 #include <aws/io/event_loop.h>
 
-#include <aws/io/logging.h>
-
 #include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
+#include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #if defined(__FreeBSD__) || defined(__NetBSD__)
 #    define __BSD_VISIBLE 1
@@ -124,14 +124,14 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .wait_for_stop_completion = s_wait_for_stop_completion,
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
-    .register_style.subscribe_to_io_events = s_subscribe_to_io_events,
-    .event_loop_style = AWS_EVENT_LOOP_STYLE_POLL_BASED,
+    .subscribe_to_io_events = s_subscribe_to_io_events,
     .cancel_task = s_cancel_task,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_event_thread,
 };
 
+#ifdef AWS_ENABLE_KQUEUE
 struct aws_event_loop *aws_event_loop_new_kqueue_with_options(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
@@ -292,6 +292,7 @@ clean_up:
     }
     return NULL;
 }
+#endif // AWS_ENABLE_KQUEUE
 
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event_loop", (void *)event_loop);

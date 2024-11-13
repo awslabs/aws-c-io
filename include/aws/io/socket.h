@@ -31,11 +31,30 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
+/**
+ * Socket Implementation type. Decides which socket implementation is used. If set to
+ * `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, it will automatically use the platform’s default.
+ *
+ * PLATFORM DEFAULT SOCKET IMPLEMENTATION TYPE
+ * Linux       | AWS_SOCKET_IMPL_POSIX
+ * Windows	   | AWS_SOCKET_IMPL_WINSOCK
+ * BSD Variants| AWS_SOCKET_IMPL_POSIX
+ * MacOS	   | AWS_SOCKET_IMPL_POSIX
+ * iOS         | AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK
+ */
+enum aws_socket_impl_type {
+    AWS_SOCKET_IMPL_PLATFORM_DEFAULT = 0,
+    AWS_SOCKET_IMPL_POSIX,
+    AWS_SOCKET_IMPL_WINSOCK,
+    AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK,
+};
+
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
 
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
+    enum aws_socket_impl_type impl_type;
     uint32_t connect_timeout_ms;
     /* Keepalive properties are TCP only.
      * Set keepalive true to periodically transmit messages for detecting a disconnected peer.
@@ -91,7 +110,7 @@ typedef void(aws_socket_retrieve_tls_options_fn)(struct tls_connection_context *
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations. The user is resposnbile to releasing the socket memory after use.
+ * performing IO operations. The user must call `aws_socket_release()` when they're done with the socket, to free it.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -108,7 +127,8 @@ typedef void(aws_socket_on_accept_result_fn)(
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
  *
- * socket is possible to be a NULL pointer in the callback.
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before a callback is triggered.
+ * by the system I/O handler,
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
@@ -185,7 +205,6 @@ struct aws_socket {
     struct aws_event_loop *event_loop;
     struct aws_channel_handler *handler;
     int state;
-    enum aws_event_loop_style event_loop_style;
     aws_socket_on_readable_fn *readable_fn;
     void *readable_user_data;
     aws_socket_on_connection_result_fn *connection_result_fn;
@@ -204,6 +223,21 @@ void aws_check_and_init_winsock(void);
 aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 #endif
+
+int aws_socket_init_posix(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options);
+
+int aws_socket_init_winsock(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options);
+
+int aws_socket_init_apple_nw_socket(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options);
 
 AWS_EXTERN_C_BEGIN
 
@@ -232,10 +266,9 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * In TCP, LOCAL and VSOCK this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
  *
- * The function will failed with error if the endpoint is invalid. Except for Apple Network Framework (with
- * AWS_USE_DISPATCH_QUEUE enabled). In Apple network framework, as connect is an async api, we would not know if the
- * local endpoint is valid until we have the connection state returned in callback. The error will returned in
- * `on_connection_result` callback
+ * The function will failed with error if the endpoint is invalid, except for Apple Network Framework. In Apple network
+ * framework, as connect is an async api, we would not know if the local endpoint is valid until we have the connection
+ * state returned in callback. The error will returned in `on_connection_result` callback
  *
  * If an event_loop is provided for UDP sockets, a notification will be sent on
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned

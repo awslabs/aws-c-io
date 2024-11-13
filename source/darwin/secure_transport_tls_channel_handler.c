@@ -6,7 +6,6 @@
 
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
-#include <aws/io/private/aws_apple_network_framework.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/socket.h>
@@ -27,7 +26,7 @@
 #include <dlfcn.h>
 #include <math.h>
 
-#include <Network/Network.h>
+#include "aws_apple_network_framework.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"

@@ -3,21 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#ifdef AWS_USE_DISPATCH_QUEUE
+#include <aws/io/socket.h>
 
-#    include <aws/io/socket.h>
+#include <aws/common/clock.h>
+#include <aws/common/string.h>
+#include <aws/common/uuid.h>
+#include <aws/io/logging.h>
 
-#    include <aws/common/clock.h>
-#    include <aws/common/string.h>
-#    include <aws/common/uuid.h>
-#    include <aws/io/logging.h>
+#include <Network/Network.h>
+#include <aws/io/private/event_loop_impl.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
 
-#    include <Network/Network.h>
-#    include <aws/io/private/aws_apple_network_framework.h>
-#    include <aws/io/private/tls_channel_handler_shared.h>
-
-#    include <arpa/inet.h>
-#    include <sys/socket.h>
+#include "aws_apple_network_framework.h"
+#include <arpa/inet.h>
+#include <sys/socket.h>
 
 const char *aws_sec_trust_result_type_to_string(SecTrustResultType trust_result) {
     switch (trust_result) {
@@ -457,11 +456,11 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
     bool setup_tls = false;
     struct secure_transport_ctx *transport_ctx = NULL;
 
-#    ifdef AWS_USE_SECITEM
+#ifdef AWS_USE_SECITEM
     if (nw_socket->tls_ctx) {
         setup_tls = true;
     }
-#    endif /* AWS_USE_SECITEM*/
+#endif /* AWS_USE_SECITEM*/
 
     if (setup_tls) {
         transport_ctx = nw_socket->tls_ctx->impl;
@@ -690,7 +689,10 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     nw_socket = NULL;
 }
 
-int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
+int aws_socket_init_apple_nw_socket(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     AWS_ZERO_STRUCT(*socket);
 
@@ -722,7 +724,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
     socket->options = *options;
     socket->impl = nw_socket;
     socket->vtable = &s_vtable;
-    socket->event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED;
 
     aws_mutex_init(&nw_socket->synced_data.lock);
     aws_mutex_lock(&nw_socket->synced_data.lock);
@@ -1282,7 +1283,7 @@ static int s_socket_connect_fn(
     socket->io_handle.set_queue = s_client_set_dispatch_queue;
     socket->io_handle.clear_queue = s_client_clear_dispatch_queue;
 
-    aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
+    aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
     socket->event_loop = event_loop;
 
     nw_socket->on_connection_result_fn = on_connection_result;
@@ -1655,7 +1656,7 @@ static int s_socket_start_accept_fn(
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    aws_event_loop_connect_handle_to_completion_port(accept_loop, &socket->io_handle);
+    aws_event_loop_connect_handle_to_io_completion_port(accept_loop, &socket->io_handle);
     socket->event_loop = accept_loop;
     socket->accept_result_fn = on_accept_result;
     socket->connect_accept_user_data = user_data;
@@ -1818,7 +1819,7 @@ static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aw
         // aws_mutex_lock(&nw_socket->synced_data.lock);
         nw_socket->synced_data.event_loop = event_loop;
 
-        if (!aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle)) {
+        if (!aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle)) {
             nw_connection_start(socket->io_handle.data.handle);
             aws_mutex_unlock(&nw_socket->synced_data.lock);
             return AWS_OP_SUCCESS;
@@ -2101,34 +2102,3 @@ static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *s
     struct nw_socket *nw_socket = socket->impl;
     return nw_socket->host_name;
 }
-
-void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
-    struct aws_uuid uuid;
-    AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
-    char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
-    AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
-    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
-}
-
-int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
-    if (socket->local_endpoint.address[0] == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
-            (void *)socket,
-            socket->io_handle.data.fd);
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-    }
-    *out_address = socket->local_endpoint;
-    return AWS_OP_SUCCESS;
-}
-#else
-
-/* This is here because ISO C requires at least one declaration. We do not simply not include this file at build
- * in the CMakeLists because it'd require even more tinkering in aws-crt-swift to manage the inclusion/exclusion of
- * this file across a number of platforms.
- */
-int aws_nw_socket_declaration;
-
-#endif /* AWS_USE_DISPATCH_QUEUE */

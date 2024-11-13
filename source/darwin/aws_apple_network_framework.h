@@ -5,14 +5,13 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/common/mutex.h>
+#include <aws/common/thread.h>
 #include <aws/io/tls_channel_handler.h>
 
-#ifdef AWS_OS_APPLE
-/* It's ok to include external headers because this is a PRIVATE header file */
-#    include <Security/Security.h>
-#    include <aws/common/mutex.h>
-#    include <aws/common/thread.h>
-#    include <dispatch/dispatch.h>
+/* This Header will only be compiled on Apple Platforms where therse are available. */
+#include <Security/Security.h>
+#include <dispatch/dispatch.h>
 
 struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
@@ -65,7 +64,5 @@ struct dispatch_loop {
 
     bool is_destroying;
 };
-
-#endif /* AWS_OS_APPLE */
 
 #endif /* #ifndef AWS_IO_PRIVATE_AWS_APPLE_NETWORK_FRAMEWORK_H  */

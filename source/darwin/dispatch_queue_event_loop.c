@@ -4,6 +4,7 @@
  */
 
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <aws/common/atomics.h>
 #include <aws/common/mutex.h>
@@ -14,8 +15,8 @@
 
 #include <unistd.h>
 
+#include "aws_apple_network_framework.h"
 #include <Block.h>
-#include <aws/io/private/aws_apple_network_framework.h>
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
 
@@ -41,8 +42,7 @@ static struct aws_event_loop_vtable s_vtable = {
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
-    .register_style.connect_to_completion_port = s_connect_to_dispatch_queue,
-    .event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED,
+    .connect_to_io_completion_port = s_connect_to_dispatch_queue,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_on_callers_thread,
@@ -465,7 +465,6 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     (void)event_loop;
     (void)handle;
-#ifdef AWS_USE_DISPATCH_QUEUE
     AWS_PRECONDITION(handle->set_queue && handle->clear_queue);
 
     AWS_LOGF_TRACE(
@@ -475,7 +474,6 @@ static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct
         (void *)handle->data.handle);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
     handle->set_queue(handle, dispatch_loop->dispatch_queue);
-#endif //    #ifdef AWS_USE_DISPATCH_QUEUE
     return AWS_OP_SUCCESS;
 }
 
@@ -485,9 +483,7 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
         "id=%p: un-subscribing from events on handle %p",
         (void *)event_loop,
         (void *)handle->data.handle);
-#ifdef AWS_USE_DISPATCH_QUEUE
     handle->clear_queue(handle);
-#endif
     return AWS_OP_SUCCESS;
 }
 

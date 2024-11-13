@@ -13,6 +13,7 @@
 
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <arpa/inet.h>
 #include <aws/io/io.h>
@@ -226,7 +227,7 @@ static bool s_socket_is_open(struct aws_socket *socket);
 static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket);
 static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket);
 
-static struct aws_socket_vtable s_vtable = {
+struct aws_socket_vtable g_posix_socket_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
     .socket_connect_fn = s_socket_connect,
     .socket_bind_fn = s_socket_bind,
@@ -271,8 +272,7 @@ static int s_socket_init(
     socket->state = INIT;
     socket->options = *options;
     socket->impl = posix_socket;
-    socket->vtable = &s_vtable;
-    socket->event_loop_style = AWS_EVENT_LOOP_STYLE_POLL_BASED;
+    socket->vtable = &g_posix_socket_vtable;
 
     if (existing_socket_fd < 0) {
         int err = s_create_socket(socket, options);
@@ -301,12 +301,13 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-#if defined(AWS_USE_KQUEUE) || defined(AWS_USE_EPOLL)
-int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
+int aws_socket_init_posix(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
     AWS_ASSERT(options);
     return s_socket_init(socket, alloc, options, -1);
 }
-#endif // #ifdef AWS_USE_KQUEUE || AWS_USE_EPOLL
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
@@ -965,21 +966,6 @@ error:
     socket->state = ERROR;
     return AWS_OP_ERR;
 }
-
-#if defined(AWS_USE_KQUEUE) || defined(AWS_USE_EPOLL)
-int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
-    if (socket->local_endpoint.address[0] == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
-            (void *)socket,
-            socket->io_handle.data.fd);
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-    }
-    *out_address = socket->local_endpoint;
-    return AWS_OP_SUCCESS;
-}
-#endif // AWS_USE_KQUEUE || AWS_USE_EPOLL
 
 static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
     if (socket->state != BOUND) {
@@ -2088,17 +2074,6 @@ static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *s
         (void *)socket);
     return NULL;
 }
-
-#if defined(AWS_USE_KQUEUE) || defined(AWS_USE_EPOLL)
-void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
-    struct aws_uuid uuid;
-    AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
-    char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
-    AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
-    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
-}
-#endif // AWS_USE_KQUEUE || AWS_USE_EPOLL
 
 bool aws_is_network_interface_name_valid(const char *interface_name) {
     if (if_nametoindex(interface_name) == 0) {

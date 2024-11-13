@@ -21,11 +21,11 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
-#include <aws/common/uuid.h>
 
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/pipe.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <aws/io/io.h>
 #include <errno.h>
@@ -56,7 +56,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 
 #define PIPE_BUFFER_SIZE 512
 
-struct iocp_socket_vtable {
+struct winsock_vtable {
     int (*connection_success)(struct aws_socket *socket);
     void (*connection_error)(struct aws_socket *socket, int error_code);
     int (*close)(struct aws_socket *socket);
@@ -199,7 +199,7 @@ static int s_determine_socket_error(int error);
    as well thought out. There were so many branches to handle three entirely different
    APIs we decided it was less painful to just have a bunch of function pointers in a table
    than to want to gouge our eyes out while looking at a ridiculous number of branches. */
-static struct iocp_socket_vtable s_iocp_vtables[3][2] = {
+static struct winsock_vtable s_winsock_vtables[3][2] = {
     [AWS_SOCKET_IPV4] =
         {
             [AWS_SOCKET_STREAM] =
@@ -277,7 +277,7 @@ static struct iocp_socket_vtable s_iocp_vtables[3][2] = {
         },
 };
 
-static struct aws_socket_vtable s_socket_vtable = {
+struct aws_socket_vtable g_winsock_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
     .socket_connect_fn = s_socket_connect,
     .socket_bind_fn = s_socket_bind,
@@ -356,7 +356,7 @@ struct io_operation_data {
 };
 
 struct iocp_socket {
-    struct iocp_socket_vtable *iocp_vtable;
+    struct winsock_vtable *winsock_vtable;
     struct io_operation_data *read_io_data;
     struct aws_socket *incoming_socket;
     uint8_t accept_buffer[SOCK_STORAGE_SIZE * 2];
@@ -415,10 +415,10 @@ static int s_socket_init(
         return AWS_OP_ERR;
     }
 
-    socket->vtable = &s_socket_vtable;
+    socket->vtable = &g_winsock_vtable;
 
-    impl->iocp_vtable = &s_iocp_vtables[options->domain][options->type];
-    if (!impl->iocp_vtable || !impl->iocp_vtable->connection_success) {
+    impl->winsock_vtable = &s_winsock_vtables[options->domain][options->type];
+    if (!impl->winsock_vtable || !impl->winsock_vtable->connection_success) {
         aws_mem_release(alloc, impl);
         socket->impl = NULL;
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -441,7 +441,6 @@ static int s_socket_init(
     socket->state = INIT;
     socket->impl = impl;
     socket->options = *options;
-    socket->event_loop_style = AWS_EVENT_LOOP_STYLE_COMPLETION_PORT_BASED;
 
     if (options->domain != AWS_SOCKET_LOCAL && create_underlying_socket) {
         if (s_create_socket(socket, options)) {
@@ -454,8 +453,10 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-#ifdef AWS_USE_IO_COMPLETION_PORTS
-int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
+int aws_socket_init_winsock(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
     AWS_ASSERT(options);
 
     aws_check_and_init_winsock();
@@ -464,7 +465,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
 
     return err;
 }
-#endif // AWS_USE_IO_COMPLETION_PORTS
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
@@ -477,7 +477,7 @@ static void s_socket_clean_up(struct aws_socket *socket) {
         (void *)socket,
         (void *)socket->io_handle.data.handle);
     struct iocp_socket *socket_impl = socket->impl;
-    socket_impl->iocp_vtable->close(socket);
+    socket_impl->winsock_vtable->close(socket);
 
     if (socket_impl->incoming_socket) {
         aws_socket_clean_up(socket_impl->incoming_socket);
@@ -520,7 +520,7 @@ static int s_socket_connect(
         return AWS_OP_ERR;
     }
 
-    return socket_impl->iocp_vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
+    return socket_impl->winsock_vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
 static int s_socket_bind(
@@ -540,23 +540,8 @@ static int s_socket_bind(
     }
 
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->iocp_vtable->bind(socket, local_endpoint);
+    return socket_impl->winsock_vtable->bind(socket, local_endpoint);
 }
-
-#ifdef AWS_USE_IO_COMPLETION_PORTS
-int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_socket_endpoint *out_address) {
-    if (socket->local_endpoint.address[0] == 0) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: Socket has no local address. Socket must be bound first.",
-            (void *)socket,
-            socket->io_handle.data.fd);
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-    }
-    *out_address = socket->local_endpoint;
-    return AWS_OP_SUCCESS;
-}
-#endif // AWS_USE_IO_COMPLETION_PORTS
 
 /* Update IPV4 or IPV6 socket->local_endpoint based on the results of getsockname() */
 static int s_update_local_endpoint_ipv4_ipv6(struct aws_socket *socket) {
@@ -617,7 +602,7 @@ static int s_update_local_endpoint_ipv4_ipv6(struct aws_socket *socket) {
 
 static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->iocp_vtable->listen(socket, backlog_size);
+    return socket_impl->winsock_vtable->listen(socket, backlog_size);
 }
 
 static int s_socket_start_accept(
@@ -626,17 +611,17 @@ static int s_socket_start_accept(
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data) {
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->iocp_vtable->start_accept(socket, accept_loop, on_accept_result, user_data);
+    return socket_impl->winsock_vtable->start_accept(socket, accept_loop, on_accept_result, user_data);
 }
 
 static int s_socket_stop_accept(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->iocp_vtable->stop_accept(socket);
+    return socket_impl->winsock_vtable->stop_accept(socket);
 }
 
 static int s_socket_close(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->iocp_vtable->close(socket);
+    return socket_impl->winsock_vtable->close(socket);
 }
 
 static int s_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {
@@ -678,7 +663,7 @@ static int s_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer,
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    return socket_impl->iocp_vtable->read(socket, buffer, amount_read);
+    return socket_impl->winsock_vtable->read(socket, buffer, amount_read);
 }
 
 static int s_socket_subscribe_to_readable_events(
@@ -698,7 +683,7 @@ static int s_socket_subscribe_to_readable_events(
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    return socket_impl->iocp_vtable->subscribe_to_read(socket, on_readable, user_data);
+    return socket_impl->winsock_vtable->subscribe_to_read(socket, on_readable, user_data);
 }
 
 static int s_determine_socket_error(int error) {
@@ -808,7 +793,7 @@ static int s_ipv4_stream_connection_success(struct aws_socket *socket) {
     return AWS_OP_SUCCESS;
 error:
     socket->state = ERRORED;
-    socket_impl->iocp_vtable->connection_error(socket, aws_last_error());
+    socket_impl->winsock_vtable->connection_error(socket, aws_last_error());
     return AWS_OP_ERR;
 }
 
@@ -871,7 +856,7 @@ static int s_ipv6_stream_connection_success(struct aws_socket *socket) {
 
 error:
     socket->state = ERRORED;
-    socket_impl->iocp_vtable->connection_error(socket, aws_last_error());
+    socket_impl->winsock_vtable->connection_error(socket, aws_last_error());
     return AWS_OP_ERR;
 }
 
@@ -944,7 +929,7 @@ void s_socket_connection_completion(
         socket_args->socket = NULL;
 
         if (!status_code) {
-            socket_impl->iocp_vtable->connection_success(socket);
+            socket_impl->winsock_vtable->connection_success(socket);
         } else {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
@@ -953,7 +938,7 @@ void s_socket_connection_completion(
                 (void *)socket->io_handle.data.handle,
                 status_code);
             int error = s_determine_socket_error(status_code);
-            socket_impl->iocp_vtable->connection_error(socket, error);
+            socket_impl->winsock_vtable->connection_error(socket, error);
         }
     }
 
@@ -1248,7 +1233,7 @@ static void s_connection_success_task(struct aws_task *task, void *arg, enum aws
 
     struct aws_socket *socket = io_data->socket;
     struct iocp_socket *socket_impl = socket->impl;
-    socket_impl->iocp_vtable->connection_success(socket);
+    socket_impl->winsock_vtable->connection_success(socket);
 }
 
 /* initiate the client end of a named pipe. */
@@ -1736,7 +1721,7 @@ static void s_incoming_pipe_connection_event(
             socket->state = ERRORED;
         }
 
-        socket_impl->iocp_vtable->connection_error(socket, aws_last_error());
+        socket_impl->winsock_vtable->connection_error(socket, aws_last_error());
         operation_data->in_use = false;
         return;
     }
@@ -1754,7 +1739,7 @@ static void s_incoming_pipe_connection_event(
         if (!new_socket) {
             socket->state = ERRORED;
             operation_data->in_use = false;
-            socket_impl->iocp_vtable->connection_error(socket, AWS_ERROR_OOM);
+            socket_impl->winsock_vtable->connection_error(socket, AWS_ERROR_OOM);
             return;
         }
 
@@ -1762,7 +1747,7 @@ static void s_incoming_pipe_connection_event(
             aws_mem_release(socket->allocator, new_socket);
             socket->state = ERRORED;
             operation_data->in_use = false;
-            socket_impl->iocp_vtable->connection_error(socket, aws_last_error());
+            socket_impl->winsock_vtable->connection_error(socket, aws_last_error());
             return;
         }
 
@@ -1794,7 +1779,7 @@ static void s_incoming_pipe_connection_event(
                 (int)GetLastError());
             socket->state = ERRORED;
             operation_data->in_use = false;
-            socket_impl->iocp_vtable->connection_error(socket, aws_last_error());
+            socket_impl->winsock_vtable->connection_error(socket, aws_last_error());
             return;
         }
 
@@ -1804,7 +1789,7 @@ static void s_incoming_pipe_connection_event(
             socket->state = ERRORED;
             operation_data->in_use = false;
             aws_socket_clean_up(new_socket);
-            socket_impl->iocp_vtable->connection_error(socket, aws_last_error());
+            socket_impl->winsock_vtable->connection_error(socket, aws_last_error());
             return;
         }
 
@@ -1835,7 +1820,7 @@ static void s_incoming_pipe_connection_event(
                 socket->state = ERRORED;
                 socket_impl->read_io_data->in_use = false;
                 int aws_err = s_determine_socket_error(error_code);
-                socket_impl->iocp_vtable->connection_error(socket, aws_err);
+                socket_impl->winsock_vtable->connection_error(socket, aws_err);
                 return;
             } else if (error_code == ERROR_PIPE_CONNECTED) {
                 continue_accept_loop = true;
@@ -2026,7 +2011,7 @@ static void s_tcp_accept_event(
             if (err) {
                 if (aws_last_error() != AWS_IO_READ_WOULD_BLOCK) {
                     socket->state = ERRORED;
-                    socket_impl->iocp_vtable->connection_error(socket, aws_last_error());
+                    socket_impl->winsock_vtable->connection_error(socket, aws_last_error());
                 }
                 return;
             }
@@ -2041,7 +2026,7 @@ static void s_tcp_accept_event(
         socket->state = ERRORED;
         int aws_error = s_determine_socket_error(status_code);
         aws_raise_error(aws_error);
-        socket_impl->iocp_vtable->connection_error(socket, aws_error);
+        socket_impl->winsock_vtable->connection_error(socket, aws_error);
         operation_data->in_use = false;
     }
 }
@@ -2610,7 +2595,7 @@ int aws_socket_half_close(struct aws_socket *socket, enum aws_channel_direction 
         int error = WSAGetLastError();
         int aws_error = s_determine_socket_error(error);
         aws_raise_error(aws_error);
-        socket_impl->iocp_vtable->connection_error(socket, aws_error);
+        socket_impl->winsock_vtable->connection_error(socket, aws_error);
         return AWS_OP_ERR;
     }
 
@@ -2627,7 +2612,7 @@ static int s_socket_assign_to_event_loop(struct aws_socket *socket, struct aws_e
     }
 
     socket->event_loop = event_loop;
-    return aws_event_loop_connect_handle_to_completion_port(event_loop, &socket->io_handle);
+    return aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
 }
 
 struct read_cb_args {
@@ -3349,17 +3334,6 @@ static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *s
         (void *)socket);
     return NULL;
 }
-
-#ifdef AWS_USE_IO_COMPLETION_PORTS
-void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
-    struct aws_uuid uuid;
-    AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
-    char uuid_str[AWS_UUID_STR_LEN] = {0};
-    struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
-    AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
-    snprintf(endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
-}
-#endif
 
 bool aws_is_network_interface_name_valid(const char *interface_name) {
     (void)interface_name;
