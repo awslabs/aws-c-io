@@ -5,20 +5,19 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/encoding.h>
 #include <aws/common/mutex.h>
-
+#include <aws/common/string.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/thread.h>
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
-
-#include <aws/common/encoding.h>
-#include <aws/common/string.h>
-#include <aws/common/task_scheduler.h>
-#include <aws/common/thread.h>
 
 #include <s2n.h>
 #ifdef AWS_S2N_INSOURCE_PATH
@@ -255,7 +254,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 void aws_tls_clean_up_static_state(void) {
     /* only clean up s2n if we were the ones that initialized it */
     if (!s_s2n_initialized_externally) {
-        s2n_cleanup();
+        s2n_cleanup_final();
     }
 }
 
@@ -270,6 +269,8 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
             /* PQ Crypto no-ops on android for now */
 #ifndef ANDROID
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
+            return true;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
             return true;
 #endif
 
@@ -1536,6 +1537,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             security_policy = "PQ-TLS-1-0-2021-05-26";
+            break;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
             break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);

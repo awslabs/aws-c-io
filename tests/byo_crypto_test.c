@@ -54,7 +54,11 @@ static struct byo_crypto_common_tester c_tester;
 static int s_byo_crypto_common_tester_init(struct aws_allocator *allocator, struct byo_crypto_common_tester *tester) {
     AWS_ZERO_STRUCT(*tester);
     aws_io_library_init(allocator);
-    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    tester->el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_mutex mutex = AWS_MUTEX_INIT;
     struct aws_condition_variable condition_variable = AWS_CONDITION_VARIABLE_INIT;
     tester->mutex = mutex;
