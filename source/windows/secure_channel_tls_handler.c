@@ -1099,9 +1099,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                 } else {
                     /* this is not an error */
                     AWS_LOGF_INFO(
-                        AWS_LS_IO_TLS,
-                        "id=%p: ALPN - no negotiated protocol was returned by remote endpoint",
-                        handler);
+                        AWS_LS_IO_TLS, "id=%p: ALPN - no negotiated protocol was returned by remote endpoint", handler);
                 }
             } else {
                 AWS_LOGF_WARN(
