@@ -1239,7 +1239,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 [0] =
                     {
                         .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer + extra_data_offset,
-                        .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len - extra_data_offset,
+                        .cbBuffer = (unsigned long)(sc_handler->buffered_read_in_data_buf.len - extra_data_offset),
                         .BufferType = SECBUFFER_TOKEN,
                     },
                 [1] =
