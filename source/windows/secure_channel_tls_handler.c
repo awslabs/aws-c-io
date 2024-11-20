@@ -802,9 +802,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
                 } else {
                     /* this is not an error */
                     AWS_LOGF_INFO(
-                        AWS_LS_IO_TLS,
-                        "id=%p: ALPN - no protocol was negotiated during TLS handshake",
-                        handler);
+                        AWS_LS_IO_TLS, "id=%p: ALPN - no protocol was negotiated during TLS handshake", handler);
                 }
             } else {
                 AWS_LOGF_WARN(
@@ -1167,7 +1165,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
 
         SECURITY_STATUS status = DecryptMessage(&sc_handler->sec_handle, &buffer_desc, 0, NULL);
 
-        if (status == SEC_E_OK || status == SEC_I_RENEGOTIATE) {
+        if (status == SEC_E_OK) {
             error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
                If SECBUFFER_EXTRA is the type for the fourth buffer we need to keep track of it so we can shift
@@ -1182,89 +1180,68 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                     aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
                 int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
                 AWS_FATAL_ASSERT(!append_failed);
-            }
-
-            /* if we have extra we have to move the pointer and do another Decrypt operation. */
-            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
-                if (input_buffers[3].cbBuffer < read_len) {
-                    memmove(
-                        sc_handler->buffered_read_in_data_buf.buffer,
-                        (sc_handler->buffered_read_in_data_buf.buffer + read_len) - input_buffers[3].cbBuffer,
-                        input_buffers[3].cbBuffer);
-                    sc_handler->buffered_read_in_data_buf.len = input_buffers[3].cbBuffer;
-                }
-                if (status == SEC_E_OK) {
+                /* if we have extra we have to move the pointer and do another Decrypt operation. */
+                if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
                     sc_handler->read_extra = input_buffers[3].cbBuffer;
-                    //     AWS_LOGF_TRACE(
-                    //         AWS_LS_IO_TLS,
-                    //         "id=%p: Extra (incomplete) message received with length %zu.",
-                    //         (void *)handler,
-                    //         sc_handler->read_extra);
-                }
-            } else {
-                error = AWS_OP_SUCCESS;
-                /* this means we processed everything in the buffer. */
-                sc_handler->buffered_read_in_data_buf.len = 0;
-                AWS_LOGF_TRACE(
-                    AWS_LS_IO_TLS,
-                    "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
-                    (void *)handler);
-            }
-        }
-        /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
-           append our next read to it and try again. */
-        else if (status == SEC_E_INCOMPLETE_MESSAGE) {
-            sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS,
-                "id=%p: (incomplete) message received. Expecting remaining portion of size %zu.",
-                (void *)handler,
-                sc_handler->estimated_incomplete_size);
-            memmove(
-                sc_handler->buffered_read_in_data_buf.buffer,
-                sc_handler->buffered_read_in_data_buf.buffer + offset,
-                read_len);
-            sc_handler->buffered_read_in_data_buf.len = read_len;
-            aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
-        }
-        /* SEC_I_CONTEXT_EXPIRED means that the message sender has shut down the connection.  One such case
-           where this can happen is an unaccepted certificate. */
-        else if (status == SEC_I_CONTEXT_EXPIRED) {
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS,
-                "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %d.",
-                (void *)handler,
-                (int)status);
-
-            struct aws_channel_slot *slot = handler->slot;
-            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
-            error = AWS_OP_SUCCESS;
-        } else {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
-        }
-
-        /* With TLS1.3 on SChannel a call to DecryptMessage could return SEC_I_RENEGOTIATE, at this point a client must
-         * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received */
-        if (status == SEC_I_RENEGOTIATE) {
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_TLS, "id=%p: Renegotiation received. SECURITY_STATUS is %d.", (void *)handler, (int)status);
-            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
-                if (input_buffers[3].cbBuffer < read_len) {
                     AWS_LOGF_TRACE(
                         AWS_LS_IO_TLS,
                         "id=%p: Extra (incomplete) message received with length %zu.",
                         (void *)handler,
                         sc_handler->read_extra);
+                } else {
+                    error = AWS_OP_SUCCESS;
+                    /* this means we processed everything in the buffer. */
+                    sc_handler->buffered_read_in_data_buf.len = 0;
+                    AWS_LOGF_TRACE(
+                        AWS_LS_IO_TLS,
+                        "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
+                        (void *)handler);
                 }
+            }
+        }
+        /* With TLS1.3 on SChannel a call to DecryptMessage can return SEC_I_RENEGOTIATE, at this point a client must
+         * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received */
+        else if (status == SEC_I_RENEGOTIATE) {
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Renegotiation received", (void *)handler);
+
+            /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process. */
+            if (input_buffers[1].BufferType == SECBUFFER_DATA) {
+                size_t decrypted_length = input_buffers[1].cbBuffer;
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS, "id=%p: Decrypted message with length %zu.", (void *)handler, decrypted_length);
+
+                struct aws_byte_cursor to_append =
+                    aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
+                int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
+                AWS_FATAL_ASSERT(!append_failed);
+            }
+
+            /*
+             * The following diagram demonstrates a (maybe impossible) case, when DecryptMessage returns
+             * SEC_I_RENEGOTIATE while processing extra data (i.e. we're at the second iteration of the loop).
+             * So, `offset` and `decrypted data` might be empty, but we have to take them into account.
+             *
+             * +--------+----------------+-----------------+
+             * | offset | decrypted data | SECBUFFER_EXTRA |
+             * +--------+----------------+-----------------+
+             *
+             *  -------------------------------------------   all read data (sc_handler->buffered_read_in_data_buf.len)
+             *  --------                                      decrypted data from the previous step(s)
+             *           ----------------------------------   read_len; SECBUFFER_EXTRA from the previous step
+             *
+             *  We need to pass to InitializeSecurityContextA only the last segment.
+             */
+            size_t extra_data_offset = offset;
+            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0 &&
+                input_buffers[3].cbBuffer < read_len) {
+                extra_data_offset = offset + read_len - input_buffers[3].cbBuffer;
             }
 
             SecBuffer input_buffers2[] = {
                 [0] =
                     {
-                        .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer,
-                        .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len,
+                        .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer + extra_data_offset,
+                        .cbBuffer = (unsigned long)sc_handler->buffered_read_in_data_buf.len - extra_data_offset,
                         .BufferType = SECBUFFER_TOKEN,
                     },
                 [1] =
@@ -1312,18 +1289,16 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 NULL);
             if (status == SEC_E_OK) {
                 error = AWS_OP_SUCCESS;
-                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0 &&
-                    sc_handler->buffered_read_in_data_buf.len > input_buffers2[1].cbBuffer) {
-                    memmove(
-                        sc_handler->buffered_read_in_data_buf.buffer,
-                        (sc_handler->buffered_read_in_data_buf.buffer + sc_handler->buffered_read_in_data_buf.len) -
-                            input_buffers2[1].cbBuffer,
-                        input_buffers2[1].cbBuffer);
-                    sc_handler->buffered_read_in_data_buf.len = input_buffers2[1].cbBuffer;
+                /* If InitializeSecurityContextA returns SECBUFFER_EXTRA data, it should be passed to DecryptMessage. */
+                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0) {
                     sc_handler->read_extra = input_buffers2[1].cbBuffer;
-                    continue;
                 }
-                break;
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Successfully renegotiated; got %zu bytes of extra data to decrypt",
+                    (void *)handler,
+                    sc_handler->read_extra);
+
             } else {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
@@ -1333,6 +1308,39 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 error = AWS_OP_ERR;
                 break;
             }
+        }
+        /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
+           append our next read to it and try again. */
+        else if (status == SEC_E_INCOMPLETE_MESSAGE) {
+            sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: (incomplete) message received. Expecting remaining portion of size %zu.",
+                (void *)handler,
+                sc_handler->estimated_incomplete_size);
+            memmove(
+                sc_handler->buffered_read_in_data_buf.buffer,
+                sc_handler->buffered_read_in_data_buf.buffer + offset,
+                read_len);
+            sc_handler->buffered_read_in_data_buf.len = read_len;
+            aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+        }
+        /* SEC_I_CONTEXT_EXPIRED means that the message sender has shut down the connection.  One such case
+           where this can happen is an unaccepted certificate. */
+        else if (status == SEC_I_CONTEXT_EXPIRED) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_TLS,
+                "id=%p: Alert received. Message sender has shut down the connection. SECURITY_STATUS is %d.",
+                (void *)handler,
+                (int)status);
+
+            struct aws_channel_slot *slot = handler->slot;
+            aws_channel_shutdown(slot->channel, AWS_OP_SUCCESS);
+            error = AWS_OP_SUCCESS;
+        } else {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "id=%p: Error decrypting message. SECURITY_STATUS is %d.", (void *)handler, (int)status);
+            aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
         }
     } while (sc_handler->read_extra);
 
