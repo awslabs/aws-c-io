@@ -1617,10 +1617,10 @@ AWS_TEST_CASE(
     s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
 #    endif
 
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "a2yvr5l8sc9814-ats.iot.us-east-2.amazonaws.com");
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "localhost");
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 443, NULL);
+    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 1443, NULL);
 }
 
 AWS_TEST_CASE(
