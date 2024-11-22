@@ -35,7 +35,7 @@ class TlsServerSetup(Builder.Action):
                                "-alpn", "x-amzn-mqtt-ca",
                                "-tls1_3",  # Allow TLS 1.3 connections only
                                "-verify", "1"  # Verify client's certificate
-                               ], cwd=dir)
+                               ], cwd=dir, stdout=sys.stdout, stderr=sys.stdout)
 
         @atexit.register
         def close_tls_server():
