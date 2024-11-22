@@ -30,8 +30,8 @@ class TlsServerSetup(Builder.Action):
 
         print("Running openssl TLS server")
 
-        p1 = subprocess.Popen(["openssl.exe", "s_server",
-                               "-accept", "1443",
+        p = subprocess.Popen(["openssl.exe", "s_server",
+                               "-accept", "127.0.0.1:1443",
                                "-key", "server.key",
                                "-cert", "server.crt",
                                "-CAfile", "server_chain.crt",
@@ -41,8 +41,8 @@ class TlsServerSetup(Builder.Action):
                                "-trace"
                                ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
-        p1.poll()
-        print("Return code is {}".format(p1.returncode))
+        p.poll()
+        print("Return code is {}".format(p.returncode))
 
         @atexit.register
         def close_tls_server():
@@ -53,4 +53,4 @@ class TlsServerSetup(Builder.Action):
             print("=== stderr:")
             for c in iter(lambda: p.stderr.read(1), b""):
                 sys.stdout.buffer.write(c)
-            p1.terminate()
+            p.terminate()
