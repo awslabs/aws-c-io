@@ -1288,7 +1288,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             if (status == SEC_E_OK) {
                 error = AWS_OP_SUCCESS;
                 /* If InitializeSecurityContextA returns SECBUFFER_EXTRA data, it should be passed to DecryptMessage. */
-                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA && input_buffers2[1].cbBuffer > 0) {
+                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA) {
                     sc_handler->read_extra = input_buffers2[1].cbBuffer;
                 }
                 AWS_LOGF_TRACE(
