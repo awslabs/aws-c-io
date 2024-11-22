@@ -27,6 +27,8 @@ class TlsServerSetup(Builder.Action):
         base_dir = os.path.dirname(os.path.realpath(__file__))
         dir = os.path.join(base_dir, "..", "..", "tests", "resources")
 
+        print("Running openssl TLS server")
+
         p1 = subprocess.Popen(["openssl.exe", "s_server",
                                "-accept", "1443",
                                "-key", "server.key",
@@ -39,4 +41,5 @@ class TlsServerSetup(Builder.Action):
 
         @atexit.register
         def close_tls_server():
+            print("Terminating openssl TLS server")
             p1.terminate()
