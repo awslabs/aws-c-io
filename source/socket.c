@@ -7,6 +7,7 @@
 #include <aws/common/uuid.h>
 #include <aws/io/logging.h>
 #include <aws/io/socket.h>
+#include <aws/io/private/socket_impl.h>
 
 void aws_socket_clean_up(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_cleanup_fn);
