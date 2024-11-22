@@ -22,5 +22,6 @@
     "build_env": {
         "LSAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-lsan.txt:allow_addr2line=1",
         "ASAN_OPTIONS": "suppressions={source_dir}/tests/resources/suppressions-asan.txt"
-    }
+    },
+    "pre_build_steps": ["tls-server-setup"]
 }
