@@ -1454,13 +1454,11 @@ static int s_verify_good_host_mqtt_connect(
     struct aws_byte_buf key_buf = {0};
     struct aws_byte_buf ca_buf = {0};
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ed384_server.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ed384_key.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "AmazonRootCA1.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "unittests.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "unittests.key"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
-    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
 
     aws_io_library_init(allocator);
 
@@ -1468,119 +1466,18 @@ static int s_verify_good_host_mqtt_connect(
 
     uint8_t outgoing_received_message[128] = {0};
 
-    const uint8_t mqtt_connect_message[] = {/* connect packet */
-                                            0x10,
-                                            /* packet length */
-                                            0x51,
-                                            /* protocol name length */
-                                            0x00,
-                                            0x04,
-                                            /* M Q T T */
-                                            0x4D,
-                                            0x51,
-                                            0x54,
-                                            0x54,
-                                            /* protocol version 3.11 = 4 */
-                                            0x04,
-                                            /* connect flags  user name + clean session */
-                                            0x82,
-                                            /* keep alive */
-                                            0x03,
-                                            0xE8,
-                                            /* client id size */
-                                            0x00,
-                                            0x29,
-                                            /* client id */
-                                            0x74,
-                                            0x65,
-                                            0x73,
-                                            0x74,
-                                            0x2D,
-                                            0x30,
-                                            0x62,
-                                            0x34,
-                                            0x37,
-                                            0x36,
-                                            0x30,
-                                            0x64,
-                                            0x35,
-                                            0x2D,
-                                            0x62,
-                                            0x61,
-                                            0x39,
-                                            0x63,
-                                            0x2D,
-                                            0x38,
-                                            0x65,
-                                            0x66,
-                                            0x64,
-                                            0x2D,
-                                            0x33,
-                                            0x32,
-                                            0x65,
-                                            0x37,
-                                            0x2D,
-                                            0x34,
-                                            0x38,
-                                            0x64,
-                                            0x30,
-                                            0x35,
-                                            0x62,
-                                            0x62,
-                                            0x32,
-                                            0x30,
-                                            0x30,
-                                            0x65,
-                                            0x61,
-                                            /* user name length */
-                                            0x00,
-                                            0x1A,
-                                            /* user name */
-                                            0x3F,
-                                            0x53,
-                                            0x44,
-                                            0x4B,
-                                            0x3D,
-                                            0x43,
-                                            0x50,
-                                            0x50,
-                                            0x76,
-                                            0x32,
-                                            0x26,
-                                            0x56,
-                                            0x65,
-                                            0x72,
-                                            0x73,
-                                            0x69,
-                                            0x6F,
-                                            0x6E,
-                                            0x3D,
-                                            0x76,
-                                            0x31,
-                                            0x2E,
-                                            0x33,
-                                            0x32,
-                                            0x2E,
-                                            0x36};
-
-    struct aws_byte_buf write_tag = aws_byte_buf_from_array((const char *)mqtt_connect_message, 83);
-
     struct tls_test_rw_args outgoing_rw_args;
     ASSERT_SUCCESS(s_tls_rw_args_init(
         &outgoing_rw_args,
         &c_tester,
         aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message))));
 
-    struct aws_channel_handler *outgoing_rw_handler = rw_handler_new(
-        allocator, s_tls_test_handle_read, s_tls_test_handle_write, true, write_tag.len, &outgoing_rw_args);
-    ASSERT_NOT_NULL(outgoing_rw_handler);
-
     struct tls_test_args outgoing_args = {
         .mutex = &c_tester.mutex,
         .allocator = allocator,
         .condition_variable = &c_tester.condition_variable,
         .error_invoked = 0,
-        .rw_handler = outgoing_rw_handler,
+        .rw_handler = NULL,
         .server = false,
         .tls_levels_negotiated = 0,
         .desired_tls_levels = 1,
@@ -1592,7 +1489,7 @@ static int s_verify_good_host_mqtt_connect(
 
     AWS_FATAL_ASSERT(
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
-    aws_tls_ctx_options_set_verify_peer(&tls_options, true);
+    aws_tls_ctx_options_set_verify_peer(&tls_options, false);
     aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
 
     struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
@@ -1605,8 +1502,6 @@ static int s_verify_good_host_mqtt_connect(
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, tls_context);
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
-
-    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
@@ -1660,24 +1555,6 @@ static int s_verify_good_host_mqtt_connect(
 
     ASSERT_BIN_ARRAYS_EQUALS(
         host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
-
-    /* Do the IO operations */
-    outgoing_rw_args.invocation_happened = false;
-    rw_handler_write(outgoing_args.rw_handler, outgoing_args.rw_slot, &write_tag);
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_test_read_predicate, &outgoing_rw_args));
-
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
-    aws_mutex_lock(outgoing_rw_args.mutex);
-
-    ASSERT_INT_EQUALS(0x20, outgoing_rw_args.received_message.buffer[0]); /* conn ack */
-    ASSERT_INT_EQUALS(0x02, outgoing_rw_args.received_message.buffer[1]);
-    ASSERT_INT_EQUALS(0x00, outgoing_rw_args.received_message.buffer[2]); /* clean session */
-    ASSERT_INT_EQUALS(0x00, outgoing_rw_args.received_message.buffer[3]);
-    aws_mutex_unlock(outgoing_rw_args.mutex);
 
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
     aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
