@@ -135,7 +135,7 @@ static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
 static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type);
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
 
-    // 1. get socket type & validate type is avliable the platform
+    // 1. get socket type & validate type is available on the platform
     enum aws_socket_impl_type type = options->impl_type;
     if (type == AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
         type = aws_socket_get_default_impl_type();
