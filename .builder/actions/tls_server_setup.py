@@ -8,6 +8,7 @@ import os
 import sys
 import subprocess
 import atexit
+import time
 
 
 class TlsServerSetup(Builder.Action):
@@ -38,6 +39,9 @@ class TlsServerSetup(Builder.Action):
                                "-tls1_3",  # Allow TLS 1.3 connections only
                                "-verify", "1"  # Verify client's certificate
                                ], cwd=dir, stdout=sys.stdout, stderr=sys.stdout)
+        time.sleep(1)
+        p1.poll()
+        print("Return code is {}".format(p1.returncode))
 
         @atexit.register
         def close_tls_server():
