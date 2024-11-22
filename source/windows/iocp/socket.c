@@ -14,6 +14,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <Mstcpip.h>
 // clang-format on
 
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/socket.h>
 
 #include <aws/common/byte_buf.h>

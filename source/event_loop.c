@@ -31,8 +31,6 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
     return aws_event_loop_new(alloc, &options);
 }
 
-
-
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
 struct aws_event_loop *aws_event_loop_new_with_iocp(
     struct aws_allocator *alloc,
@@ -70,7 +68,6 @@ struct aws_event_loop *aws_event_loop_new_with_epoll(
     return NULL;
 }
 #endif // AWS_ENABLE_KQUEUE
-
 
 /**
  * Return the default event loop type. If the return value is `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the function failed to

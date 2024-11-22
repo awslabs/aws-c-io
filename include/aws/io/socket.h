@@ -161,7 +161,6 @@ struct aws_socket {
 struct aws_byte_buf;
 struct aws_byte_cursor;
 
-
 AWS_EXTERN_C_BEGIN
 
 /**
