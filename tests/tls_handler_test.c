@@ -1620,7 +1620,7 @@ AWS_TEST_CASE(
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
 static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 1443, NULL);
+    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, NULL);
 }
 
 AWS_TEST_CASE(

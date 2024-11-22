@@ -31,7 +31,7 @@ class TlsServerSetup(Builder.Action):
         print("Running openssl TLS server")
 
         p = subprocess.Popen(["openssl.exe", "s_server",
-                               "-accept", "127.0.0.1:1443",
+                               "-accept", "127.0.0.1:59443",
                                "-key", "server.key",
                                "-cert", "server.crt",
                                "-CAfile", "server_chain.crt",
