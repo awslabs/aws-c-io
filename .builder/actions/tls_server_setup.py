@@ -51,6 +51,7 @@ class TlsServerSetup(Builder.Action):
                                "-alpn", "x-amzn-mqtt-ca",
                                "-tls1_3",  # Allow TLS 1.3 connections only
                                # "-verify", "1",  # Verify client's certificate
+                               "-debug", "-state",
                                ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
         p.poll()
