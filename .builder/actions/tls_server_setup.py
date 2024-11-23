@@ -31,7 +31,7 @@ class TlsServerSetup(Builder.Action):
         print("Running openssl TLS server")
 
 
-        p1 = subprocess.Popen(["openssl.exe", "version",
+        p1 = subprocess.Popen(["openssl.exe", "version", "-a",
                               ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
         p1.poll()
