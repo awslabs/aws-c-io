@@ -14,6 +14,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <Mstcpip.h>
 // clang-format on
 
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/socket.h>
 
 #include <aws/common/byte_buf.h>
@@ -270,7 +271,7 @@ static struct winsock_vtable s_winsock_vtables[3][2] = {
         },
 };
 
-struct aws_socket_vtable g_winsock_vtable = {
+struct aws_socket_vtable s_winsock_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
     .socket_connect_fn = s_socket_connect,
     .socket_bind_fn = s_socket_bind,
@@ -406,7 +407,7 @@ static int s_socket_init(
         return AWS_OP_ERR;
     }
 
-    socket->vtable = &g_winsock_vtable;
+    socket->vtable = &s_winsock_vtable;
 
     impl->winsock_vtable = &s_winsock_vtables[options->domain][options->type];
     if (!impl->winsock_vtable || !impl->winsock_vtable->connection_success) {
