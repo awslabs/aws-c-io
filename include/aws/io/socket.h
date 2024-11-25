@@ -37,9 +37,9 @@ enum aws_socket_type {
  *
  * PLATFORM DEFAULT SOCKET IMPLEMENTATION TYPE
  * Linux       | AWS_SOCKET_IMPL_POSIX
- * Windows	   | AWS_SOCKET_IMPL_WINSOCK
+ * Windows     | AWS_SOCKET_IMPL_WINSOCK
  * BSD Variants| AWS_SOCKET_IMPL_POSIX
- * MacOS	   | AWS_SOCKET_IMPL_POSIX
+ * MacOS       | AWS_SOCKET_IMPL_POSIX
  * iOS         | AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK
  */
 enum aws_socket_impl_type {
