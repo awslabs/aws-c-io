@@ -413,6 +413,7 @@ static int s_test_socket_creation(struct aws_allocator *alloc, enum aws_socket_i
 }
 
 static int s_test_socket_impl_types_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     int posix_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
     int winsock_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
 #if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
