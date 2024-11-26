@@ -1,5 +1,5 @@
-#ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H
-#define AWS_IO_PRIVATE_DISPATCH_QUEUE_H
+#ifndef AWS_IO_DARWIN_DISPATCH_QUEUE_H
+#define AWS_IO_DARWIN_DISPATCH_QUEUE_H
 /**
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
@@ -37,12 +37,16 @@ struct dispatch_scheduling_state {
     struct aws_linked_list scheduled_services;
 };
 
+struct dispatch_loop;
+struct dispatch_loop_context;
+
 struct dispatch_loop {
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
     struct aws_linked_list local_cross_thread_tasks;
+    struct aws_event_loop *base_loop;
 
     /* Apple dispatch queue uses the id string to identify the dispatch queue */
     struct aws_string *dispatch_queue_id;
@@ -50,7 +54,7 @@ struct dispatch_loop {
     struct {
         struct dispatch_scheduling_state scheduling_state;
         struct aws_linked_list cross_thread_tasks;
-        struct aws_mutex lock;
+        struct dispatch_loop_context *context;
         bool suspended;
         /* `is_executing` flag and `current_thread_id` together are used to identify the excuting
          * thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct aws_event_loop *event_loop)`
@@ -63,4 +67,4 @@ struct dispatch_loop {
     bool is_destroying;
 };
 
-#endif /* #ifndef AWS_IO_PRIVATE_DISPATCH_QUEUE_H */
+#endif /* #ifndef AWS_IO_DARWIN_DISPATCH_QUEUE_H */

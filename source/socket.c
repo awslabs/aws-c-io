@@ -6,6 +6,7 @@
 #include <aws/common/assert.h>
 #include <aws/common/uuid.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/socket.h>
 
 void aws_socket_clean_up(struct aws_socket *socket) {
@@ -104,11 +105,38 @@ bool aws_socket_is_open(struct aws_socket *socket) {
     return socket->vtable->socket_is_open_fn(socket);
 }
 
-static enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
+/**
+ * Return the default socket implementation type. If the return value is `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, the
+ * function failed to retrieve the default type value.
+ */
+static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
+    enum aws_socket_impl_type type = AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
+// override default socket
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    type = AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
+#endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
+    if (type != AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
+        return type;
+    }
+/**
+ * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
+ * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
+ */
+#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+    return AWS_SOCKET_IMPL_POSIX;
+#elif AWS_ENABLE_DISPATCH_QUEUE
+    return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
+#elif AWS_ENABLE_IO_COMPLETION_PORTS
+    return AWS_SOCKET_IMPL_WINSOCK;
+#else
+    return AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
+#endif
+}
+
 static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type);
 int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, const struct aws_socket_options *options) {
 
-    // 1. get socket type & validate type is avliable the platform
+    // 1. get socket type & validate type is available on the platform
     enum aws_socket_impl_type type = options->impl_type;
     if (type == AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
         type = aws_socket_get_default_impl_type();
@@ -154,50 +182,15 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_empty_array(uuid_str, sizeof(uuid_str));
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
 
-#if defined(WS_USE_APPLE_NETWORK_FRAMEWORK)
-    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
-    return;
-#endif
-
-#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
-    snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
-    return;
-#endif
-
-#if defined(AWS_ENABLE_IO_COMPLETION_PORTS)
-    snprintf(endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
-    return;
-#endif
-}
-
-/**
- * Return the default socket implementation type. If the return value is `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, the
- * function failed to retrieve the default type value.
- */
-static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
-    enum aws_socket_impl_type type = AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
-// override default socket
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    type = AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
-#endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
-    if (type != AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
-        return type;
+    enum aws_socket_impl_type socket_type = aws_socket_get_default_impl_type();
+    if (socket_type == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
+    } else if (socket_type == AWS_SOCKET_IMPL_POSIX) {
+        snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
+    } else if (socket_type == AWS_SOCKET_IMPL_WINSOCK) {
+        snprintf(
+            endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
     }
-/**
- * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
- * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
- */
-#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
-    return AWS_SOCKET_IMPL_POSIX;
-#endif
-#ifdef AWS_ENABLE_DISPATCH_QUEUE
-    return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
-#endif
-#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
-    return AWS_SOCKET_IMPL_WINSOCK;
-#else
-    return AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
-#endif
 }
 
 static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type) {

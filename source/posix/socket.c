@@ -14,6 +14,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/private/event_loop_impl.h>
+#include <aws/io/private/socket_impl.h>
 
 #include <arpa/inet.h>
 #include <aws/io/io.h>
@@ -220,7 +221,7 @@ static int s_socket_write(
 static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
 
-struct aws_socket_vtable g_posix_socket_vtable = {
+struct aws_socket_vtable s_posix_socket_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
     .socket_connect_fn = s_socket_connect,
     .socket_bind_fn = s_socket_bind,
@@ -263,7 +264,7 @@ static int s_socket_init(
     socket->state = INIT;
     socket->options = *options;
     socket->impl = posix_socket;
-    socket->vtable = &g_posix_socket_vtable;
+    socket->vtable = &s_posix_socket_vtable;
 
     if (existing_socket_fd < 0) {
         int err = s_create_socket(socket, options);

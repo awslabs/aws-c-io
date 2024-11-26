@@ -583,6 +583,47 @@ static int s_test_socket_udp_dispatch_queue(
     return 0;
 }
 
+static int s_test_socket_creation(struct aws_allocator *alloc, enum aws_socket_impl_type type, int expected_result) {
+    struct aws_socket socket;
+
+    struct aws_socket_options options = {
+        .type = AWS_SOCKET_STREAM,
+        .domain = AWS_SOCKET_IPV4,
+        .keep_alive_interval_sec = 0,
+        .keep_alive_timeout_sec = 0,
+        .connect_timeout_ms = 0,
+        .keepalive = 0,
+        .impl_type = type,
+    };
+
+    int err = aws_socket_init(&socket, alloc, &options);
+    if (err == AWS_OP_SUCCESS) {
+        aws_socket_clean_up(&socket);
+        ASSERT_INT_EQUALS(err, expected_result);
+    } else { // socket init failed, validate the last error
+        ASSERT_INT_EQUALS(aws_last_error(), expected_result);
+    }
+    return AWS_OP_SUCCESS;
+}
+
+static int s_test_socket_impl_types_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    int posix_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+    int winsock_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+    posix_expected_result = AWS_OP_SUCCESS;
+#endif
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    winsock_expected_result = AWS_OP_SUCCESS;
+#endif
+    // TODO: Apple Network Framework is not implemented yet. Add the related socket test later.
+
+    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_POSIX, posix_expected_result) ||
+           s_test_socket_creation(allocator, AWS_SOCKET_IMPL_WINSOCK, winsock_expected_result);
+}
+
+AWS_TEST_CASE(test_socket_impl_types_creation, s_test_socket_impl_types_creation)
+
 static int s_test_socket(
     struct aws_allocator *allocator,
     struct aws_socket_options *options,
