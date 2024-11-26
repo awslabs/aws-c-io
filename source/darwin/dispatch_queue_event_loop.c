@@ -269,7 +269,6 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     dispatch_async_and_wait_f(dispatch_loop->dispatch_queue, dispatch_loop, s_dispatch_queue_destroy_task);
 
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)event_loop);
-    event_loop->impl_data = NULL;
 }
 
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
