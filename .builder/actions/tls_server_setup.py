@@ -60,6 +60,7 @@ class TlsServerSetup(Builder.Action):
         @atexit.register
         def close_tls_server():
             print("Terminating openssl TLS server")
+            p.poll()
             print("=== stdout:")
             for c in iter(lambda: p.stdout.read(1), b""):
                 sys.stdout.buffer.write(c)
