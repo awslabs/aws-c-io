@@ -1026,8 +1026,7 @@ static int s_test_event_loop_all_types_creation(struct aws_allocator *allocator,
     enable_iocp = true;
 #endif
 #ifdef AWS_ENABLE_DISPATCH_QUEUE
-// TODO: Dispatch queue support is not yet implemented. Uncomment the following line once the dispatch queue is ready.
-//    enable_dispatch_queue = true;
+    enable_dispatch_queue = true;
 #endif
 
     return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_EPOLL, enable_epoll) ||
