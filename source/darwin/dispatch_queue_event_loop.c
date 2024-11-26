@@ -237,9 +237,12 @@ static void s_dispatch_queue_destroy_task(void *context) {
 
     while (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&dispatch_loop->synced_data.cross_thread_tasks);
+        aws_mutex_unlock(&dispatch_loop->synced_data.context->lock);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
         task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+        aws_mutex_lock(&dispatch_loop->synced_data.context->lock);
     }
+    aws_mutex_unlock(&dispatch_loop->synced_data.context->lock);
 
     while (!aws_linked_list_empty(&dispatch_loop->local_cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&dispatch_loop->local_cross_thread_tasks);
@@ -247,6 +250,7 @@ static void s_dispatch_queue_destroy_task(void *context) {
         task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
     }
 
+    aws_mutex_lock(&dispatch_loop->synced_data.context->lock);
     dispatch_loop->synced_data.suspended = true;
     dispatch_loop->synced_data.is_executing = false;
     aws_mutex_unlock(&dispatch_loop->synced_data.context->lock);
