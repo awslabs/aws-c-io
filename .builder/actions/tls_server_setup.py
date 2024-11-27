@@ -49,8 +49,6 @@ class TlsServerSetup(Builder.Action):
                                "-cert", "server.crt",
                                "-CAfile", "server_chain.crt",
                                "-alpn", "x-amzn-mqtt-ca",
-                               # "-tls1_3",  # Allow TLS 1.3 connections only
-                               # "-verify", "1",  # Verify client's certificate
                                "-debug", "-state",
                                ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
@@ -60,11 +58,11 @@ class TlsServerSetup(Builder.Action):
         @atexit.register
         def close_tls_server():
             print("Terminating openssl TLS server")
-            p.poll()
+            p.terminate()
             print("=== stdout:")
             for c in iter(lambda: p.stdout.read(1), b""):
                 sys.stdout.buffer.write(c)
             print("=== stderr:")
             for c in iter(lambda: p.stderr.read(1), b""):
                 sys.stdout.buffer.write(c)
-            p.terminate()
+            print("=== now bye")
