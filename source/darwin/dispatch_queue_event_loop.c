@@ -52,6 +52,7 @@ static struct aws_event_loop_vtable s_vtable = {
 struct dispatch_loop_context {
     struct aws_mutex lock;
     struct dispatch_loop *io_dispatch_loop;
+    struct dispatch_scheduling_state scheduling_state;
     struct aws_allocator *allocator;
     struct aws_ref_count ref_count;
 };
@@ -186,16 +187,16 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
         goto clean_up;
     }
 
-    dispatch_loop->synced_data.scheduling_state.will_schedule = false;
     dispatch_loop->allocator = alloc;
     dispatch_loop->base_loop = loop;
 
     aws_linked_list_init(&dispatch_loop->local_cross_thread_tasks);
-    aws_linked_list_init(&dispatch_loop->synced_data.scheduling_state.scheduled_services);
     aws_linked_list_init(&dispatch_loop->synced_data.cross_thread_tasks);
 
     struct dispatch_loop_context *context = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
     aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
+    context->scheduling_state.will_schedule = false;
+    aws_linked_list_init(&context->scheduling_state.scheduled_services);
     aws_mutex_init(&context->lock);
     context->io_dispatch_loop = dispatch_loop;
     context->allocator = alloc;
@@ -330,7 +331,7 @@ static bool begin_iteration(struct scheduled_service_entry *entry) {
         &dispatch_loop->synced_data.cross_thread_tasks, &dispatch_loop->local_cross_thread_tasks);
 
     // mark us as running an iteration and remove from the pending list
-    dispatch_loop->synced_data.scheduling_state.will_schedule = true;
+    dispatch_loop->synced_data.context->scheduling_state.will_schedule = true;
     aws_linked_list_remove(&entry->node);
     aws_mutex_unlock(&contxt->lock);
 
@@ -349,7 +350,7 @@ static void end_iteration(struct scheduled_service_entry *entry) {
         return;
     }
 
-    dispatch_loop->synced_data.scheduling_state.will_schedule = false;
+    dispatch_loop->synced_data.context->scheduling_state.will_schedule = false;
 
     // if there are any cross-thread tasks, reschedule an iteration for now
     if (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
@@ -365,7 +366,7 @@ static void end_iteration(struct scheduled_service_entry *entry) {
             // only schedule an iteration if there isn't an existing dispatched iteration for the next task time or
             // earlier
             if (s_should_schedule_iteration(
-                    &dispatch_loop->synced_data.scheduling_state.scheduled_services, next_task_time)) {
+                    &dispatch_loop->synced_data.context->scheduling_state.scheduled_services, next_task_time)) {
                 s_try_schedule_new_iteration(contxt, next_task_time);
             }
         }
@@ -438,11 +439,12 @@ static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_
     struct dispatch_loop *dispatch_loop = dispatch_loop_context->io_dispatch_loop;
     if (!dispatch_loop || dispatch_loop->synced_data.suspended)
         return;
-    if (!s_should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, timestamp)) {
+    if (!s_should_schedule_iteration(
+            &dispatch_loop->synced_data.context->scheduling_state.scheduled_services, timestamp)) {
         return;
     }
     struct scheduled_service_entry *entry = s_scheduled_service_entry_new(dispatch_loop_context, timestamp);
-    aws_linked_list_push_front(&dispatch_loop->synced_data.scheduling_state.scheduled_services, &entry->node);
+    aws_linked_list_push_front(&dispatch_loop->synced_data.context->scheduling_state.scheduled_services, &entry->node);
     dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
 }
 
@@ -468,11 +470,11 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
      * iteration that is processing the `cross_thread_tasks`.
      */
 
-    if (was_empty && !dispatch_loop->synced_data.scheduling_state.will_schedule) {
+    if (was_empty && !dispatch_loop->synced_data.context->scheduling_state.will_schedule) {
         /** If there is no currently running iteration, then we check if we have already scheduled an iteration
          * scheduled before this task's run time. */
-        should_schedule =
-            s_should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, run_at_nanos);
+        should_schedule = s_should_schedule_iteration(
+            &dispatch_loop->synced_data.context->scheduling_state.scheduled_services, run_at_nanos);
     }
 
     // If there is no scheduled iteration, start one right now to process the `cross_thread_task`.

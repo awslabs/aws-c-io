@@ -1591,4 +1591,3 @@ static bool s_socket_is_open_fn(struct aws_socket *socket) {
 
     return nw_socket->last_error == AWS_OP_SUCCESS;
 }
-
