@@ -436,7 +436,7 @@ static void s_run_iteration(void *context) {
  */
 static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_loop_context, uint64_t timestamp) {
     struct dispatch_loop *dispatch_loop = dispatch_loop_context->io_dispatch_loop;
-    if (dispatch_loop->synced_data.suspended)
+    if (!dispatch_loop || dispatch_loop->synced_data.suspended)
         return;
     if (!s_should_schedule_iteration(&dispatch_loop->synced_data.scheduling_state.scheduled_services, timestamp)) {
         return;
