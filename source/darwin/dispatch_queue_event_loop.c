@@ -77,7 +77,6 @@ static struct scheduled_service_entry *s_scheduled_service_entry_new(
     return entry;
 }
 
-// may only be called when the dispatch event loop synced data lock is held
 static void s_scheduled_service_entry_destroy(struct scheduled_service_entry *entry) {
     if (aws_linked_list_node_is_in_list(&entry->node)) {
         aws_linked_list_remove(&entry->node);
@@ -187,7 +186,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
         goto clean_up;
     }
 
-    dispatch_loop->synced_data.scheduling_state.is_executing_iteration = false;
+    dispatch_loop->synced_data.scheduling_state.will_schedule = false;
     dispatch_loop->allocator = alloc;
     dispatch_loop->base_loop = loop;
 
@@ -331,12 +330,11 @@ static bool begin_iteration(struct scheduled_service_entry *entry) {
         &dispatch_loop->synced_data.cross_thread_tasks, &dispatch_loop->local_cross_thread_tasks);
 
     // mark us as running an iteration and remove from the pending list
-    dispatch_loop->synced_data.scheduling_state.is_executing_iteration = true;
+    dispatch_loop->synced_data.scheduling_state.will_schedule = true;
     aws_linked_list_remove(&entry->node);
-
-    should_execute_iteration = true;
     aws_mutex_unlock(&contxt->lock);
 
+    should_execute_iteration = true;
     return should_execute_iteration;
 }
 
@@ -351,11 +349,11 @@ static void end_iteration(struct scheduled_service_entry *entry) {
         return;
     }
 
-    dispatch_loop->synced_data.scheduling_state.is_executing_iteration = false;
+    dispatch_loop->synced_data.scheduling_state.will_schedule = false;
 
     // if there are any cross-thread tasks, reschedule an iteration for now
     if (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
-        // added during service which means nothing was scheduled because is_executing_iteration was true
+        // added during service which means nothing was scheduled because will_schedule was true
         s_try_schedule_new_iteration(contxt, 0);
     } else {
         // no cross thread tasks, so check internal time-based scheduler
@@ -373,8 +371,8 @@ static void end_iteration(struct scheduled_service_entry *entry) {
         }
     }
 
-    s_scheduled_service_entry_destroy(entry);
     aws_mutex_unlock(&contxt->lock);
+    s_scheduled_service_entry_destroy(entry);
 }
 
 // Iteration function that scheduled and executed by the Dispatch Queue API
@@ -454,7 +452,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     aws_mutex_lock(&dispatch_loop->synced_data.context->lock);
     bool should_schedule = false;
 
-    bool is_empty = aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks);
+    bool was_empty = aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks);
     task->timestamp = run_at_nanos;
 
     // As we dont have control to dispatch queue thread, all tasks are treated as cross thread tasks
@@ -466,11 +464,11 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
      * scheduled_service_entry *entry)`). Therefore, as long as there is an executing iteration, we can guaranteed that
      * the tasks will be scheduled.
      *
-     * `is_empty` is used for a quick validation. If the `cross_thread_tasks` is not empty, we must have a running
+     * `was_empty` is used for a quick validation. If the `cross_thread_tasks` is not empty, we must have a running
      * iteration that is processing the `cross_thread_tasks`.
      */
 
-    if (is_empty && !dispatch_loop->synced_data.scheduling_state.is_executing_iteration) {
+    if (was_empty && !dispatch_loop->synced_data.scheduling_state.will_schedule) {
         /** If there is no currently running iteration, then we check if we have already scheduled an iteration
          * scheduled before this task's run time. */
         should_schedule =

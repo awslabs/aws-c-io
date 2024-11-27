@@ -26,7 +26,7 @@ struct dispatch_scheduling_state {
     /**
      * Let's us skip processing an iteration task if one is already in the middle of executing
      */
-    bool is_executing_iteration;
+    bool will_schedule;
 
     /**
      * List<scheduled_service_entry> in sorted order by timestamp

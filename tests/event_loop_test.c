@@ -179,6 +179,9 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     }
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
 
+    // DEBUG: test sleep 
+    aws_thread_current_sleep(3);
+
     return AWS_OP_SUCCESS;
 }
 
