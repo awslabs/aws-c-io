@@ -55,6 +55,19 @@ class TlsServerSetup(Builder.Action):
         p.poll()
         print("Return code is {}".format(p.returncode))
 
+        p2 = subprocess.Popen(["openssl.exe", "s_client",
+                               "-connect", "127.0.0.1:59444",
+                               "-key", "unittests.key",
+                               "-cert", "unittests.crt",
+                               "-tls1_3",
+                               ], cwd=dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p2.poll()
+        print("client Return code is {}".format(p2.returncode))
+
+        out2, err2 = p2.communicate(input=b'Q')
+        print("=== client stdout:\n{}".format(out2))
+        print("=== client stderr:\n{}".format(err2))
+
         @atexit.register
         def close_tls_server():
             print("Terminating openssl TLS server")
