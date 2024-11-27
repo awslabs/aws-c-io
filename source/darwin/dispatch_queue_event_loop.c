@@ -129,7 +129,6 @@ static void s_dispatch_event_loop_destroy(void *context) {
     aws_mem_release(event_loop->alloc, event_loop);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
-    aws_thread_decrement_unjoined_count();
 }
 
 /** Return a aws_string* with unique dispatch queue id string. The id is In format of
@@ -204,9 +203,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     loop->impl_data = dispatch_loop;
     loop->vtable = &s_vtable;
-
-    /** manually increment the thread count, so the library will wait for dispatch queue releasing */
-    aws_thread_increment_unjoined_count();
 
     return loop;
 
