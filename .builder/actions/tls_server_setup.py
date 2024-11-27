@@ -59,6 +59,7 @@ class TlsServerSetup(Builder.Action):
                                "-connect", "127.0.0.1:59443",
                                "-key", "unittests.key",
                                "-cert", "unittests.crt",
+                               "-CAfile", "ca_root.crt",
                                "-tls1_3",
                                ], cwd=dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p2.poll()
