@@ -44,7 +44,7 @@ class TlsServerSetup(Builder.Action):
             sys.stdout.buffer.write(c)
 
         p = subprocess.Popen(["openssl.exe", "s_server",
-                               "-accept", "127.0.0.1:59443",
+                               "-accept", "localhost:59443",
                                "-key", "tls13.key",
                                "-cert", "tls13.pem.crt",
                                "-chainCAfile", "tls13_root_ca.pem.crt",
@@ -56,7 +56,7 @@ class TlsServerSetup(Builder.Action):
         print("Return code is {}".format(p.returncode))
 
         p2 = subprocess.Popen(["openssl.exe", "s_client",
-                               "-connect", "127.0.0.1:59443",
+                               "-connect", "localhost:59443",
                                "-debug", "-state",
                                "-servername", "localhost",
                                ], cwd=dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
