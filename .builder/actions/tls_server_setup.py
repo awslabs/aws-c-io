@@ -43,6 +43,17 @@ class TlsServerSetup(Builder.Action):
         for c in iter(lambda: p1.stderr.read(1), b""):
             sys.stdout.buffer.write(c)
 
+        p1 = subprocess.Popen(["netsh", "advfirewall", "set", "allprofiles", "state", "off"
+                               ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        time.sleep(1)
+        p1.poll()
+        print("Return code for p1 is {}".format(p1.returncode))
+        print("=== stdout 1:")
+        for c in iter(lambda: p1.stdout.read(1), b""):
+            sys.stdout.buffer.write(c)
+        print("=== stderr 1:")
+        for c in iter(lambda: p1.stderr.read(1), b""):
+            sys.stdout.buffer.write(c)
 
         p1 = subprocess.Popen(["netsh", "advfirewall", "show", "all"
                                ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
