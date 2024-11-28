@@ -26,7 +26,7 @@ struct dispatch_scheduling_state {
     /**
      * Let's us skip processing an iteration task if one is already in the middle of executing
      */
-    bool is_executing_iteration;
+    bool will_schedule;
 
     /**
      * List<scheduled_service_entry> in sorted order by timestamp
@@ -52,7 +52,6 @@ struct dispatch_loop {
     struct aws_string *dispatch_queue_id;
 
     struct {
-        struct dispatch_scheduling_state scheduling_state;
         struct aws_linked_list cross_thread_tasks;
         struct dispatch_loop_context *context;
         bool suspended;
