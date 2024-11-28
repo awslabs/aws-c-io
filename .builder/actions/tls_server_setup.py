@@ -61,6 +61,7 @@ class TlsServerSetup(Builder.Action):
                                "-cert", "unittests.crt",
                                "-CAfile", "ca_root.crt",
                                "-debug", "-state",
+                               "-servername", "localhost",
                                "-tls1_3",
                                ], cwd=dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p2.poll()
