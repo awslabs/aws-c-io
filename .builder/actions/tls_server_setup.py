@@ -47,7 +47,7 @@ class TlsServerSetup(Builder.Action):
                                "-accept", "127.0.0.1:59443",
                                "-key", "tls13.key",
                                "-cert", "tls13.pem.crt",
-                               "-CAfile", "tls13_root_ca.pem.crt",
+                               "-chainCAfile", "tls13_root_ca.pem.crt",
                                "-alpn", "x-amzn-mqtt-ca",
                                "-debug", "-state",
                                ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
