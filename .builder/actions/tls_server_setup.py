@@ -43,30 +43,6 @@ class TlsServerSetup(Builder.Action):
         for c in iter(lambda: p1.stderr.read(1), b""):
             sys.stdout.buffer.write(c)
 
-        p1 = subprocess.Popen(["netsh", "advfirewall", "set", "allprofiles", "state", "off"
-                               ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        time.sleep(1)
-        p1.poll()
-        print("Return code for p1 is {}".format(p1.returncode))
-        print("=== stdout 1:")
-        for c in iter(lambda: p1.stdout.read(1), b""):
-            sys.stdout.buffer.write(c)
-        print("=== stderr 1:")
-        for c in iter(lambda: p1.stderr.read(1), b""):
-            sys.stdout.buffer.write(c)
-
-        p1 = subprocess.Popen(["netsh", "advfirewall", "show", "all"
-                               ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        time.sleep(1)
-        p1.poll()
-        print("Return code for p1 is {}".format(p1.returncode))
-        print("=== stdout 1:")
-        for c in iter(lambda: p1.stdout.read(1), b""):
-            sys.stdout.buffer.write(c)
-        print("=== stderr 1:")
-        for c in iter(lambda: p1.stderr.read(1), b""):
-            sys.stdout.buffer.write(c)
-
         p = subprocess.Popen(["openssl.exe", "s_server",
                                "-accept", "127.0.0.1:59443",
                                "-key", "tls13.key",
@@ -81,9 +57,6 @@ class TlsServerSetup(Builder.Action):
 
         p2 = subprocess.Popen(["openssl.exe", "s_client",
                                "-connect", "127.0.0.1:59443",
-                               "-key", "tls13.key",
-                               "-cert", "tls13.pem.crt",
-                               "-CAfile", "tls13_root_ca.pem.crt",
                                "-debug", "-state",
                                "-servername", "localhost",
                                ], cwd=dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
