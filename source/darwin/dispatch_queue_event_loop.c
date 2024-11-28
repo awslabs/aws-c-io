@@ -192,6 +192,9 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     aws_linked_list_init(&dispatch_loop->local_cross_thread_tasks);
     aws_linked_list_init(&dispatch_loop->synced_data.cross_thread_tasks);
 
+    aws_mutex_init(&dispatch_loop->synced_thread_data.thread_data_lock);
+    dispatch_loop->synced_thread_data.is_executing = false;
+
     struct dispatch_loop_context *context = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
     aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
     context->scheduling_state.will_schedule = false;
@@ -223,22 +226,20 @@ clean_up:
 static void s_dispatch_queue_destroy_task(void *context) {
     struct dispatch_loop *dispatch_loop = context;
 
-    aws_mutex_lock(&dispatch_loop->synced_data.context->lock);
-    dispatch_loop->synced_data.current_thread_id = aws_thread_current_thread_id();
-    dispatch_loop->synced_data.is_executing = true;
-    aws_mutex_unlock(&dispatch_loop->synced_data.context->lock);
+    aws_mutex_lock(&dispatch_loop->synced_thread_data.thread_data_lock);
+    dispatch_loop->synced_thread_data.current_thread_id = aws_thread_current_thread_id();
+    dispatch_loop->synced_thread_data.is_executing = true;
+    aws_mutex_unlock(&dispatch_loop->synced_thread_data.thread_data_lock);
 
     aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
     aws_mutex_lock(&dispatch_loop->synced_data.context->lock);
 
     while (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&dispatch_loop->synced_data.cross_thread_tasks);
-        aws_mutex_unlock(&dispatch_loop->synced_data.context->lock);
+
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
         task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
-        aws_mutex_lock(&dispatch_loop->synced_data.context->lock);
     }
-    aws_mutex_unlock(&dispatch_loop->synced_data.context->lock);
 
     while (!aws_linked_list_empty(&dispatch_loop->local_cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&dispatch_loop->local_cross_thread_tasks);
@@ -246,10 +247,12 @@ static void s_dispatch_queue_destroy_task(void *context) {
         task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
     }
 
-    aws_mutex_lock(&dispatch_loop->synced_data.context->lock);
     dispatch_loop->synced_data.suspended = true;
-    dispatch_loop->synced_data.is_executing = false;
     aws_mutex_unlock(&dispatch_loop->synced_data.context->lock);
+
+    aws_mutex_lock(&dispatch_loop->synced_thread_data.thread_data_lock);
+    dispatch_loop->synced_thread_data.is_executing = false;
+    aws_mutex_unlock(&dispatch_loop->synced_thread_data.thread_data_lock);
 
     s_dispatch_event_loop_destroy(dispatch_loop->base_loop);
 }
@@ -405,10 +408,10 @@ static void s_run_iteration(void *context) {
         }
     }
 
-    aws_mutex_lock(&dispatch_queue_context->lock);
-    dispatch_loop->synced_data.current_thread_id = aws_thread_current_thread_id();
-    dispatch_loop->synced_data.is_executing = true;
-    aws_mutex_unlock(&dispatch_queue_context->lock);
+    aws_mutex_lock(&dispatch_loop->synced_thread_data.thread_data_lock);
+    dispatch_loop->synced_thread_data.current_thread_id = aws_thread_current_thread_id();
+    dispatch_loop->synced_thread_data.is_executing = true;
+    aws_mutex_unlock(&dispatch_loop->synced_thread_data.thread_data_lock);
 
     // run all scheduled tasks
     uint64_t now_ns = 0;
@@ -416,9 +419,9 @@ static void s_run_iteration(void *context) {
     aws_task_scheduler_run_all(&dispatch_loop->scheduler, now_ns);
     aws_event_loop_register_tick_end(dispatch_loop->base_loop);
 
-    aws_mutex_lock(&dispatch_queue_context->lock);
-    dispatch_loop->synced_data.is_executing = false;
-    aws_mutex_unlock(&dispatch_queue_context->lock);
+    aws_mutex_lock(&dispatch_loop->synced_thread_data.thread_data_lock);
+    dispatch_loop->synced_thread_data.is_executing = false;
+    aws_mutex_unlock(&dispatch_loop->synced_thread_data.thread_data_lock);
 
     end_iteration(entry);
 }
@@ -525,10 +528,10 @@ static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struc
 // dispatch queue.
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop) {
     struct dispatch_loop *dispatch_queue = event_loop->impl_data;
-    aws_mutex_lock(&dispatch_queue->synced_data.context->lock);
-    bool result =
-        dispatch_queue->synced_data.is_executing &&
-        aws_thread_thread_id_equal(dispatch_queue->synced_data.current_thread_id, aws_thread_current_thread_id());
-    aws_mutex_unlock(&dispatch_queue->synced_data.context->lock);
+    aws_mutex_lock(&dispatch_queue->synced_thread_data.thread_data_lock);
+    bool result = dispatch_queue->synced_thread_data.is_executing &&
+                  aws_thread_thread_id_equal(
+                      dispatch_queue->synced_thread_data.current_thread_id, aws_thread_current_thread_id());
+    aws_mutex_unlock(&dispatch_queue->synced_thread_data.thread_data_lock);
     return result;
 }
