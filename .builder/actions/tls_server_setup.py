@@ -57,12 +57,11 @@ class TlsServerSetup(Builder.Action):
 
         p2 = subprocess.Popen(["openssl.exe", "s_client",
                                "-connect", "127.0.0.1:59443",
-                               "-key", "unittests.key",
-                               "-cert", "unittests.crt",
-                               "-CAfile", "ca_root.crt",
+                               "-key", "server.key",
+                               "-cert", "server.crt",
+                               "-CAfile", "server_chain.crt",
                                "-debug", "-state",
                                "-servername", "localhost",
-                               "-tls1_3",
                                ], cwd=dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         p2.poll()
         print("client Return code is {}".format(p2.returncode))
