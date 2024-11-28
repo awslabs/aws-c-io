@@ -44,7 +44,7 @@ class TlsServerSetup(Builder.Action):
             sys.stdout.buffer.write(c)
 
 
-        p1 = subprocess.Popen(["openssl.exe", "ciphers", "-s", "tls1_3",
+        p1 = subprocess.Popen(["openssl.exe", "ciphers", "-s", "-tls1_3",
                                ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
         p1.poll()
