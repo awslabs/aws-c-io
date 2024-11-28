@@ -69,9 +69,9 @@ class TlsServerSetup(Builder.Action):
 
         p = subprocess.Popen(["openssl.exe", "s_server",
                                "-accept", "127.0.0.1:59443",
-                               "-key", "server.key",
-                               "-cert", "server.crt",
-                               "-CAfile", "server_chain.crt",
+                               "-key", "tls13.key",
+                               "-cert", "tls13.pem.crt",
+                               "-CAfile", "tls13_root_ca.pem.crt",
                                "-alpn", "x-amzn-mqtt-ca",
                                "-debug", "-state",
                                ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -81,9 +81,9 @@ class TlsServerSetup(Builder.Action):
 
         p2 = subprocess.Popen(["openssl.exe", "s_client",
                                "-connect", "127.0.0.1:59443",
-                               "-key", "server.key",
-                               "-cert", "server.crt",
-                               "-CAfile", "server_chain.crt",
+                               "-key", "tls13.key",
+                               "-cert", "tls13.pem.crt",
+                               "-CAfile", "tls13_root_ca.pem.crt",
                                "-debug", "-state",
                                "-servername", "localhost",
                                ], cwd=dir, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
