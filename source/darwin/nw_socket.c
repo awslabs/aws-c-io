@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/socket.h>
 
 #include <aws/common/clock.h>
@@ -1590,4 +1591,3 @@ static bool s_socket_is_open_fn(struct aws_socket *socket) {
 
     return nw_socket->last_error == AWS_OP_SUCCESS;
 }
-
