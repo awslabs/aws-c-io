@@ -10,6 +10,7 @@
 #include <aws/common/string.h>
 #include <aws/io/host_resolver.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/socket.h>
 
 int aws_default_dns_resolve(

@@ -106,13 +106,13 @@ enum aws_exponential_backoff_jitter_mode {
  * "use defaults"
  */
 struct aws_exponential_backoff_retry_options {
-    /** Event loop group to use for scheduling tasks. */
+    /* Event loop group to use for scheduling tasks. */
     struct aws_event_loop_group *el_group;
-    /** Max retries to allow. The default value is 10 */
+    /* Max retries to allow. The default value is 10 */
     size_t max_retries;
-    /** Scaling factor to add for the backoff. Default is 500ms */
+    /* Scaling factor to add for the backoff. Default is 500ms */
     uint32_t backoff_scale_factor_ms;
-    /** Max retry backoff in seconds. Default is 20 seconds */
+    /* Max retry backoff in seconds. Default is 20 seconds */
     uint32_t max_backoff_secs;
     /** Jitter mode to use, see comments for aws_exponential_backoff_jitter_mode.
      * Default is AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT */
@@ -132,6 +132,14 @@ struct aws_exponential_backoff_retry_options {
      */
     void *generate_random_user_data;
 
+    /**
+     * Optional shutdown callback that gets invoked, with appropriate user data,
+     * when the resources used by the retry_strategy are no longer in use.
+     */
+    const struct aws_shutdown_callback_options *shutdown_options;
+};
+
+struct aws_no_retry_options {
     /**
      * Optional shutdown callback that gets invoked, with appropriate user data,
      * when the resources used by the retry_strategy are no longer in use.
@@ -234,6 +242,16 @@ AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff
 AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_standard(
     struct aws_allocator *allocator,
     const struct aws_standard_retry_options *config);
+
+/**
+ * This retry strategy is used to disable retries. Passed config can be null.
+ * Calling `aws_retry_strategy_acquire_retry_token` will raise error `AWS_IO_RETRY_PERMISSION_DENIED`.
+ * Calling any function apart from the `aws_retry_strategy_acquire_retry_token` and `aws_retry_strategy_release` will
+ * result in a fatal error.
+ */
+AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_no_retry(
+    struct aws_allocator *allocator,
+    const struct aws_no_retry_options *config);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
