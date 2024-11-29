@@ -42,7 +42,6 @@ struct dispatch_loop_context;
 
 struct dispatch_loop {
     struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
     struct aws_linked_list local_cross_thread_tasks;
@@ -56,7 +55,7 @@ struct dispatch_loop {
         struct aws_linked_list cross_thread_tasks;
         struct dispatch_loop_context *context;
         bool suspended;
-    } synced_data;
+    } synced_task_data;
 
     /* Synced thread data handles the thread related info. `is_executing` flag and `current_thread_id` together are used
      * to identify the executing thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct
