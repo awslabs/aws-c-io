@@ -215,7 +215,6 @@ clean_up:
             dispatch_release(dispatch_loop->dispatch_queue);
         }
         s_dispatch_event_loop_destroy(loop);
-        aws_event_loop_clean_up_base(loop);
     }
 
     aws_mem_release(alloc, loop);

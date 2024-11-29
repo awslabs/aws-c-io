@@ -42,7 +42,6 @@ struct dispatch_loop_context;
 
 struct dispatch_loop {
     struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
     struct aws_linked_list local_cross_thread_tasks;
