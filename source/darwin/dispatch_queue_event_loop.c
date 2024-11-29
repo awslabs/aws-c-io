@@ -234,7 +234,8 @@ static void s_dispatch_queue_destroy_task(void *context) {
     aws_mutex_lock(&dispatch_loop->synced_task_data.context->lock);
 
     while (!aws_linked_list_empty(&dispatch_loop->synced_task_data.cross_thread_tasks)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&dispatch_loop->synced_task_data.cross_thread_tasks);
+        struct aws_linked_list_node *node =
+            aws_linked_list_pop_front(&dispatch_loop->synced_task_data.cross_thread_tasks);
 
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
         task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
@@ -442,7 +443,8 @@ static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_
         return;
     }
     struct scheduled_service_entry *entry = s_scheduled_service_entry_new(dispatch_loop_context, timestamp);
-    aws_linked_list_push_front(&dispatch_loop->synced_task_data.context->scheduling_state.scheduled_services, &entry->node);
+    aws_linked_list_push_front(
+        &dispatch_loop->synced_task_data.context->scheduling_state.scheduled_services, &entry->node);
     dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
 }
 
