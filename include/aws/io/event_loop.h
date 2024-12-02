@@ -54,9 +54,9 @@ struct aws_event_loop_vtable {
  *
  * Default Event Loop Type
  * Linux       | AWS_EVENT_LOOP_EPOLL
- * Windows	   | AWS_EVENT_LOOP_IOCP
+ * Windows     | AWS_EVENT_LOOP_IOCP
  * BSD Variants| AWS_EVENT_LOOP_KQUEUE
- * MacOS	   | AWS_EVENT_LOOP_KQUEUE
+ * MacOS       | AWS_EVENT_LOOP_KQUEUE
  * iOS         | AWS_EVENT_LOOP_DISPATCH_QUEUE
  */
 enum aws_event_loop_type {
@@ -102,16 +102,6 @@ struct aws_event_loop_group_options {
      */
     aws_io_clock_fn *clock_override;
 };
-
-/**
- * @internal - Don't use outside of testing.
- *
- * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
- * retrieve the default type value.
- * If `aws_event_loop_override_default_type` has been called, return the override default type.
- */
-AWS_IO_API
-enum aws_event_loop_type aws_event_loop_get_default_type(void);
 
 AWS_EXTERN_C_BEGIN
 

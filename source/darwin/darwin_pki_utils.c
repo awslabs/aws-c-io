@@ -287,6 +287,16 @@ done:
 
 #endif /* !AWS_OS_IOS */
 
+//int aws_import_public_and_private_keys_to_identity(
+//    struct aws_allocator *alloc,
+//    CFAllocatorRef cf_alloc,
+//    const struct aws_byte_cursor *public_cert_chain,
+//    const struct aws_byte_cursor *private_key,
+//    CFArrayRef *identity,
+//    const struct aws_string *keychain_path) {
+//        return 0;
+//    }
+
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *pkcs12_cursor,

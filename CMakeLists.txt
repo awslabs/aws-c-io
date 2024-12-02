@@ -116,17 +116,13 @@ elseif (APPLE)
             )
 
     find_library(SECURITY_LIB Security)
-    if (NOT SECURITY_LIB)
-        message(FATAL_ERROR "Security framework not found")
-    endif ()
-
     find_library(NETWORK_LIB Network)
-    if (NOT NETWORK_LIB)
-        message(FATAL_ERROR "Network framework not found")
-    endif ()
 
-    list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
-    list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
+    # Enable dispatch queue if the libraries are avaliable
+    if (NETWORK_LIB AND SECURITY_LIB)
+        list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
+        list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
+    endif ()
 
     # Enable KQUEUE on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
@@ -195,6 +191,9 @@ aws_add_sanitizers(${PROJECT_NAME})
 # We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
+if (NOT EVENT_LOOP_DEFINES)
+    message(FATAL_ERROR "Event Loop is not setup on the platform.")
+endif()
 foreach(EVENT_LOOP_DEFINE IN LISTS EVENT_LOOP_DEFINES)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
 endforeach()
