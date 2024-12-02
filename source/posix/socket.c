@@ -302,13 +302,15 @@ static int s_socket_init(
     return AWS_OP_SUCCESS;
 }
 
-// int aws_socket_init_posix(
-//     struct aws_socket *socket,
-//     struct aws_allocator *alloc,
-//     const struct aws_socket_options *options) {
-//     AWS_ASSERT(options);
-//     return s_socket_init(socket, alloc, options, -1);
-// }
+#if defined(AWS_ENABLE_EPOLL) || defined(AWS_ENABLE_KQUEUE)
+int aws_socket_init_posix(
+    struct aws_socket *socket,
+    struct aws_allocator *alloc,
+    const struct aws_socket_options *options) {
+    AWS_ASSERT(options);
+    return s_socket_init(socket, alloc, options, -1);
+}
+#endif
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
