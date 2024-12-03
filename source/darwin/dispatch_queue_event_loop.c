@@ -48,6 +48,35 @@ static struct aws_event_loop_vtable s_vtable = {
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
+/**
+ * DISPATCH QUEUE
+ *
+ * Event loop is responsible for processing events and tasks by launching an execution loop on a single thread. Each
+ * iteration of this loop performs three primary jobs:
+ * 1. Process I/O events.
+ * 2. Process cross-thread tasks.
+ * 3. Execute all runnable tasks.
+ *
+ * Apple Dispatch queues are FIFO queues to which the application can submit tasks in the form of block objects, and the
+ * block objects will be executed on a system defined thread pool. Instead of executing the loop on a single thread, we
+ * tried to recurrently run a single iteration of the execution loop as a dispatch queue block object.
+ * aws-c-io library use a sequential dispatch queue to make sure the tasks scheduled on the same dispatch queue are
+ * executed in a strict execution order, though the tasks might be distributed on different threads in the thread pool.
+ *
+ * Data Structures ******
+ * `dispatch_loop_context`: Context for each execution iteration
+ * `scheduled_service_entry`: Each entry maps to each iteration we scheduled on system dispatch queue. As we lost
+ * control of the submitted block on the system dispatch queue, the entry is what we used to track the context and user
+ * data.
+ * `dispatch_loop`: Implementation of the event loop for dispatch queue.
+ *
+ * Functions ************
+ * `s_run_iteration`: The function execute on each single iteration
+ * `begin_iteration`: Decide if we should run the iteration
+ * `end_iteration`: Clean up the related resource and decide if we should schedule next iteration
+ *
+ */
+
 /* Internal ref-counted dispatch loop context to processing Apple Dispatch Queue Resources */
 struct dispatch_loop_context {
     struct aws_mutex lock;
@@ -288,6 +317,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
         dispatch_resume(dispatch_loop->dispatch_queue);
         dispatch_loop->synced_task_data.suspended = false;
+        s_try_schedule_new_iteration(dispatch_loop->synced_task_data.context, 0)
     }
     aws_mutex_unlock(&dispatch_loop->synced_task_data.context->lock);
 
