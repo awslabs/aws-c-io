@@ -8,6 +8,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/io.h>
+#include <aws/io/private/event_loop_impl.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
 
