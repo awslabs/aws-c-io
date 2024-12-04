@@ -107,6 +107,7 @@ enum aws_event_loop_type aws_event_loop_get_default_type(void) {
     AWS_LOGF_ERROR(
         AWS_LS_IO_EVENT_LOOP,
         "Failed to get default event loop type. The library is not built correctly on the platform.");
+    return AWS_EVENT_LOOP_PLATFORM_DEFAULT;
 #endif
 }
 

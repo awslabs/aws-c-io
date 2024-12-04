@@ -19,14 +19,20 @@ int aws_socket_connect(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_connect_fn);
-    return socket->vtable->socket_connect_fn(socket, remote_endpoint, event_loop, on_connection_result, user_data);
+    return socket->vtable->socket_connect_fn(
+        socket, remote_endpoint, event_loop, on_connection_result, retrieve_tls_options, user_data);
 }
 
-int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
+int aws_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_bind_fn);
-    return socket->vtable->socket_bind_fn(socket, local_endpoint);
+    return socket->vtable->socket_bind_fn(socket, local_endpoint, retrieve_tls_options, user_data);
 }
 
 int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
@@ -39,7 +45,7 @@ int aws_socket_start_accept(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data) {
-    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_listen_fn);
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_start_accept_fn);
     return socket->vtable->socket_start_accept_fn(socket, accept_loop, on_accept_result, user_data);
 }
 
@@ -232,7 +238,7 @@ int aws_socket_init_posix(
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
-#endif
+#endif // !AWS_ENABLE_EPOLL && !AWS_ENABLE_KQUEUE
 
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
 int aws_socket_init_winsock(
