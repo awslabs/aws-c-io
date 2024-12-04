@@ -6,7 +6,6 @@
  */
 
 #include <aws/io/channel.h>
-#include <aws/io/event_loop.h>
 #include <aws/io/io.h>
 #include <aws/io/private/event_loop_impl.h>
 
@@ -138,8 +137,6 @@ struct aws_socket_endpoint {
     char address[AWS_ADDRESS_MAX_LEN];
     uint32_t port;
 };
-
-struct aws_socket;
 
 struct aws_socket {
     struct aws_socket_vtable *vtable;

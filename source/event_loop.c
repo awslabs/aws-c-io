@@ -114,30 +114,30 @@ static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) 
     switch (type) {
         case AWS_EVENT_LOOP_EPOLL:
 #ifndef AWS_ENABLE_EPOLL
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type EPOLL is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type EPOLL is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_EPOLL
             break;
         case AWS_EVENT_LOOP_IOCP:
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type IOCP is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type IOCP is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_IO_COMPLETION_PORTS
             break;
         case AWS_EVENT_LOOP_KQUEUE:
 #ifndef AWS_ENABLE_KQUEUE
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type KQUEUE is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type KQUEUE is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_KQUEUE
             break;
         case AWS_EVENT_LOOP_DISPATCH_QUEUE:
 #ifndef AWS_ENABLE_DISPATCH_QUEUE
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type Dispatch Queue is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type Dispatch Queue is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_DISPATCH_QUEUE
             break;
         default:
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type.");
             return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
             break;
     }
