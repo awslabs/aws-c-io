@@ -7,6 +7,7 @@
 #include <aws/io/channel.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/private/pki_utils.h>
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
