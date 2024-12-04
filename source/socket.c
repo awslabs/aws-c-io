@@ -227,7 +227,7 @@ static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type
     return AWS_OP_SUCCESS;
 }
 
-#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE) && !defined(AWS_USE_SECITEM)
+#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE)
 int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -238,7 +238,7 @@ int aws_socket_init_posix(
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
-#endif
+#endif // !AWS_ENABLE_EPOLL && !AWS_ENABLE_KQUEUE
 
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
 int aws_socket_init_winsock(

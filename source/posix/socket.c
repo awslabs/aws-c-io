@@ -301,7 +301,7 @@ static int s_socket_init(
 
     return AWS_OP_SUCCESS;
 }
-
+#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
 int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -309,6 +309,7 @@ int aws_socket_init_posix(
     AWS_ASSERT(options);
     return s_socket_init(socket, alloc, options, -1);
 }
+#endif // AWS_ENABLE_KQUEUE || AWS_ENABLE_EPOLL
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {

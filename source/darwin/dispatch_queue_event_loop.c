@@ -153,6 +153,7 @@ static struct aws_string *s_get_unique_dispatch_queue_id(struct aws_allocator *a
     return result;
 }
 
+#if defined(aws_event_loop_new_with_dispatch_queue)
 /* Setup a dispatch_queue with a scheduler. */
 struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct aws_allocator *alloc,
@@ -221,6 +222,8 @@ clean_up:
 
     return NULL;
 }
+
+#endif // AWS_ENABLE_DISPATCH_QUEUE
 
 static void s_dispatch_queue_destroy_task(void *context) {
     struct dispatch_loop *dispatch_loop = context;
