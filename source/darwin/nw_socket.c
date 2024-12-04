@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/socket.h>
 
 #include <aws/common/clock.h>

@@ -28,7 +28,7 @@ struct dispatch_scheduling_state {
     /**
      * Let's us skip processing an iteration task if one is already in the middle of executing
      */
-    bool is_executing_iteration;
+    bool will_schedule;
 
     /**
      * List<scheduled_service_entry> in sorted order by timestamp
@@ -39,28 +39,36 @@ struct dispatch_scheduling_state {
     struct aws_linked_list scheduled_services;
 };
 
+struct dispatch_loop;
+struct dispatch_loop_context;
+
 struct dispatch_loop {
     struct aws_allocator *allocator;
-    struct aws_ref_count ref_count;
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
     struct aws_linked_list local_cross_thread_tasks;
+    struct aws_event_loop *base_loop;
 
     /* Apple dispatch queue uses the id string to identify the dispatch queue */
     struct aws_string *dispatch_queue_id;
 
+    /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
-        struct dispatch_scheduling_state scheduling_state;
         struct aws_linked_list cross_thread_tasks;
-        struct aws_mutex lock;
+        struct dispatch_loop_context *context;
         bool suspended;
-        /* `is_executing` flag and `current_thread_id` together are used to identify the excuting
-         * thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct aws_event_loop *event_loop)`
-         * for details.
-         */
+    } synced_task_data;
+
+    /* Synced thread data handles the thread related info. `is_executing` flag and `current_thread_id` together are used
+     * to identify the executing thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct
+     * aws_event_loop *event_loop)` for details.
+     */
+    struct {
+
+        struct aws_mutex thread_data_lock;
         bool is_executing;
         aws_thread_id_t current_thread_id;
-    } synced_data;
+    } synced_thread_data;
 
     bool is_destroying;
 };

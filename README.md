@@ -755,8 +755,7 @@ Shuts down any pending operations on the socket, and cleans up state. The socket
 
     int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint);
 
-Connects to a remote endpoint. In TCP and all Apple Network Framework connections (regardless it is UDP, TCP or LOCAL), this will 
-function will not block. If the return value is successful, then you must wait on  the `on_connection_established()` callback to 
+Connects to a remote endpoint. In TCP and all Apple Network Framework connections (regardless it is UDP, TCP or LOCAL), when the connection succeed, you still must wait on  the `on_connection_established()` callback to 
 be invoked before using the socket.
 
 In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`, and if the operation is successful, 
