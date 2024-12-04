@@ -153,7 +153,7 @@ static struct aws_string *s_get_unique_dispatch_queue_id(struct aws_allocator *a
     return result;
 }
 
-#if defined(aws_event_loop_new_with_dispatch_queue)
+#if defined(AWS_ENABLE_DISPATCH_QUEUE)
 /* Setup a dispatch_queue with a scheduler. */
 struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct aws_allocator *alloc,
