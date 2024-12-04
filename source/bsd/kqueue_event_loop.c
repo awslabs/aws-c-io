@@ -131,7 +131,8 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .is_on_callers_thread = s_is_event_thread,
 };
 
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+#ifdef AWS_ENABLE_KQUEUE
+struct aws_event_loop *aws_event_loop_new_with_kqueue(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
@@ -291,6 +292,7 @@ clean_up:
     }
     return NULL;
 }
+#endif // AWS_ENABLE_KQUEUE
 
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event_loop", (void *)event_loop);
