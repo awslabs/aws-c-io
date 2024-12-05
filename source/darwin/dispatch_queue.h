@@ -47,9 +47,6 @@ struct dispatch_loop {
     struct aws_linked_list local_cross_thread_tasks;
     struct aws_event_loop *base_loop;
 
-    /* Apple dispatch queue uses the id string to identify the dispatch queue */
-    struct aws_string *dispatch_queue_id;
-
     /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
         struct aws_linked_list cross_thread_tasks;
@@ -62,7 +59,6 @@ struct dispatch_loop {
      * aws_event_loop *event_loop)` for details.
      */
     struct {
-
         struct aws_mutex thread_data_lock;
         bool is_executing;
         aws_thread_id_t current_thread_id;
