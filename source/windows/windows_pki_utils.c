@@ -269,6 +269,115 @@ void aws_close_cert_store(HCERTSTORE cert_store) {
     CertCloseStore(cert_store, 0);
 }
 
+enum aws_rsa_private_key_container_type {
+    AWS_RPKCT_PERSIST_TO_USER_PROFILE,
+    AWS_RPKCT_PERSIST_TO_GLOBAL,
+    AWS_RPKCT_EPHEMERAL,
+};
+
+static int s_cert_context_import_rsa_private_key_to_key_container(
+    PCCERT_CONTEXT certs,
+    const BYTE *key,
+    DWORD decoded_len,
+    wchar_t uuid_wstr[AWS_UUID_STR_LEN],
+    enum aws_rsa_private_key_container_type key_container_type,
+    HCRYPTPROV *out_crypto_provider,
+    HCRYPTKEY *out_private_key_handle) {
+
+    /* out-params will adopt these resources if the function is successful.
+     * if function fails these resources will be cleaned up before returning */
+    HCRYPTPROV crypto_prov = 0;
+    HCRYPTKEY h_key = 0;
+
+    const wchar_t *container_name = NULL;
+    DWORD acquire_context_flags = 0;
+
+    switch (key_container_type) {
+        case AWS_RPKCT_PERSIST_TO_USER_PROFILE:
+            container_name = uuid_wstr;
+            acquire_context_flags = CRYPT_NEWKEYSET;
+            break;
+        case AWS_RPKCT_PERSIST_TO_GLOBAL:
+            container_name = uuid_wstr;
+            acquire_context_flags = CRYPT_NEWKEYSET | CRYPT_MACHINE_KEYSET;
+            break;
+        case AWS_RPKCT_EPHEMERAL:
+            break;
+    }
+
+    if (!CryptAcquireContextW(&crypto_prov, container_name, NULL, PROV_RSA_FULL, acquire_context_flags)) {
+        /* The NTE_EXISTS error returned by CryptAcquireContextW is actually recoverable, meaning the requested key
+         * container already exists. But since we use UUID as a name, this error should never happen. */
+        AWS_LOGF_WARN(
+            AWS_LS_IO_PKI,
+            "static: error creating a new rsa crypto context for key: key container type %d; error code %d",
+            (int)key_container_type,
+            (int)GetLastError());
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto on_error;
+    }
+
+    if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "static: failed to import rsa key into crypto provider: key container type %d; error code %d",
+            (int)key_container_type,
+            GetLastError());
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto on_error;
+    }
+
+    if (key_container_type == AWS_RPKCT_EPHEMERAL) {
+        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_HANDLE_PROP_ID, 0, (void *)crypto_prov)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error setting a certificate context property for rsa key: key container type %d; error code "
+                "%d",
+                (int)key_container_type,
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+    } else {
+        CRYPT_KEY_PROV_INFO key_prov_info;
+        AWS_ZERO_STRUCT(key_prov_info);
+        key_prov_info.pwszContainerName = uuid_wstr;
+        key_prov_info.dwProvType = PROV_RSA_FULL;
+        if (key_container_type == AWS_RPKCT_PERSIST_TO_GLOBAL) {
+            key_prov_info.dwFlags = CRYPT_MACHINE_KEYSET;
+        }
+        key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
+
+        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error setting a certificate context property: key container type %d; error code %d",
+                (int)key_container_type,
+                (int)GetLastError());
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto on_error;
+        }
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_PKI, "static: successfully imported rsa private key, key container type %d", (int)key_container_type);
+
+    *out_crypto_provider = crypto_prov;
+    *out_private_key_handle = h_key;
+    return AWS_OP_SUCCESS;
+
+on_error:
+    if (h_key != 0) {
+        CryptDestroyKey(h_key);
+    }
+
+    if (crypto_prov != 0) {
+        CryptReleaseContext(crypto_prov, 0);
+    }
+
+    return AWS_OP_ERR;
+}
+
 static int s_cert_context_import_rsa_private_key(
     PCCERT_CONTEXT certs,
     const BYTE *key,
@@ -278,80 +387,38 @@ static int s_cert_context_import_rsa_private_key(
     HCRYPTPROV *out_crypto_provider,
     HCRYPTKEY *out_private_key_handle) {
 
-    /* out-params will adopt these resources if the function is successful.
-     * if function fails these resources will be cleaned up before returning */
-    HCRYPTPROV crypto_prov = 0;
-    HCRYPTKEY h_key = 0;
-
     if (is_client_mode) {
-        /* use CRYPT_VERIFYCONTEXT so that keys are ephemeral (not stored to disk, registry, etc) */
-        if (!CryptAcquireContextW(&crypto_prov, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error creating a new rsa crypto context for key with errno %d",
-                (int)GetLastError());
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto on_error;
-        }
+        /* In client mode, try importing into various Windows key containers until we succeed or exhaust all possible
+         * options. */
+        enum aws_rsa_private_key_container_type available_key_container_types[] = {
+            AWS_RPKCT_PERSIST_TO_USER_PROFILE,
+            AWS_RPKCT_PERSIST_TO_GLOBAL,
+            AWS_RPKCT_EPHEMERAL,
+        };
 
-        if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto on_error;
-        }
-
-        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_HANDLE_PROP_ID, 0, (void *)crypto_prov)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error creating a new certificate context for rsa key with errno %d",
-                (int)GetLastError());
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto on_error;
+        for (size_t i = 0; i < AWS_ARRAY_SIZE(available_key_container_types); ++i) {
+            if (s_cert_context_import_rsa_private_key_to_key_container(
+                    certs,
+                    key,
+                    decoded_len,
+                    uuid_wstr,
+                    available_key_container_types[i],
+                    out_crypto_provider,
+                    out_private_key_handle) == AWS_OP_SUCCESS) {
+                return AWS_OP_SUCCESS;
+            }
         }
     } else {
-        if (!CryptAcquireContextW(&crypto_prov, uuid_wstr, NULL, PROV_RSA_FULL, CRYPT_NEWKEYSET)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: error creating a new rsa crypto context with errno %d", (int)GetLastError());
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto on_error;
+        if (s_cert_context_import_rsa_private_key_to_key_container(
+                certs,
+                key,
+                decoded_len,
+                uuid_wstr,
+                AWS_RPKCT_PERSIST_TO_USER_PROFILE,
+                out_crypto_provider,
+                out_private_key_handle) == AWS_OP_SUCCESS) {
+            return AWS_OP_SUCCESS;
         }
-
-        if (!CryptImportKey(crypto_prov, key, decoded_len, 0, 0, &h_key)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: failed to import rsa key into crypto provider, error code %d", GetLastError());
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto on_error;
-        }
-
-        CRYPT_KEY_PROV_INFO key_prov_info;
-        AWS_ZERO_STRUCT(key_prov_info);
-        key_prov_info.pwszContainerName = uuid_wstr;
-        key_prov_info.dwProvType = PROV_RSA_FULL;
-        key_prov_info.dwKeySpec = AT_KEYEXCHANGE;
-
-        if (!CertSetCertificateContextProperty(certs, CERT_KEY_PROV_INFO_PROP_ID, 0, &key_prov_info)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI,
-                "static: error creating a new certificate context for key with errno %d",
-                (int)GetLastError());
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto on_error;
-        }
-    }
-
-    *out_crypto_provider = crypto_prov;
-    *out_private_key_handle = h_key;
-    return AWS_OP_SUCCESS;
-
-on_error:
-
-    if (h_key != 0) {
-        CryptDestroyKey(h_key);
-    }
-
-    if (crypto_prov != 0) {
-        CryptReleaseContext(crypto_prov, 0);
     }
 
     return AWS_OP_ERR;
