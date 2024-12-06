@@ -65,7 +65,7 @@ class TlsServerSetup(Builder.Action):
         #                        ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         python_path = sys.executable
-        p = subprocess.Popen([python_path, "main.py",
+        p = subprocess.Popen([python_path, "../../.builder/actions/main.py",
                               ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
         p.poll()
