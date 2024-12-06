@@ -1,7 +1,10 @@
 import socket
 import ssl
+import os
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+cwd = os.getcwd()
+print("Current dir is {}".format(cwd))
 context.load_cert_chain('tls13.pem.crt', 'tls13.key')
 
 with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
