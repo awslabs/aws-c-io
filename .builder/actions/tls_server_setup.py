@@ -55,14 +55,18 @@ class TlsServerSetup(Builder.Action):
         for c in iter(lambda: p1.stderr.read(1), b""):
             sys.stdout.buffer.write(c)
 
-        p = subprocess.Popen(["openssl.exe", "s_server",
-                               "-accept", "localhost:59443",
-                               "-key", "tls13.key",
-                               "-cert", "tls13.pem.crt",
-                               "-chainCAfile", "tls13_root_ca.pem.crt",
-                               "-alpn", "x-amzn-mqtt-ca",
-                               "-debug", "-state",
-                               ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # p = subprocess.Popen(["openssl.exe", "s_server",
+        #                        "-accept", "localhost:59443",
+        #                        "-key", "tls13.key",
+        #                        "-cert", "tls13.pem.crt",
+        #                        "-chainCAfile", "tls13_root_ca.pem.crt",
+        #                        "-alpn", "x-amzn-mqtt-ca",
+        #                        "-debug", "-state",
+        #                        ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        python_path = sys.executable
+        p = subprocess.Popen([python_path, "main.py",
+                              ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         time.sleep(1)
         p.poll()
         print("Return code is {}".format(p.returncode))
