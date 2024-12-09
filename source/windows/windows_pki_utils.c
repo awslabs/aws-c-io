@@ -387,45 +387,35 @@ static int s_cert_context_import_rsa_private_key(
     HCRYPTPROV *out_crypto_provider,
     HCRYPTKEY *out_private_key_handle) {
 
-    if (is_client_mode) {
-        /* In client mode, try importing into various Windows key containers until we succeed or exhaust all possible
-         * options. */
-        enum aws_rsa_private_key_container_type available_key_container_types[] = {
-            AWS_RPKCT_PERSIST_TO_USER_PROFILE,
-            AWS_RPKCT_PERSIST_TO_GLOBAL,
-            AWS_RPKCT_EPHEMERAL,
-        };
+    const enum aws_rsa_private_key_container_type client_available_key_container_types[] = {
+        AWS_RPKCT_PERSIST_TO_USER_PROFILE,
+        AWS_RPKCT_PERSIST_TO_GLOBAL,
+        AWS_RPKCT_EPHEMERAL,
+    };
 
-        for (size_t i = 0; i < AWS_ARRAY_SIZE(available_key_container_types); ++i) {
-            if (s_cert_context_import_rsa_private_key_to_key_container(
-                    certs,
-                    key,
-                    decoded_len,
-                    uuid_wstr,
-                    available_key_container_types[i],
-                    out_crypto_provider,
-                    out_private_key_handle) == AWS_OP_SUCCESS) {
-                return AWS_OP_SUCCESS;
-            }
-        }
-    } else {
-        /* NOTE We didn't verify server-side with ephemeral keys. So, use only persisting key containers. */
-        enum aws_rsa_private_key_container_type available_key_container_types[] = {
-            AWS_RPKCT_PERSIST_TO_USER_PROFILE,
-            AWS_RPKCT_PERSIST_TO_GLOBAL,
-        };
+    /* NOTE We didn't verify server-side with ephemeral keys. So, use only persisting key containers. */
+    const enum aws_rsa_private_key_container_type server_available_key_container_types[] = {
+        AWS_RPKCT_PERSIST_TO_USER_PROFILE,
+        AWS_RPKCT_PERSIST_TO_GLOBAL,
+    };
 
-        for (size_t i = 0; i < AWS_ARRAY_SIZE(available_key_container_types); ++i) {
-            if (s_cert_context_import_rsa_private_key_to_key_container(
-                    certs,
-                    key,
-                    decoded_len,
-                    uuid_wstr,
-                    available_key_container_types[i],
-                    out_crypto_provider,
-                    out_private_key_handle) == AWS_OP_SUCCESS) {
-                return AWS_OP_SUCCESS;
-            }
+    size_t key_container_types_num = is_client_mode ? AWS_ARRAY_SIZE(client_available_key_container_types)
+                                                    : AWS_ARRAY_SIZE(server_available_key_container_types);
+    const enum aws_rsa_private_key_container_type *available_key_container_types =
+        is_client_mode ? client_available_key_container_types : server_available_key_container_types;
+
+    /* Try importing into various Windows key containers until we succeed or exhaust all possible
+     * options. */
+    for (size_t i = 0; i < key_container_types_num; ++i) {
+        if (s_cert_context_import_rsa_private_key_to_key_container(
+                certs,
+                key,
+                decoded_len,
+                uuid_wstr,
+                available_key_container_types[i],
+                out_crypto_provider,
+                out_private_key_handle) == AWS_OP_SUCCESS) {
+            return AWS_OP_SUCCESS;
         }
     }
 
