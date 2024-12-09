@@ -1456,9 +1456,11 @@ static int s_verify_good_host_mqtt_connect(
 
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "tls13_device.pem.crt"));
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "tls13_device.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "tls13_device_root_ca.pem.crt"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
 
     aws_io_library_init(allocator);
 
@@ -1502,6 +1504,8 @@ static int s_verify_good_host_mqtt_connect(
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, tls_context);
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+
+    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
