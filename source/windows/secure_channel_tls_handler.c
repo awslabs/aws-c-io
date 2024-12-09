@@ -62,7 +62,6 @@ struct common_credential_params {
     DWORD dwFlags;
     PCCERT_CONTEXT *paCred;
     DWORD cCreds;
-    DWORD enabledProtocols;
 };
 
 struct secure_channel_ctx {
@@ -77,6 +76,8 @@ struct secure_channel_ctx {
     HCRYPTKEY private_key;
     bool verify_peer;
     bool should_free_pcerts;
+    enum aws_tls_versions minimum_tls_version;
+    bool disable_tls13;
 };
 
 struct secure_channel_handler {
@@ -2034,10 +2035,68 @@ on_error:
     return NULL;
 }
 
-static DWORD get_enabled_protocols(const struct aws_tls_ctx_options *options, bool is_client_mode) {
+static DWORD s_get_disabled_protocols(
+    enum aws_tls_versions minimum_tls_version,
+    bool is_client_mode,
+    bool disable_tls13) {
+    DWORD bit_disabled_protocols = 0;
+    if (is_client_mode) {
+        switch (minimum_tls_version) {
+            case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_2_CLIENT)
+                bit_disabled_protocols |= SP_PROT_TLS1_2_CLIENT;
+#endif
+            case AWS_IO_TLSv1_2:
+                bit_disabled_protocols |= SP_PROT_TLS1_1_CLIENT;
+            case AWS_IO_TLSv1_1:
+                bit_disabled_protocols |= SP_PROT_TLS1_0_CLIENT;
+            case AWS_IO_TLSv1:
+                bit_disabled_protocols |= SP_PROT_SSL3_CLIENT;
+            case AWS_IO_SSLv3:
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                bit_disabled_protocols = 0;
+                break;
+        }
+#if defined(SP_PROT_TLS1_3_CLIENT)
+        if (disable_tls13) {
+            bit_disabled_protocols |= SP_PROT_TLS1_3_CLIENT;
+        }
+#endif
+    } else {
+        switch (minimum_tls_version) {
+            case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_2_SERVER)
+                bit_disabled_protocols |= SP_PROT_TLS1_2_SERVER;
+#endif
+            case AWS_IO_TLSv1_2:
+                bit_disabled_protocols |= SP_PROT_TLS1_1_SERVER;
+            case AWS_IO_TLSv1_1:
+                bit_disabled_protocols |= SP_PROT_TLS1_0_SERVER;
+            case AWS_IO_TLSv1:
+                bit_disabled_protocols |= SP_PROT_SSL3_SERVER;
+            case AWS_IO_SSLv3:
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                bit_disabled_protocols = 0;
+                break;
+        }
+#if defined(SP_PROT_TLS1_3_SERVER)
+        if (!disable_tls13) {
+            bit_disabled_protocols |= SP_PROT_TLS1_3_SERVER;
+        }
+#endif
+    }
+    return bit_disabled_protocols;
+}
+
+static DWORD s_get_enabled_protocols(
+    enum aws_tls_versions minimum_tls_version,
+    bool is_client_mode,
+    bool disable_tls13) {
     DWORD bit_enabled_protocols = 0;
     if (is_client_mode) {
-        switch (options->minimum_tls_version) {
+        switch (minimum_tls_version) {
             case AWS_IO_SSLv3:
                 bit_enabled_protocols |= SP_PROT_SSL3_CLIENT;
             case AWS_IO_TLSv1:
@@ -2050,15 +2109,21 @@ static DWORD get_enabled_protocols(const struct aws_tls_ctx_options *options, bo
 #endif
             case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_CLIENT)
-                bit_enabled_protocols |= SP_PROT_TLS1_3_CLIENT;
+                if (!disable_tls13) {
+                    bit_enabled_protocols |= SP_PROT_TLS1_3_CLIENT;
+                }
 #endif
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                bit_enabled_protocols = 0;
+                if (disable_tls13) {
+                    bit_enabled_protocols = s_get_enabled_protocols(AWS_IO_SSLv3, is_client_mode, disable_tls13);
+                } else {
+                    bit_enabled_protocols = 0;
+                }
                 break;
         }
     } else {
-        switch (options->minimum_tls_version) {
+        switch (minimum_tls_version) {
             case AWS_IO_SSLv3:
                 bit_enabled_protocols |= SP_PROT_SSL3_SERVER;
             case AWS_IO_TLSv1:
@@ -2071,11 +2136,17 @@ static DWORD get_enabled_protocols(const struct aws_tls_ctx_options *options, bo
 #endif
             case AWS_IO_TLSv1_3:
 #if defined(SP_PROT_TLS1_3_SERVER)
-                bit_enabled_protocols |= SP_PROT_TLS1_3_SERVER;
+                if (!disable_tls13) {
+                    bit_enabled_protocols |= SP_PROT_TLS1_3_SERVER;
+                }
 #endif
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                bit_enabled_protocols = 0;
+                if (disable_tls13) {
+                    bit_enabled_protocols = s_get_enabled_protocols(AWS_IO_SSLv3, is_client_mode, disable_tls13);
+                } else {
+                    bit_enabled_protocols = 0;
+                }
                 break;
         }
     }
@@ -2102,11 +2173,9 @@ static struct aws_channel_handler *s_tls_handler_sch_credentials_new(
     ZeroMemory(&credentials, sizeof(SCH_CREDENTIALS));
 
     TLS_PARAMETERS tls_params = {0};
-    if (sc_ctx->schannel_creds.enabledProtocols == 0) {
-        tls_params.grbitDisabledProtocols = 0;
-    } else {
-        tls_params.grbitDisabledProtocols = ~(sc_ctx->schannel_creds.enabledProtocols);
-    }
+    tls_params.grbitDisabledProtocols =
+        s_get_disabled_protocols(sc_ctx->minimum_tls_version, is_client_mode, sc_ctx->disable_tls13);
+
     credentials.pTlsParameters = &tls_params;
     credentials.cTlsParameters = 1;
     credentials.dwSessionLifespan = 0; /* default 10 hours */
@@ -2170,7 +2239,8 @@ static struct aws_channel_handler *s_tls_handler_schannel_cred_new(
     credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
     credentials.paCred = sc_ctx->schannel_creds.paCred;
     credentials.cCreds = sc_ctx->schannel_creds.cCreds;
-    credentials.grbitEnabledProtocols = sc_ctx->schannel_creds.enabledProtocols;
+    credentials.grbitEnabledProtocols =
+        s_get_enabled_protocols(sc_ctx->minimum_tls_version, is_client_mode, sc_ctx->disable_tls13);
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
@@ -2315,7 +2385,8 @@ struct aws_tls_ctx *s_ctx_new(
 
     secure_channel_ctx->verify_peer = options->verify_peer;
     secure_channel_ctx->should_free_pcerts = true;
-    secure_channel_ctx->schannel_creds.enabledProtocols = get_enabled_protocols(options, is_client_mode);
+    secure_channel_ctx->disable_tls13 = false;
+    secure_channel_ctx->minimum_tls_version = options->minimum_tls_version;
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
@@ -2386,11 +2457,17 @@ struct aws_tls_ctx *s_ctx_new(
             &secure_channel_ctx->cert_store,
             &secure_channel_ctx->pcerts,
             &secure_channel_ctx->crypto_provider,
-            &secure_channel_ctx->private_key);
+            &secure_channel_ctx->private_key,
+            &secure_channel_ctx->disable_tls13);
 
         if (err) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
+            goto clean_up;
+        }
+
+        if (secure_channel_ctx->disable_tls13 && options->minimum_tls_version == AWS_IO_TLSv1_3) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: minimum TLS version is set to 1.3, but it can't be supported");
             goto clean_up;
         }
 

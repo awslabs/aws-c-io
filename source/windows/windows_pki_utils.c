@@ -282,7 +282,8 @@ static int s_cert_context_import_rsa_private_key_to_key_container(
     wchar_t uuid_wstr[AWS_UUID_STR_LEN],
     enum aws_rsa_private_key_container_type key_container_type,
     HCRYPTPROV *out_crypto_provider,
-    HCRYPTKEY *out_private_key_handle) {
+    HCRYPTKEY *out_private_key_handle,
+    bool *tls13_disabled) {
 
     /* out-params will adopt these resources if the function is successful.
      * if function fails these resources will be cleaned up before returning */
@@ -338,6 +339,9 @@ static int s_cert_context_import_rsa_private_key_to_key_container(
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto on_error;
         }
+        /* Secure Channel doesn't support TLS 1.3 with ephemeral keys. */
+        AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: TLS 1.3 does not support ephemeral keys, disabling TLS 1.3");
+        *tls13_disabled = true;
     } else {
         CRYPT_KEY_PROV_INFO key_prov_info;
         AWS_ZERO_STRUCT(key_prov_info);
@@ -385,7 +389,8 @@ static int s_cert_context_import_rsa_private_key(
     bool is_client_mode,
     wchar_t uuid_wstr[AWS_UUID_STR_LEN],
     HCRYPTPROV *out_crypto_provider,
-    HCRYPTKEY *out_private_key_handle) {
+    HCRYPTKEY *out_private_key_handle,
+    bool *tls13_disabled) {
 
     const enum aws_rsa_private_key_container_type client_available_key_container_types[] = {
         AWS_RPKCT_PERSIST_TO_USER_PROFILE,
@@ -414,7 +419,8 @@ static int s_cert_context_import_rsa_private_key(
                 uuid_wstr,
                 available_key_container_types[i],
                 out_crypto_provider,
-                out_private_key_handle) == AWS_OP_SUCCESS) {
+                out_private_key_handle,
+                tls13_disabled) == AWS_OP_SUCCESS) {
             return AWS_OP_SUCCESS;
         }
     }
@@ -611,7 +617,8 @@ int aws_import_key_pair_to_cert_context(
     HCERTSTORE *store,
     PCCERT_CONTEXT *certs,
     HCRYPTPROV *crypto_provider,
-    HCRYPTKEY *private_key_handle) {
+    HCRYPTKEY *private_key_handle,
+    bool *tls13_disabled) {
 
     struct aws_array_list certificates, private_keys;
     AWS_ZERO_STRUCT(certificates);
@@ -789,7 +796,14 @@ int aws_import_key_pair_to_cert_context(
     switch (cert_type) {
         case AWS_CT_X509_RSA:
             result = s_cert_context_import_rsa_private_key(
-                *certs, key, decoded_len, is_client_mode, uuid_wstr, crypto_provider, private_key_handle);
+                *certs,
+                key,
+                decoded_len,
+                is_client_mode,
+                uuid_wstr,
+                crypto_provider,
+                private_key_handle,
+                tls13_disabled);
             break;
 
 #ifndef AWS_SUPPORT_WIN7
