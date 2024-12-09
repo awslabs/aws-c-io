@@ -409,15 +409,23 @@ static int s_cert_context_import_rsa_private_key(
             }
         }
     } else {
-        if (s_cert_context_import_rsa_private_key_to_key_container(
-                certs,
-                key,
-                decoded_len,
-                uuid_wstr,
-                AWS_RPKCT_PERSIST_TO_USER_PROFILE,
-                out_crypto_provider,
-                out_private_key_handle) == AWS_OP_SUCCESS) {
-            return AWS_OP_SUCCESS;
+        /* NOTE We didn't verify server-side with ephemeral keys. So, use only persisting key containers. */
+        enum aws_rsa_private_key_container_type available_key_container_types[] = {
+            AWS_RPKCT_PERSIST_TO_USER_PROFILE,
+            AWS_RPKCT_PERSIST_TO_GLOBAL,
+        };
+
+        for (size_t i = 0; i < AWS_ARRAY_SIZE(available_key_container_types); ++i) {
+            if (s_cert_context_import_rsa_private_key_to_key_container(
+                    certs,
+                    key,
+                    decoded_len,
+                    uuid_wstr,
+                    available_key_container_types[i],
+                    out_crypto_provider,
+                    out_private_key_handle) == AWS_OP_SUCCESS) {
+                return AWS_OP_SUCCESS;
+            }
         }
     }
 

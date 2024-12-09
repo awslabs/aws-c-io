@@ -1454,8 +1454,8 @@ static int s_verify_good_host_mqtt_connect(
     struct aws_byte_buf key_buf = {0};
     struct aws_byte_buf ca_buf = {0};
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "unittests.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "unittests.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "tls13_device.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "tls13_device.key"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
