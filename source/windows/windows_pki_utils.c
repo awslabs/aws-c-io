@@ -409,8 +409,7 @@ static int s_cert_context_import_rsa_private_key(
     const enum aws_rsa_private_key_container_type *available_key_container_types =
         is_client_mode ? client_available_key_container_types : server_available_key_container_types;
 
-    /* Try importing into various Windows key containers until we succeed or exhaust all possible
-     * options. */
+    /* Try importing into various Windows key containers until we succeed or exhaust all possible options. */
     for (size_t i = 0; i < key_container_types_num; ++i) {
         if (s_cert_context_import_rsa_private_key_to_key_container(
                 certs,

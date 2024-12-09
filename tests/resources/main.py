@@ -13,5 +13,8 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
     sock.listen(1)
     with context.wrap_socket(sock, server_side=True) as ssock:
         while True:
-            conn, addr = ssock.accept()
-            print("Accepted new connection: {}".format(addr))
+            try:
+                conn, addr = ssock.accept()
+                print("Accepted new connection: {}".format(addr))
+            except Exceptions as e:
+                print("accept failed: {}".format(e))
