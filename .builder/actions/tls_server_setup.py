@@ -39,10 +39,5 @@ class TlsServerSetup(Builder.Action):
             print("Terminating openssl TLS server")
             p.terminate()
             out, err = p.communicate()
-            print("=== stdout:\n{}".format(out))
-            # for c in iter(lambda: p.stdout.read(1), b""):
-            # sys.stdout.buffer.write(c)
-            print("=== stderr:\n{}".format(err))
-            # for c in iter(lambda: p.stderr.read(1), b""):
-            # sys.stdout.buffer.write(c)
-            print("====== bye")
+            print("TLS server stdout:\n{}".format(out))
+            print("TLS server stderr:\n{}".format(err))
