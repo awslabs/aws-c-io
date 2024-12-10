@@ -1622,14 +1622,12 @@ AWS_TEST_CASE(
 #    endif
 
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
-static int s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_tls_client_channel_negotiation_success_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, NULL);
 }
 
-AWS_TEST_CASE(
-    tls_client_channel_negotiation_success_ecc384_tls1_3,
-    s_tls_client_channel_negotiation_success_ecc384_tls1_3_fn)
+AWS_TEST_CASE(tls_client_channel_negotiation_success_tls1_3, s_tls_client_channel_negotiation_success_tls1_3_fn)
 
 AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 
