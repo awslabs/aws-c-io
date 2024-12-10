@@ -1216,19 +1216,25 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
             }
 
             /*
-             * The following diagram demonstrates a (maybe impossible) case, when DecryptMessage returns
-             * SEC_I_RENEGOTIATE while processing extra data (i.e. we're at the second iteration of the loop).
-             * So, `offset` and `decrypted data` might be empty, but we have to take them into account.
+             * The following diagram visualizes a case, when DecryptMessage returns SEC_I_RENEGOTIATE while processing
+             * extra data (i.e. we're at the second or later iteration of the loop). This case is not necessarily
+             * possible, but it helps with understanding the logic of processing received data.
              *
-             * +--------+----------------+-----------------+
-             * | offset | decrypted data | SECBUFFER_EXTRA |
-             * +--------+----------------+-----------------+
+             * At the second+ iteration, algorithm percepts sc_handler->buffered_read_in_data_buf like this:
+             * +-----------------------+----------------+-----------------+
+             * |        offset         | decrypted data | SECBUFFER_EXTRA |
+             * +-----------------------+----------------+-----------------+
+             * | data was decrypted on |                                  |
+             * | previous iterations   |        current iteration         |
              *
-             *  -------------------------------------------   all read data (sc_handler->buffered_read_in_data_buf.len)
-             *  --------                                      decrypted data from the previous step(s)
-             *           ----------------------------------   read_len; SECBUFFER_EXTRA from the previous step
+             *  ----------------------------------------------------------   sc_handler->buffered_read_in_data_buf,
+             *                                                                 a whole chunk of data read from a socket
+             *  -----------------------                                      part of buffer that was decrypted on the
+             *                                                                 previous step(s)
+             *                          ----------------------------------   SECBUFFER_EXTRA from the previous step
+             *                                                                 with length read_len
              *
-             *  We need to pass to InitializeSecurityContextA only the last segment.
+             *  We need to pass only the last segment, SECBUFFER_EXTRA, to InitializeSecurityContextA.
              */
             size_t extra_data_offset = offset;
             if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0 &&

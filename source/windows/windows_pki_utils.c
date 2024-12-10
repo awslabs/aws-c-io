@@ -398,7 +398,7 @@ static int s_cert_context_import_rsa_private_key(
         AWS_RPKCT_EPHEMERAL,
     };
 
-    /* NOTE We didn't verify server-side with ephemeral keys. So, use only persisting key containers. */
+    /* NOTE We didn't verify server-side with ephemeral keys, so use only persistent key containers. */
     const enum aws_rsa_private_key_container_type server_available_key_container_types[] = {
         AWS_RPKCT_PERSIST_TO_USER_PROFILE,
         AWS_RPKCT_PERSIST_TO_GLOBAL,
