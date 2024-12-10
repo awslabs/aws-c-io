@@ -1231,7 +1231,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
              *                                                                 a whole chunk of data read from a socket
              *  -----------------------                                      part of buffer that was decrypted on the
              *                                                                 previous step(s)
-             *                          ----------------------------------   SECBUFFER_EXTRA from the previous step
+             *                          ----------------------------------   SECBUFFER_EXTRA from the previous step,
              *                                                                 with length read_len
              *
              *  We need to pass only the last segment, SECBUFFER_EXTRA, to InitializeSecurityContextA.
@@ -1294,7 +1294,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                 NULL);
             if (status == SEC_E_OK) {
                 error = AWS_OP_SUCCESS;
-                /* If InitializeSecurityContextA returns SECBUFFER_EXTRA data, it should be passed to DecryptMessage. */
+                /* If renegotiating InitializeSecurityContextA returns SECBUFFER_EXTRA data, we should process it as
+                 * usual, i.e. pass to DecryptMessage on the next iteration. */
                 if (input_buffers2[1].BufferType == SECBUFFER_EXTRA) {
                     sc_handler->read_extra = input_buffers2[1].cbBuffer;
                 }
@@ -2096,10 +2097,7 @@ static DWORD s_get_disabled_protocols(
     return bit_disabled_protocols;
 }
 
-static DWORD s_get_enabled_protocols(
-    enum aws_tls_versions minimum_tls_version,
-    bool is_client_mode,
-    bool disable_tls13) {
+static DWORD s_get_enabled_protocols(enum aws_tls_versions minimum_tls_version, bool is_client_mode) {
     DWORD bit_enabled_protocols = 0;
     if (is_client_mode) {
         switch (minimum_tls_version) {
@@ -2114,18 +2112,10 @@ static DWORD s_get_enabled_protocols(
                 bit_enabled_protocols |= SP_PROT_TLS1_2_CLIENT;
 #endif
             case AWS_IO_TLSv1_3:
-#if defined(SP_PROT_TLS1_3_CLIENT)
-                if (!disable_tls13) {
-                    bit_enabled_protocols |= SP_PROT_TLS1_3_CLIENT;
-                }
-#endif
+                /* This function is used for SCHANNEL_CRED only, which doesn't support TLS 1.3. */
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                if (disable_tls13) {
-                    bit_enabled_protocols = s_get_enabled_protocols(AWS_IO_SSLv3, is_client_mode, disable_tls13);
-                } else {
-                    bit_enabled_protocols = 0;
-                }
+                bit_enabled_protocols = 0;
                 break;
         }
     } else {
@@ -2141,18 +2131,10 @@ static DWORD s_get_enabled_protocols(
                 bit_enabled_protocols |= SP_PROT_TLS1_2_SERVER;
 #endif
             case AWS_IO_TLSv1_3:
-#if defined(SP_PROT_TLS1_3_SERVER)
-                if (!disable_tls13) {
-                    bit_enabled_protocols |= SP_PROT_TLS1_3_SERVER;
-                }
-#endif
+                /* This function is used for SCHANNEL_CRED only, which doesn't support TLS 1.3. */
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                if (disable_tls13) {
-                    bit_enabled_protocols = s_get_enabled_protocols(AWS_IO_SSLv3, is_client_mode, disable_tls13);
-                } else {
-                    bit_enabled_protocols = 0;
-                }
+                bit_enabled_protocols = 0;
                 break;
         }
     }
@@ -2239,14 +2221,20 @@ static struct aws_channel_handler *s_tls_handler_schannel_cred_new(
 
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
 
+    /* Windows doesn't support TLS 1.3 with deprecated SCHANNEL_CRED. */
+    if (sc_ctx->minimum_tls_version == AWS_IO_TLSv1_3) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Minimum TLS version is set to 1.3, but SCHANNEL_CRED can't support it");
+        return NULL;
+    }
+
     SCHANNEL_CRED credentials = {0};
     credentials.dwVersion = SCHANNEL_CRED_VERSION;
     credentials.dwCredFormat = 0;
     credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
     credentials.paCred = sc_ctx->schannel_creds.paCred;
     credentials.cCreds = sc_ctx->schannel_creds.cCreds;
-    credentials.grbitEnabledProtocols =
-        s_get_enabled_protocols(sc_ctx->minimum_tls_version, is_client_mode, sc_ctx->disable_tls13);
+    sc_ctx->disable_tls13 = true;
+    credentials.grbitEnabledProtocols = s_get_enabled_protocols(sc_ctx->minimum_tls_version, is_client_mode);
 
     aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
 
