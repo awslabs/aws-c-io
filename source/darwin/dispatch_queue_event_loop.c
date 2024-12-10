@@ -288,8 +288,6 @@ clean_up:
 
 static void s_dispatch_queue_destroy_task(void *context) {
     struct dispatch_loop *dispatch_loop = context;
-
-    aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
     s_lock_dispatch_loop_context(dispatch_loop->context);
     dispatch_loop->context->suspended = true;
 
@@ -304,16 +302,17 @@ static void s_dispatch_queue_destroy_task(void *context) {
         &dispatch_loop->synced_cross_thread_data.cross_thread_tasks, &local_cross_thread_tasks);
     s_unlock_cross_thread_data(dispatch_loop);
 
+    aws_task_scheduler_clean_up(&dispatch_loop->scheduler); /* Tasks in scheduler get cancelled*/
     while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
         task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
     }
 
-    aws_mutex_lock(&dispatch_loop->synced_cross_thread_data.lock);
+    s_lock_cross_thread_data(dispatch_loop);
     dispatch_loop->synced_cross_thread_data.is_executing = false;
+    s_unlock_cross_thread_data(dispatch_loop);
 
-    aws_mutex_unlock(&dispatch_loop->synced_cross_thread_data.lock);
     s_unlock_dispatch_loop_context(dispatch_loop->context);
     s_dispatch_event_loop_destroy(dispatch_loop->base_loop);
 }
@@ -513,13 +512,13 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     s_lock_dispatch_loop_context(dispatch_loop->context);
-    bool should_schedule = false;
-
-    bool was_empty = aws_linked_list_empty(&dispatch_loop->synced_cross_thread_data.cross_thread_tasks);
+    s_lock_cross_thread_data(dispatch_loop);
     task->timestamp = run_at_nanos;
 
+    bool was_empty = aws_linked_list_empty(&dispatch_loop->synced_cross_thread_data.cross_thread_tasks);
     // As we dont have control to dispatch queue thread, all tasks are treated as cross thread tasks
     aws_linked_list_push_back(&dispatch_loop->synced_cross_thread_data.cross_thread_tasks, &task->node);
+    s_unlock_cross_thread_data(dispatch_loop);
 
     /**
      * To avoid explicit scheduling event loop iterations, the actual "iteration scheduling" should happened at the end
@@ -531,6 +530,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
      * iteration that is processing the `cross_thread_tasks`.
      */
 
+    bool should_schedule = false;
     if (was_empty && !dispatch_loop->context->scheduling_state.will_schedule) {
         /** If there is no currently running iteration, then we check if we have already scheduled an iteration
          * scheduled before this task's run time. */
