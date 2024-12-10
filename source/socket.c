@@ -184,9 +184,11 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
 
     enum aws_socket_impl_type socket_type = aws_socket_get_default_impl_type();
-    if (socket_type == AWS_SOCKET_IMPL_POSIX)
+    if (socket_type == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
+    } else if (socket_type == AWS_SOCKET_IMPL_POSIX) {
         snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
-    else if (socket_type == AWS_SOCKET_IMPL_WINSOCK) {
+    } else if (socket_type == AWS_SOCKET_IMPL_WINSOCK) {
         snprintf(
             endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
     }

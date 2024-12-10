@@ -14,13 +14,7 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 #define AWS_C_IO_PACKAGE_ID 1
 
-struct aws_io_handle {
-    union {
-        int fd;
-        void *handle;
-    } data;
-    void *additional_data;
-};
+struct aws_io_handle;
 
 enum aws_io_message_type {
     AWS_IO_MESSAGE_APPLICATION_DATA,
