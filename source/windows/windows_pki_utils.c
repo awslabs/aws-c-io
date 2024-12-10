@@ -307,8 +307,6 @@ static int s_cert_context_import_rsa_private_key_to_key_container(
     }
 
     if (!CryptAcquireContextW(&crypto_prov, container_name, NULL, PROV_RSA_FULL, acquire_context_flags)) {
-        /* The NTE_EXISTS error returned by CryptAcquireContextW is actually recoverable, meaning the requested key
-         * container already exists. But since we use UUID as a name, this error should never happen. */
         AWS_LOGF_WARN(
             AWS_LS_IO_PKI,
             "static: error creating a new rsa crypto context for key: key container type %d; error code %d",
