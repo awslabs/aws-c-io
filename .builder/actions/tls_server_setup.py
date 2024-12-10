@@ -26,12 +26,12 @@ class TlsServerSetup(Builder.Action):
         self.env = env
 
         base_dir = os.path.dirname(os.path.realpath(__file__))
-        dir = os.path.join(base_dir, "..", "..", "tests", "resources")
+        dir = os.path.join(base_dir, "..", "..", "tests", "tls_server")
 
         print("Running openssl TLS server")
 
         python_path = sys.executable
-        p = subprocess.Popen([python_path, "main.py",
+        p = subprocess.Popen([python_path, "tls_server.py",
                               ], cwd=dir, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         @atexit.register
