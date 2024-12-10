@@ -325,6 +325,7 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     nw_socket = NULL;
 }
 
+#ifdef AWS_ENABLE_DISPATCH_QUEUE
 int aws_socket_init_apple_nw_socket(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -375,6 +376,7 @@ int aws_socket_init_apple_nw_socket(
 
     return AWS_OP_SUCCESS;
 }
+#endif
 
 static void s_client_set_dispatch_queue(struct aws_io_handle *handle, void *queue) {
     nw_connection_set_queue(handle->data.handle, queue);

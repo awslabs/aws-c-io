@@ -214,7 +214,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     struct aws_event_loop *loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
     struct dispatch_loop *dispatch_loop = NULL;
-    dispatch_loop->allocator = alloc;
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing dispatch_queue event-loop", (void *)loop);
     if (aws_event_loop_init_base(loop, alloc, options->clock)) {
@@ -222,6 +221,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     }
 
     dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
+    dispatch_loop->allocator = alloc;
 
     char dispatch_queue_id[AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH] = {0};
     s_get_unique_dispatch_queue_id(dispatch_queue_id);
