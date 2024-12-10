@@ -46,22 +46,26 @@ struct dispatch_loop {
     struct aws_task_scheduler scheduler;
     struct aws_event_loop *base_loop;
 
+    /*
+     * Internal ref-counted dispatch loop context to processing Apple Dispatch Queue Resources.
+     * The context keep track of the live status of the dispatch loop. Dispatch queue should be
+     * nulled out in context when it is cleaned up.
+     */
+    struct dispatch_loop_context *context;
+
     /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
-        struct aws_linked_list cross_thread_tasks;
-        struct dispatch_loop_context *context;
-        bool suspended;
-    } synced_task_data;
-
-    /* Synced thread data handles the thread related info. `is_executing` flag and `current_thread_id` together are used
-     * to identify the executing thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct
-     * aws_event_loop *event_loop)` for details.
-     */
-    struct {
-        struct aws_mutex thread_data_lock;
+        struct aws_mutex lock;
+        /*
+         * `is_executing` flag and `current_thread_id` together are used
+         * to identify the executing thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct
+         * aws_event_loop *event_loop)` for details.
+         */
         bool is_executing;
         aws_thread_id_t current_thread_id;
-    } synced_thread_data;
+
+        struct aws_linked_list cross_thread_tasks;
+    } synced_cross_thread_data;
 
     bool is_destroying;
 };
