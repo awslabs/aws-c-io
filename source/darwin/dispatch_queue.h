@@ -44,7 +44,6 @@ struct dispatch_loop {
     struct aws_allocator *allocator;
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
-    struct aws_linked_list local_cross_thread_tasks;
     struct aws_event_loop *base_loop;
 
     /* Synced data handle cross thread tasks and events, and event loop operations*/
