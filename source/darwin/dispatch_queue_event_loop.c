@@ -320,10 +320,6 @@ static void s_dispatch_queue_destroy_task(void *context) {
 static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
-    /* Avoid double release on dispatch_loop */
-    if (!dispatch_loop) {
-        return;
-    }
 
     /* make sure the loop is running so we can schedule a last task. */
     s_run(event_loop);
@@ -490,7 +486,7 @@ static void s_run_iteration(void *context) {
 
 /**
  * Checks if a new iteration task needs to be scheduled, given a target timestamp. If so, submits an iteration task to
- * dispatch queue and registers the pending execution in the event loop's list of scheduled iterations.
+ * dispatch queue and registers the pending execution in the event loop's list of scheduled_services.
  *
  * If timestamp==0, the function will always schedule a new iteration as long as the event loop is not suspended.
  *
@@ -505,7 +501,11 @@ static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_
     }
     struct scheduled_service_entry *entry = s_scheduled_service_entry_new(dispatch_loop_context, timestamp);
     aws_linked_list_push_front(&dispatch_loop_context->scheduling_state.scheduled_services, &entry->node);
-    dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
+
+    uint64_t now_ns = 0;
+    aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
+    uint64_t delta = timestamp == 0 ? 0 : timestamp - now_ns;
+    dispatch_after_f(delta, dispatch_loop->dispatch_queue, entry, s_run_iteration);
 }
 
 static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
