@@ -377,8 +377,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         s_try_schedule_new_iteration(dispatch_loop->context, 0);
         s_unlock_service_entries(dispatch_loop->context);
         s_runlock_dispatch_loop_context(dispatch_loop->context);
-        
-    }
+        }
     s_unlock_cross_thread_data(dispatch_loop);
 
     return AWS_OP_SUCCESS;
