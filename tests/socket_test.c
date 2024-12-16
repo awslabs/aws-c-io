@@ -1170,6 +1170,9 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
 cleanup:
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
+
+    // wait for socket ref count drop and released
+    aws_thread_current_sleep(5000000000);
     return result;
 }
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
