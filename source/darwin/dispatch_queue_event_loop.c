@@ -420,6 +420,8 @@ static void end_iteration(struct scheduled_service_entry *entry) {
     s_lock_cross_thread_data(dispatch_loop);
     dispatch_loop->synced_cross_thread_data.is_executing = false;
 
+    // Remove the node before do scheduling so we didnt consider the entry itself
+    aws_linked_list_remove(&entry->node);
     // if there are any cross-thread tasks, reschedule an iteration for now
     if (!aws_linked_list_empty(&dispatch_loop->synced_cross_thread_data.cross_thread_tasks)) {
         // added during service which means nothing was scheduled because will_schedule was true
