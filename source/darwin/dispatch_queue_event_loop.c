@@ -189,6 +189,7 @@ static bool s_should_schedule_iteration(
 /* On dispatch event loop context ref-count reaches 0 */
 static void s_dispatch_loop_context_destroy(void *context) {
     struct dispatch_loop_context *dispatch_loop_context = context;
+    aws_mutex_clean_up(&dispatch_loop_context->scheduling_state.services_lock);
     aws_rw_lock_clean_up(&dispatch_loop_context->lock);
     aws_mem_release(dispatch_loop_context->allocator, dispatch_loop_context);
 }
