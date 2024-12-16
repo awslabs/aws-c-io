@@ -79,6 +79,18 @@ static struct aws_event_loop_vtable s_vtable = {
  */
 
 /* Internal ref-counted dispatch loop context to processing Apple Dispatch Queue Resources */
+
+struct dispatch_scheduling_state {
+    struct aws_mutex services_lock;
+    /**
+     * List<scheduled_service_entry> in sorted order by timestamp
+     *
+     * When we go to schedule a new iteration, we check here first to see
+     * if our scheduling attempt is redundant
+     */
+    struct aws_linked_list scheduled_services;
+};
+
 struct dispatch_loop_context {
     struct aws_rw_lock lock;
     struct dispatch_loop *io_dispatch_loop;
@@ -124,6 +136,14 @@ static void s_lock_cross_thread_data(struct dispatch_loop *loop) {
 
 static void s_unlock_cross_thread_data(struct dispatch_loop *loop) {
     aws_mutex_unlock(&loop->synced_cross_thread_data.lock);
+}
+
+static void s_lock_service_entries(struct dispatch_loop_context *contxt) {
+    aws_mutex_lock(&contxt->scheduling_state.services_lock);
+}
+
+static void s_unlock_service_entries(struct dispatch_loop_context *contxt) {
+    aws_mutex_unlock(&contxt->scheduling_state.services_lock);
 }
 
 static struct scheduled_service_entry *s_scheduled_service_entry_new(
@@ -269,6 +289,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct dispatch_loop_context *context = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
     aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
     context->allocator = alloc;
+    aws_mutex_init(&context->scheduling_state.services_lock);
     aws_linked_list_init(&context->scheduling_state.scheduled_services);
     aws_rw_lock_init(&context->lock);
     context->io_dispatch_loop = dispatch_loop;
@@ -351,7 +372,12 @@ static int s_run(struct aws_event_loop *event_loop) {
         AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
         dispatch_resume(dispatch_loop->dispatch_queue);
         dispatch_loop->synced_cross_thread_data.suspended = false;
+        s_rlock_dispatch_loop_context(dispatch_loop->context);
+        s_lock_service_entries(dispatch_loop->context);
         s_try_schedule_new_iteration(dispatch_loop->context, 0);
+        s_unlock_service_entries(dispatch_loop->context);
+        s_runlock_dispatch_loop_context(dispatch_loop->context);
+        
     }
     s_unlock_cross_thread_data(dispatch_loop);
 
@@ -398,7 +424,9 @@ static void end_iteration(struct scheduled_service_entry *entry) {
     // if there are any cross-thread tasks, reschedule an iteration for now
     if (!aws_linked_list_empty(&dispatch_loop->synced_cross_thread_data.cross_thread_tasks)) {
         // added during service which means nothing was scheduled because will_schedule was true
+        s_lock_service_entries(contxt);
         s_try_schedule_new_iteration(contxt, 0);
+        s_unlock_service_entries(contxt);
     } else {
         // no cross thread tasks, so check internal time-based scheduler
         uint64_t next_task_time = 0;
@@ -408,10 +436,12 @@ static void end_iteration(struct scheduled_service_entry *entry) {
         if (has_task) {
             // only schedule an iteration if there isn't an existing dispatched iteration for the next task time or
             // earlier
+            s_lock_service_entries(contxt);
             if (s_should_schedule_iteration(
                     &dispatch_loop->context->scheduling_state.scheduled_services, next_task_time)) {
                 s_try_schedule_new_iteration(contxt, next_task_time);
             }
+            s_unlock_service_entries(contxt);
         }
     }
 
@@ -516,18 +546,20 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
      */
 
     bool should_schedule = false;
-    // Since the iteration will always try to schedule itself at the end, we should avoid scheduling
-    // a new iteration if one is already in progress.
-    if (was_empty && !dispatch_loop->synced_cross_thread_data.is_executing) {
+    if (was_empty || !dispatch_loop->synced_cross_thread_data.is_executing) {
         /** If there is no currently running iteration, then we check if we have already scheduled an iteration
          * scheduled before this task's run time. */
+        s_lock_service_entries(dispatch_loop->context);
         should_schedule =
             s_should_schedule_iteration(&dispatch_loop->context->scheduling_state.scheduled_services, run_at_nanos);
+        s_unlock_service_entries(dispatch_loop->context);
     }
 
     // If there is no scheduled iteration, start one right now to process the `cross_thread_task`.
     if (should_schedule) {
+        s_lock_service_entries(dispatch_loop->context);
         s_try_schedule_new_iteration(dispatch_loop->context, 0);
+        s_unlock_service_entries(dispatch_loop->context);
     }
 
     s_unlock_cross_thread_data(dispatch_loop);

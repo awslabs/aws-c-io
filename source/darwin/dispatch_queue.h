@@ -22,16 +22,6 @@ struct secure_transport_ctx {
     bool verify_peer;
 };
 
-struct dispatch_scheduling_state {
-    /**
-     * List<scheduled_service_entry> in sorted order by timestamp
-     *
-     * When we go to schedule a new iteration, we check here first to see
-     * if our scheduling attempt is redundant
-     */
-    struct aws_linked_list scheduled_services;
-};
-
 struct dispatch_loop;
 struct dispatch_loop_context;
 
