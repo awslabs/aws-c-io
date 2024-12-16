@@ -62,6 +62,9 @@ struct dispatch_loop {
          * aws_event_loop *event_loop)` for details.
          */
         bool is_executing;
+        // once suspended is set to true, event loop will no longer schedule any future services entry (the running
+        // iteration will still be finished.).
+        bool suspended;
         aws_thread_id_t current_thread_id;
 
         struct aws_linked_list cross_thread_tasks;
