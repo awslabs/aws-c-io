@@ -452,8 +452,6 @@ static void s_run_iteration(void *context) {
     struct scheduled_service_entry *entry = context;
     struct dispatch_loop_context *dispatch_queue_context = entry->dispatch_queue_context;
     s_rlock_dispatch_loop_context(dispatch_queue_context);
-    // Removed and clean up the service entry regardless if the iteration run or not.
-    aws_linked_list_remove(&entry->node);
 
     if (!begin_iteration(entry)) {
         goto iteration_done;
