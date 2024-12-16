@@ -24,11 +24,6 @@ struct secure_transport_ctx {
 
 struct dispatch_scheduling_state {
     /**
-     * Let's us skip processing an iteration task if one is already in the middle of executing
-     */
-    bool will_schedule;
-
-    /**
      * List<scheduled_service_entry> in sorted order by timestamp
      *
      * When we go to schedule a new iteration, we check here first to see

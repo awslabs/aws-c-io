@@ -269,7 +269,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct dispatch_loop_context *context = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
     aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
     context->allocator = alloc;
-    context->scheduling_state.will_schedule = false;
     aws_linked_list_init(&context->scheduling_state.scheduled_services);
     aws_rw_lock_init(&context->lock);
     context->io_dispatch_loop = dispatch_loop;
@@ -381,8 +380,6 @@ static bool begin_iteration(struct scheduled_service_entry *entry) {
     bool should_execute_iteration = false;
     struct dispatch_loop *dispatch_loop = entry->dispatch_queue_context->io_dispatch_loop;
 
-    // mark us as running an iteration and remove from the pending list
-    dispatch_loop->context->scheduling_state.will_schedule = true;
     aws_linked_list_remove(&entry->node);
     should_execute_iteration = true;
     return should_execute_iteration;
@@ -394,8 +391,6 @@ static void end_iteration(struct scheduled_service_entry *entry) {
 
     struct dispatch_loop_context *contxt = entry->dispatch_queue_context;
     struct dispatch_loop *dispatch_loop = contxt->io_dispatch_loop;
-
-    dispatch_loop->context->scheduling_state.will_schedule = false;
 
     s_lock_cross_thread_data(dispatch_loop);
     dispatch_loop->synced_cross_thread_data.is_executing = false;
@@ -521,7 +516,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
      */
 
     bool should_schedule = false;
-    if (was_empty && !dispatch_loop->context->scheduling_state.will_schedule) {
+    // Since the iteration will always try to schedule itself at the end, we should avoid scheduling
+    // a new iteration if one is already in progress.
+    if (was_empty && !dispatch_loop->synced_cross_thread_data.is_executing) {
         /** If there is no currently running iteration, then we check if we have already scheduled an iteration
          * scheduled before this task's run time. */
         should_schedule =
