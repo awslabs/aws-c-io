@@ -377,12 +377,12 @@ static int s_stop(struct aws_event_loop *event_loop) {
 // returns true if we should execute an iteration, false otherwise
 // The function should be wrapped with dispatch_loop->context.lock
 static bool begin_iteration(struct scheduled_service_entry *entry) {
-    bool should_execute_iteration = false;
     struct dispatch_loop *dispatch_loop = entry->dispatch_queue_context->io_dispatch_loop;
 
-    aws_linked_list_remove(&entry->node);
-    should_execute_iteration = true;
-    return should_execute_iteration;
+    if (!dispatch_loop) {
+        return false;
+    }
+    return true;
 }
 
 // conditionally schedule another iteration as needed
@@ -423,14 +423,14 @@ static void s_run_iteration(void *context) {
     struct scheduled_service_entry *entry = context;
     struct dispatch_loop_context *dispatch_queue_context = entry->dispatch_queue_context;
     s_rlock_dispatch_loop_context(dispatch_queue_context);
-    struct dispatch_loop *dispatch_loop = entry->dispatch_queue_context->io_dispatch_loop;
+    // Removed and clean up the service entry regardless if the iteration run or not.
+    aws_linked_list_remove(&entry->node);
 
-    if (!dispatch_loop) {
+    if (!begin_iteration(entry)) {
         goto iteration_done;
     }
 
-    begin_iteration(entry);
-
+    struct dispatch_loop *dispatch_loop = entry->dispatch_queue_context->io_dispatch_loop;
     // swap the cross-thread tasks into task-local data
     struct aws_linked_list local_cross_thread_tasks;
     aws_linked_list_init(&local_cross_thread_tasks);
