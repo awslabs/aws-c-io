@@ -168,12 +168,12 @@ static bool s_is_windows_equal_or_above_version(DWORD build_number) {
     } else {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "Could not load ntdll: Falling back to earlier windows 10 schannel version before build %d",
+            "Could not load ntdll: Falling back to earlier windows version before build %d",
             build_number);
         status = STATUS_DLL_NOT_FOUND;
     }
     if (status == STATUS_SUCCESS) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows 10 build %u or later", build_number);
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows build %u or later", build_number);
         return true;
     } else if (status != STATUS_DLL_NOT_FOUND) {
         AWS_LOGF_DEBUG(
