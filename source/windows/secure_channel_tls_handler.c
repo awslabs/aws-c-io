@@ -1087,9 +1087,10 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Retrieving negotiated protocol.", handler);
             SecPkgContext_ApplicationProtocol alpn_result;
-            status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
+            SECURITY_STATUS alpn_status =
+                QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
 
-            if (status == SEC_E_OK) {
+            if (alpn_status == SEC_E_OK) {
                 if (alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
                     aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
                     memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
@@ -1107,8 +1108,8 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
                     AWS_LS_IO_TLS,
                     "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
                     handler,
-                    (int)status);
-                aws_error = s_determine_sspi_error(status);
+                    (int)alpn_status);
+                aws_error = s_determine_sspi_error(alpn_status);
                 goto cleanup;
             }
         }
