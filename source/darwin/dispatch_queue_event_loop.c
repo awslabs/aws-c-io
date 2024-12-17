@@ -220,11 +220,6 @@ static void s_dispatch_event_loop_destroy(void *context) {
 
     aws_mutex_clean_up(&dispatch_loop->synced_cross_thread_data.lock);
 
-    aws_mem_release(dispatch_loop->allocator, dispatch_loop);
-    aws_event_loop_clean_up_base(event_loop);
-    aws_mem_release(event_loop->alloc, event_loop);
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
     if (dispatch_loop->context) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
@@ -232,6 +227,12 @@ static void s_dispatch_event_loop_destroy(void *context) {
             (void *)event_loop,
             AWS_ATOMIC_VAR_INTVAL(&(dispatch_loop->context->ref_count.ref_count)));
     }
+
+    aws_mem_release(dispatch_loop->allocator, dispatch_loop);
+    aws_event_loop_clean_up_base(event_loop);
+    aws_mem_release(event_loop->alloc, event_loop);
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
 }
 
 /** Return a aws_string* with unique dispatch queue id string. The id is In format of
