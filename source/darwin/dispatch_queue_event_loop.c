@@ -7,6 +7,7 @@
 #include <aws/io/private/event_loop_impl.h>
 
 #include <aws/common/atomics.h>
+#include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/rw_lock.h>
 #include <aws/common/task_scheduler.h>
@@ -219,15 +220,6 @@ static void s_dispatch_event_loop_destroy(void *context) {
     }
 
     aws_mutex_clean_up(&dispatch_loop->synced_cross_thread_data.lock);
-
-    if (dispatch_loop->context) {
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p: remaining context ref count %zu",
-            (void *)event_loop,
-            AWS_ATOMIC_VAR_INTVAL(&(dispatch_loop->context->ref_count.ref_count)));
-    }
-
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
@@ -530,10 +522,24 @@ static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_
     struct scheduled_service_entry *entry = s_scheduled_service_entry_new(dispatch_loop_context, timestamp);
     aws_linked_list_push_front(&dispatch_loop_context->scheduling_state.scheduled_services, &entry->node);
 
-    // uint64_t now_ns = 0;
-    // aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
-    // uint64_t delta = timestamp == 0 ? 0 : timestamp - now_ns;
-    dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
+    uint64_t now_ns = 0;
+    aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
+    uint64_t delta = timestamp > now_ns? timestamp - now_ns : 0;
+    /**
+     * The Apple dispatch queue uses automatic reference counting (ARC). If an iteration remains in the queue, it will
+     * persist until it is executed. Scheduling a block far into the future can keep the dispatch queue alive
+     * unnecessarily, even if the app is destroyed. To avoid this, Ensure an iteration is scheduled within a 1-second
+     * interval to prevent it from remaining in the Apple dispatch queue indefinitely.
+     */
+    delta = MIN(delta, AWS_TIMESTAMP_NANOS);
+    
+    if (delta == 0) {
+        // dispatch_after_f(0 , ...) is not as optimal as dispatch_async_f(...)
+        // https://developer.apple.com/documentation/dispatch/1452878-dispatch_after_f
+        dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
+    } else {
+        dispatch_after_f(delta, dispatch_loop->dispatch_queue, entry, s_run_iteration);
+    }
 }
 
 static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
