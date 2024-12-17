@@ -226,7 +226,7 @@ static void s_dispatch_event_loop_destroy(void *context) {
             AWS_LS_IO_EVENT_LOOP,
             "id=%p: remaining context ref count %d",
             (void *)event_loop,
-            *(int*)dispatch_loop->context->ref_count.ref_count.value);
+            (int *)dispatch_loop->context->ref_count.ref_count.value);
     }
 }
 
