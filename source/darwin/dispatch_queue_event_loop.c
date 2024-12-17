@@ -221,6 +221,13 @@ static void s_dispatch_event_loop_destroy(void *context) {
     aws_mem_release(event_loop->alloc, event_loop);
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
+    if (dispatch_loop->context) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: remaining context ref count %d",
+            (void *)event_loop,
+            *(int*)dispatch_loop->context->ref_count.ref_count.value);
+    }
 }
 
 /** Return a aws_string* with unique dispatch queue id string. The id is In format of
@@ -378,7 +385,7 @@ static int s_run(struct aws_event_loop *event_loop) {
         s_try_schedule_new_iteration(dispatch_loop->context, 0);
         s_unlock_service_entries(dispatch_loop->context);
         s_runlock_dispatch_loop_context(dispatch_loop->context);
-        }
+    }
     s_unlock_cross_thread_data(dispatch_loop);
 
     return AWS_OP_SUCCESS;
