@@ -90,7 +90,7 @@ if(WIN32)
 
     if(${BUILD_V} GREATER_EQUAL 20348)
         message("Building for version 22000 or higher: supporting TLS1.3")
-        add_net_test_case(tls_client_channel_negotiation_success_tls1_3)
+        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls1_3)
     endif()
     add_test_case(local_socket_pipe_connected_race)
     add_test_case(tls_client_channel_negotiation_success_ecc384_deprecated)
