@@ -99,6 +99,10 @@ struct dispatch_loop_context {
     struct aws_ref_count ref_count;
 };
 
+/**
+ * The data structure used to track the dispatch queue execution iteration (block). Each entry associated to an
+ * iteration scheduled on Apple Dispatch Queue.
+ */
 struct scheduled_service_entry {
     struct aws_allocator *allocator;
     uint64_t timestamp;
@@ -224,9 +228,9 @@ static void s_dispatch_event_loop_destroy(void *context) {
     if (dispatch_loop->context) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: remaining context ref count %d",
+            "id=%p: remaining context ref count %zu",
             (void *)event_loop,
-            (int *)dispatch_loop->context->ref_count.ref_count.value);
+            AWS_ATOMIC_VAR_INTVAL(&(dispatch_loop->context->ref_count.ref_count)));
     }
 }
 
