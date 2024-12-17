@@ -530,10 +530,10 @@ static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_
     struct scheduled_service_entry *entry = s_scheduled_service_entry_new(dispatch_loop_context, timestamp);
     aws_linked_list_push_front(&dispatch_loop_context->scheduling_state.scheduled_services, &entry->node);
 
-    uint64_t now_ns = 0;
-    aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
-    uint64_t delta = timestamp == 0 ? 0 : timestamp - now_ns;
-    dispatch_after_f(delta, dispatch_loop->dispatch_queue, entry, s_run_iteration);
+    // uint64_t now_ns = 0;
+    // aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
+    // uint64_t delta = timestamp == 0 ? 0 : timestamp - now_ns;
+    dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
 }
 
 static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
