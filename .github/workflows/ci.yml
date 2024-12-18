@@ -77,7 +77,7 @@ jobs:
           - name: gcc-8
           - name: gcc-11
           - name: gcc-13
-            extra-build-flag: --cmake-extra -DSHARED_LINKER_FLAGS=-lresolv
+            extra-build-flag: --cmake-extra -DCMAKE_SHARED_LINKER_FLAGS=-lresolv
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
