@@ -215,7 +215,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
+        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"] # TODO: Add "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON" when apple network framework is implemented.
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -245,7 +245,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
+        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"] # TODO: Add "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON" when apple network framework is implemented.
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
