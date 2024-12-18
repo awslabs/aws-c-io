@@ -264,6 +264,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
     dispatch_loop->allocator = alloc;
+    loop->impl_data = dispatch_loop;
 
     char dispatch_queue_id[AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH] = {0};
     s_get_unique_dispatch_queue_id(dispatch_queue_id);
@@ -300,7 +301,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     context->io_dispatch_loop = dispatch_loop;
     dispatch_loop->context = context;
 
-    loop->impl_data = dispatch_loop;
     loop->vtable = &s_vtable;
 
     return loop;
