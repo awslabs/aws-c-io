@@ -18,6 +18,20 @@ AWS_PUSH_SANE_WARNING_LEVEL
 struct aws_event_loop;
 struct aws_overlapped;
 
+typedef void aws_io_set_queue_on_handle_fn(struct aws_io_handle *handle, void *queue);
+typedef void aws_io_clear_queue_on_handle_fn(struct aws_io_handle *handle);
+
+struct aws_io_handle {
+    union {
+        int fd;
+        /* on Apple systems, handle is of type nw_connection_t. On Windows, it's a SOCKET handle. */
+        void *handle;
+    } data;
+    void *additional_data;
+    aws_io_set_queue_on_handle_fn *set_queue;
+    aws_io_clear_queue_on_handle_fn *clear_queue;
+};
+
 typedef void(aws_event_loop_on_completion_fn)(
     struct aws_event_loop *event_loop,
     struct aws_overlapped *overlapped,
@@ -151,6 +165,16 @@ void aws_overlapped_reset(struct aws_overlapped *overlapped);
 AWS_IO_API
 struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *overlapped);
 #endif /* AWS_ENABLE_IO_COMPLETION_PORTS */
+
+/**
+ * @internal - Don't use outside of testing.
+ *
+ * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * retrieve the default type value.
+ * If `aws_event_loop_override_default_type` has been called, return the override default type.
+ */
+AWS_IO_API
+enum aws_event_loop_type aws_event_loop_get_default_type(void);
 
 /**
  * Associates an aws_io_handle with the event loop's I/O Completion Port.
