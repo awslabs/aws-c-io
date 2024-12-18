@@ -10,7 +10,7 @@ env:
   BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-io
-  LINUX_BASE_IMAGE: ubuntu-22-x64
+  LINUX_BASE_IMAGE: ubuntu-18-x64
   RUN: ${{ github.run_id }}-${{ github.run_number }}
   CRT_CI_ROLE: ${{ secrets.CRT_CI_ROLE_ARN }}
   AWS_DEFAULT_REGION: us-east-1
@@ -57,36 +57,40 @@ jobs:
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-al2-x64 build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBYO_CRYPTO=ON
 
   linux-compiler-compat:
-    runs-on: ubuntu-24.04 # latest
-    strategy:
-      fail-fast: false
-      matrix:
-        compiler:
-          - clang-3
-          - clang-6
-          - clang-8
-          - clang-9
-          - clang-10
-          - clang-11
-          - clang-15
-          - clang-17
-          - gcc-4.8
-          - gcc-5
-          - gcc-6
-          - gcc-7
-          - gcc-8
-          - gcc-11
-          - gcc-13
-    steps:
+  runs-on: ubuntu-24.04 # latest
+  strategy:
+    fail-fast: false
+    matrix:
+      variant:
+        - name: clang-3
+        - name: clang-6
+        - name: clang-8
+        - name: clang-9
+        - name: clang-10
+        - name: clang-11
+        - name: clang-15
+        - name: clang-17
+        - name: gcc-4.8
+        - name: gcc-5
+        - name: gcc-6
+        - name: gcc-7
+        - name: gcc-8
+        - name: gcc-11
+        - name: gcc-13
+          extra-build-flag: --cmake-extra -DSHARED_LINKER_FLAGS=-lresolv
+  steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
-    # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }}
+
+    - name: Checkout Sources
+      uses: actions/checkout@v4
+
+    - name: Build ${{ matrix.variant.name }}
       run: |
         aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.compiler }}
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.variant.name }} ${{ matrix.variant.extra-build-flag }}
 
   linux-debug:
     runs-on: ubuntu-24.04 # latest
