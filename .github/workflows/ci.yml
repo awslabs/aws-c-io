@@ -83,7 +83,7 @@ jobs:
           # function is used internally by the `getaddrinfo()` system call.
           #
           # In our setup (As of December 2024), we are using an Ubuntu 18 Docker image on a newer Ubuntu host. 
-          # However, due to compatibility issues between newer LLVM (used with GCC-13) 
+          # However, due to compatibility issues between newer libasan.so in GCC 13.1
           # and the older Ubuntu image, the linker does not link with `libresolv.so`. 
           # This results in crashes in `getaddrinfo()` since Ubuntu-18 GLIBC is 2.31.
           #
