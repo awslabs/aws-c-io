@@ -59,7 +59,6 @@ jobs:
   linux-compiler-compat:
     runs-on: ubuntu-24.04 # latest
     strategy:
-      fail-fast: false
       matrix:
         variant:
           - name: clang-3
