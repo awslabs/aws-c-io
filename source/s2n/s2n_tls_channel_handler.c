@@ -459,31 +459,37 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
             break;
         }
         if (s2n_error_get_type(s2n_error) != S2N_ERR_T_BLOCKED) {
-            AWS_LOGF_WARN(
-                AWS_LS_IO_TLS,
-                "id=%p: negotiation failed with error %s (%s)",
-                (void *)handler,
-                s2n_strerror(s2n_error, "EN"),
-                s2n_strerror_debug(s2n_error, "EN"));
+            int aws_error_code = AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
+            switch (s2n_error_get_type(s2n_error)) {
+                case S2N_ERR_T_IO:
+                case S2N_ERR_T_CLOSED:
+                    /* If negotiation is failing due to the underlying I/O, treat it as a lesser error */
+                    aws_error_code = AWS_IO_TLS_ERROR_READ_FAILURE;
+                    break;
 
-            if (s2n_error_get_type(s2n_error) == S2N_ERR_T_ALERT) {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS,
-                    "id=%p: Alert code %d",
-                    (void *)handler,
-                    s2n_connection_get_alert(s2n_handler->connection));
+                case S2N_ERR_T_ALERT:
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_TLS,
+                        "id=%p: Alert code %d",
+                        (void *)handler,
+                        s2n_connection_get_alert(s2n_handler->connection));
+                    break;
             }
 
-            const char *err_str = s2n_strerror_debug(s2n_error, NULL);
-            (void)err_str;
+            AWS_LOGF_WARN(
+                AWS_LS_IO_TLS,
+                "id=%p: negotiation failed: %s (%s). Raising error %s",
+                (void *)handler,
+                s2n_strerror(s2n_error, "EN"),
+                s2n_strerror_debug(s2n_error, "EN"),
+                aws_error_name(aws_error_code));
+
             s2n_handler->state = NEGOTIATION_FAILED;
 
-            aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+            s_on_negotiation_result(handler, s2n_handler->slot, aws_error_code, s2n_handler->user_data);
 
-            s_on_negotiation_result(
-                handler, s2n_handler->slot, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, s2n_handler->user_data);
-
-            return AWS_OP_ERR;
+            return aws_raise_error(aws_error_code);
+            ;
         }
     } while (blocked == S2N_NOT_BLOCKED);
 
@@ -536,7 +542,10 @@ static int s_s2n_handler_process_read_message(
     }
 
     if (AWS_UNLIKELY(s2n_handler->state == NEGOTIATION_FAILED)) {
-        return aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+        if (message) {
+            aws_mem_release(message->allocator, message);
+        }
+        return AWS_OP_SUCCESS;
     }
 
     if (message) {
@@ -547,7 +556,7 @@ static int s_s2n_handler_process_read_message(
             if (s_drive_negotiation(handler) == AWS_OP_SUCCESS) {
                 aws_channel_slot_increment_read_window(slot, message_len);
             } else {
-                aws_channel_shutdown(s2n_handler->slot->channel, AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                aws_channel_shutdown(s2n_handler->slot->channel, aws_last_error());
             }
             return AWS_OP_SUCCESS;
         }
@@ -1364,7 +1373,7 @@ static struct aws_channel_handler *s_new_tls_handler(
     if (s2n_connection_set_config(s2n_handler->connection, s2n_handler->s2n_ctx->s2n_config)) {
         AWS_LOGF_WARN(
             AWS_LS_IO_TLS,
-            "id=%p: configuration error %s (%s)",
+            "id=%p: configuration error: %s (%s)",
             (void *)&s2n_handler->handler,
             s2n_strerror(s2n_errno, "EN"),
             s2n_strerror_debug(s2n_errno, "EN"));
