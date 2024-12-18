@@ -77,10 +77,9 @@ jobs:
           - name: gcc-11
           - name: gcc-13
           # See Issue: https://github.com/llvm/llvm-project/issues/59007. Although this issue 
-          # has been fixed in LLVM, the fix will not propagate to older versions of Ubuntu and GCC 13.1. 
+          # has been fixed in LLVM, the fix will probably not propagate to older versions of Ubuntu and GCC 13.1. 
           #
-          # GCC relies on LLVM for ASAN. Starting with GLIBC version 2.34, the `dn_expand` 
-          # function, previously found in `libresolv.so`, was moved to `libc.so`. This 
+          # Starting with GLIBC version 2.34, the `dn_expand` function, previously found in `libresolv.so`, was moved to `libc.so`. This 
           # function is used internally by the `getaddrinfo()` system call.
           #
           # In our setup (As of December 2024), we are using an Ubuntu 18 Docker image on a newer Ubuntu host. 
