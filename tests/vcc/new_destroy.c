@@ -78,15 +78,15 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     /* VCC change: rewrite return to allow for unwrap */
 #if 0
-    return aws_event_loop_new_default_with_options(alloc, &options);
+    return aws_event_loop_new_with_epoll(alloc, &options);
 #else
-    struct aws_event_loop *r = aws_event_loop_new_default_with_options(alloc, &options, _(out c_mutex));
+    struct aws_event_loop *r = aws_event_loop_new_with_epoll(alloc, &options, _(out c_mutex));
     _(unwrap(&options))
     return r;
 #endif
 }
 
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_with_epoll(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options
     _(out \claim(c_mutex))
