@@ -1,5 +1,5 @@
 
-cmake_minimum_required(VERSION 3.9)
+cmake_minimum_required(VERSION 3.9...3.31)
 project(aws-c-io C)
 
 if (NOT IN_SOURCE_BUILD)
