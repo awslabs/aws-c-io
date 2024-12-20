@@ -200,8 +200,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
 
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
-install(FILES ${AWS_IO_HEADERS} DESTINATION "include/aws/io" COMPONENT Development)
-install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "include/aws/testing" COMPONENT Development)
+install(FILES ${AWS_IO_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/io" COMPONENT Development)
+install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/testing" COMPONENT Development)
 
 if (BUILD_SHARED_LIBS)
    set (TARGET_DIR "shared")
