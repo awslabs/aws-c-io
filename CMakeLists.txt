@@ -13,6 +13,7 @@ include(AwsSharedLibSetup)
 include(AwsSanitizers)
 include(AwsFindPackage)
 include(CTest)
+include(GNUInstallDirs)
 
 option(BUILD_RELOCATABLE_BINARIES
         "Build Relocatable Binaries, this will turn off features that will fail on older kernels than used for the build."
@@ -200,8 +201,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${PLATFORM_LIBS})
 
 aws_prepare_shared_lib_exports(${PROJECT_NAME})
 
-install(FILES ${AWS_IO_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/io" COMPONENT Development)
-install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "${INCLUDE_DIRECTORY}/aws/testing" COMPONENT Development)
+install(FILES ${AWS_IO_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/io" COMPONENT Development)
+install(FILES ${AWS_IO_TESTING_HEADERS} DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/aws/testing" COMPONENT Development)
 
 if (BUILD_SHARED_LIBS)
    set (TARGET_DIR "shared")
@@ -210,7 +211,7 @@ else()
 endif()
 
 install(EXPORT "${PROJECT_NAME}-targets"
-        DESTINATION "${LIBRARY_DIRECTORY}/cmake/${PROJECT_NAME}/${TARGET_DIR}"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/${TARGET_DIR}"
         NAMESPACE AWS::
         COMPONENT Development)
 
@@ -219,7 +220,7 @@ configure_file("cmake/${PROJECT_NAME}-config.cmake"
         @ONLY)
 
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
-        DESTINATION "${LIBRARY_DIRECTORY}/cmake/${PROJECT_NAME}/"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/"
         COMPONENT Development)
 
 if (NOT CMAKE_CROSSCOMPILING)
