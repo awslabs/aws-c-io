@@ -553,8 +553,6 @@ int aws_event_loop_connect_handle_to_io_completion_port(
 
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
     return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
-    
-    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
 
 int aws_event_loop_subscribe_to_io_events(
@@ -566,7 +564,6 @@ int aws_event_loop_subscribe_to_io_events(
 
     AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
     return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
-    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {

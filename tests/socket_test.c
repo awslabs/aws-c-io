@@ -412,7 +412,6 @@ static int s_test_socket_creation(struct aws_allocator *alloc, enum aws_socket_i
     return AWS_OP_SUCCESS;
 }
 
-
 static int s_socket_test_posix_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
 static int s_socket_test_winsock_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
 
