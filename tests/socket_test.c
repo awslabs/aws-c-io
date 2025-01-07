@@ -606,23 +606,30 @@ static int s_test_socket_creation(struct aws_allocator *alloc, enum aws_socket_i
     return AWS_OP_SUCCESS;
 }
 
-static int s_test_socket_impl_types_creation(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    int posix_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
-    int winsock_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
-#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
-    posix_expected_result = AWS_OP_SUCCESS;
-#endif
-#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
-    winsock_expected_result = AWS_OP_SUCCESS;
-#endif
-    // TODO: Apple Network Framework is not implemented yet. Add the related socket test later.
+static int s_socket_test_posix_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+static int s_socket_test_winsock_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
 
-    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_POSIX, posix_expected_result) ||
-           s_test_socket_creation(allocator, AWS_SOCKET_IMPL_WINSOCK, winsock_expected_result);
+static int s_test_socket_posix_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+    s_socket_test_posix_expected_result = AWS_OP_SUCCESS;
+#endif
+    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_POSIX, s_socket_test_posix_expected_result);
 }
 
-AWS_TEST_CASE(test_socket_impl_types_creation, s_test_socket_impl_types_creation)
+AWS_TEST_CASE(socket_posix_creation, s_test_socket_posix_creation)
+
+static int s_test_socket_winsock_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    s_socket_test_winsock_expected_result = AWS_OP_SUCCESS;
+#endif
+    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_WINSOCK, s_socket_test_winsock_expected_result);
+}
+
+AWS_TEST_CASE(socket_winsock_creation, s_test_socket_winsock_creation)
 
 static int s_test_socket(
     struct aws_allocator *allocator,
