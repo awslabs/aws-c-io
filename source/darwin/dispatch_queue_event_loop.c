@@ -79,19 +79,24 @@ static struct aws_event_loop_vtable s_vtable = {
  *
  */
 
-/* Internal ref-counted dispatch loop context to processing Apple Dispatch Queue Resources */
-
+/* The dispatch_scheduling_state holds required information to schedule a "block" on the dispatch_queue. */
 struct dispatch_scheduling_state {
+
+    /**
+     * The lock is used to protect the scheduled_services list cross threads. It should be hold while we add/remove
+     * entries from the scheduled_services list.
+     */
     struct aws_mutex services_lock;
     /**
-     * List<scheduled_service_entry> in sorted order by timestamp
+     * List<scheduled_service_entry> in sorted order by timestamp. Each scheduled_service_entry represents a block
+     * ALREADY SCHEDULED on apple dispatch queue.
      *
-     * When we go to schedule a new iteration, we check here first to see
-     * if our scheduling attempt is redundant
+     * When we go to schedule a new iteration, we check here first to see if our scheduling attempt is redundant.
      */
     struct aws_linked_list scheduled_services;
 };
 
+/* Internal ref-counted dispatch loop context to processing Apple Dispatch Queue Resources */
 struct dispatch_loop_context {
     struct aws_rw_lock lock;
     struct dispatch_loop *io_dispatch_loop;
@@ -111,44 +116,44 @@ struct scheduled_service_entry {
     struct dispatch_loop_context *dispatch_queue_context;
 };
 
-static void s_acquire_dispatch_loop_context(struct dispatch_loop_context *contxt) {
-    aws_ref_count_acquire(&contxt->ref_count);
+static void *s_acquire_dispatch_loop_context(struct dispatch_loop_context *context) {
+    return aws_ref_count_acquire(&context->ref_count);
 }
 
-static void s_release_dispatch_loop_context(struct dispatch_loop_context *contxt) {
-    aws_ref_count_release(&contxt->ref_count);
+static size_t s_release_dispatch_loop_context(struct dispatch_loop_context *context) {
+    return aws_ref_count_release(&context->ref_count);
 }
 
-static void s_rlock_dispatch_loop_context(struct dispatch_loop_context *contxt) {
-    aws_rw_lock_rlock(&contxt->lock);
+static int s_rlock_dispatch_loop_context(struct dispatch_loop_context *context) {
+    return aws_rw_lock_rlock(&context->lock);
 }
 
-static void s_runlock_dispatch_loop_context(struct dispatch_loop_context *contxt) {
-    aws_rw_lock_runlock(&contxt->lock);
+static int s_runlock_dispatch_loop_context(struct dispatch_loop_context *context) {
+    return aws_rw_lock_runlock(&context->lock);
 }
 
-static void s_wlock_dispatch_loop_context(struct dispatch_loop_context *contxt) {
-    aws_rw_lock_wlock(&contxt->lock);
+static int s_wlock_dispatch_loop_context(struct dispatch_loop_context *context) {
+    return aws_rw_lock_wlock(&context->lock);
 }
 
-static void s_wunlock_dispatch_loop_context(struct dispatch_loop_context *contxt) {
-    aws_rw_lock_wunlock(&contxt->lock);
+static int s_wunlock_dispatch_loop_context(struct dispatch_loop_context *context) {
+    return aws_rw_lock_wunlock(&context->lock);
 }
 
-static void s_lock_cross_thread_data(struct dispatch_loop *loop) {
-    aws_mutex_lock(&loop->synced_data.lock);
+static int s_lock_cross_thread_data(struct dispatch_loop *loop) {
+    return aws_mutex_lock(&loop->synced_data.lock);
 }
 
-static void s_unlock_cross_thread_data(struct dispatch_loop *loop) {
-    aws_mutex_unlock(&loop->synced_data.lock);
+static int s_unlock_cross_thread_data(struct dispatch_loop *loop) {
+    return aws_mutex_unlock(&loop->synced_data.lock);
 }
 
-static void s_lock_service_entries(struct dispatch_loop_context *contxt) {
-    aws_mutex_lock(&contxt->scheduling_state.services_lock);
+static int s_lock_service_entries(struct dispatch_loop_context *context) {
+    return aws_mutex_lock(&context->scheduling_state.services_lock);
 }
 
-static void s_unlock_service_entries(struct dispatch_loop_context *contxt) {
-    aws_mutex_unlock(&contxt->scheduling_state.services_lock);
+static int s_unlock_service_entries(struct dispatch_loop_context *context) {
+    return aws_mutex_unlock(&context->scheduling_state.services_lock);
 }
 
 static struct scheduled_service_entry *s_scheduled_service_entry_new(
@@ -159,8 +164,7 @@ static struct scheduled_service_entry *s_scheduled_service_entry_new(
 
     entry->allocator = context->allocator;
     entry->timestamp = timestamp;
-    entry->dispatch_queue_context = context;
-    s_acquire_dispatch_loop_context(context);
+    entry->dispatch_queue_context = s_acquire_dispatch_loop_context(context);
 
     return entry;
 }
@@ -229,9 +233,10 @@ static void s_dispatch_event_loop_destroy(void *context) {
 
 /** Return a aws_string* with unique dispatch queue id string. The id is In format of
  * "com.amazonaws.commonruntime.eventloop.<UUID>"*/
-static struct aws_byte_cursor AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX =
-    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("com.amazonaws.commonruntime.eventloop.");
-static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH = 37;
+// static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH = 37;
+static const char AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX[] = "com.amazonaws.commonruntime.eventloop.";
+static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH =
+    AWS_ARRAY_SIZE(AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX);
 static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH =
     AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH + AWS_UUID_STR_LEN;
 
@@ -243,7 +248,7 @@ static void s_get_unique_dispatch_queue_id(char result[AWS_IO_APPLE_DISPATCH_QUE
     uuid_buf.len = 0;
     aws_uuid_to_str(&uuid, &uuid_buf);
 
-    memcpy(result, AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX.ptr, AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH);
+    memcpy(result, AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX, AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH);
     memcpy(result + AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH, uuid_buf.buffer, uuid_buf.len);
 }
 
@@ -265,6 +270,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
     dispatch_loop->allocator = alloc;
     loop->impl_data = dispatch_loop;
+    dispatch_loop->base_loop = loop;
 
     char dispatch_queue_id[AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH] = {0};
     s_get_unique_dispatch_queue_id(dispatch_queue_id);
@@ -287,8 +293,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing task scheduler failed", (void *)loop);
         goto clean_up;
     }
-
-    dispatch_loop->base_loop = loop;
 
     aws_linked_list_init(&dispatch_loop->synced_data.cross_thread_tasks);
 
@@ -418,8 +422,8 @@ static bool begin_iteration(struct scheduled_service_entry *entry) {
 // The function should be wrapped with dispatch_loop->context.lock
 static void end_iteration(struct scheduled_service_entry *entry) {
 
-    struct dispatch_loop_context *contxt = entry->dispatch_queue_context;
-    struct dispatch_loop *dispatch_loop = contxt->io_dispatch_loop;
+    struct dispatch_loop_context *context = entry->dispatch_queue_context;
+    struct dispatch_loop *dispatch_loop = context->io_dispatch_loop;
 
     s_lock_cross_thread_data(dispatch_loop);
     dispatch_loop->synced_data.is_executing = false;
@@ -429,9 +433,9 @@ static void end_iteration(struct scheduled_service_entry *entry) {
     // if there are any cross-thread tasks, reschedule an iteration for now
     if (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
         // added during service which means nothing was scheduled because will_schedule was true
-        s_lock_service_entries(contxt);
-        s_try_schedule_new_iteration(contxt, 0);
-        s_unlock_service_entries(contxt);
+        s_lock_service_entries(context);
+        s_try_schedule_new_iteration(context, 0);
+        s_unlock_service_entries(context);
     } else {
         // no cross thread tasks, so check internal time-based scheduler
         uint64_t next_task_time = 0;
@@ -441,12 +445,12 @@ static void end_iteration(struct scheduled_service_entry *entry) {
         if (has_task) {
             // only schedule an iteration if there isn't an existing dispatched iteration for the next task time or
             // earlier
-            s_lock_service_entries(contxt);
+            s_lock_service_entries(context);
             if (s_should_schedule_iteration(
                     &dispatch_loop->context->scheduling_state.scheduled_services, next_task_time)) {
-                s_try_schedule_new_iteration(contxt, next_task_time);
+                s_try_schedule_new_iteration(context, next_task_time);
             }
-            s_unlock_service_entries(contxt);
+            s_unlock_service_entries(context);
         }
     }
 
