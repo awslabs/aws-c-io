@@ -997,34 +997,54 @@ static int s_test_event_loop_creation(
     return AWS_OP_SUCCESS;
 }
 
-/* Verify default event loop type */
-static int s_test_event_loop_all_types_creation(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    bool enable_kqueue = false;
-    bool enable_epoll = false;
-    bool enable_iocp = false;
-    bool enable_dispatch_queue = false;
-#ifdef AWS_ENABLE_KQUEUE
-    enable_kqueue = true;
-#endif
-#ifdef AWS_ENABLE_EPOLL
-    enable_epoll = true;
-#endif
-#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
-    enable_iocp = true;
-#endif
-#ifdef AWS_ENABLE_DISPATCH_QUEUE
-// TODO: Dispatch queue support is not yet implemented. Uncomment the following line once the dispatch queue is ready.
-//    enable_dispatch_queue = true;
-#endif
+static bool s_eventloop_test_enable_kqueue = false;
+static bool s_eventloop_test_enable_epoll = false;
+static bool s_eventloop_test_enable_iocp = false;
+static bool s_eventloop_test_enable_dispatch_queue = false;
 
-    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_EPOLL, enable_epoll) ||
-           s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_IOCP, enable_iocp) ||
-           s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_KQUEUE, enable_kqueue) ||
-           s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_DISPATCH_QUEUE, enable_dispatch_queue);
+static int s_test_event_loop_epoll_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_EPOLL
+    s_eventloop_test_enable_epoll = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_EPOLL, s_eventloop_test_enable_epoll);
 }
 
-AWS_TEST_CASE(event_loop_all_types_creation, s_test_event_loop_all_types_creation)
+AWS_TEST_CASE(event_loop_epoll_creation, s_test_event_loop_epoll_creation)
+
+static int s_test_event_loop_iocp_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    s_eventloop_test_enable_iocp = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_IOCP, s_eventloop_test_enable_iocp);
+}
+
+AWS_TEST_CASE(event_loop_iocp_creation, s_test_event_loop_iocp_creation)
+
+static int s_test_event_loop_kqueue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+#ifdef AWS_ENABLE_KQUEUE
+    s_eventloop_test_enable_kqueue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_KQUEUE, s_eventloop_test_enable_kqueue);
+}
+
+AWS_TEST_CASE(event_loop_kqueue_creation, s_test_event_loop_kqueue_creation)
+
+static int s_test_event_loop_dispatch_queue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_DISPATCH_QUEUE
+// TODO: Dispatch queue support is not yet implemented. Uncomment the following line once the dispatch queue is ready.
+//    s_eventloop_test_enable_dispatch_queue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_DISPATCH_QUEUE, s_eventloop_test_enable_dispatch_queue);
+}
+
+AWS_TEST_CASE(event_loop_dispatch_queue_creation, s_test_event_loop_dispatch_queue_creation)
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

@@ -91,9 +91,8 @@ static enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #elif defined(AWS_OS_WINDOWS)
     return AWS_EVENT_LOOP_IOCP;
 #else
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_EVENT_LOOP,
-        "Failed to get default event loop type. The library is not built correctly on the platform.");
+#    error                                                                                                             \
+        "Default event loop type required. Failed to get default event loop type. The library is not built correctly on the platform. "
 #endif
 }
 
@@ -552,10 +551,9 @@ int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle) {
 
-    if (event_loop->vtable && event_loop->vtable->connect_to_io_completion_port) {
-        return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
-    }
-
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
+    return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
+    
     return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
 
@@ -566,9 +564,8 @@ int aws_event_loop_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
 
-    if (event_loop->vtable && event_loop->vtable->subscribe_to_io_events) {
-        return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
-    }
+    AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
+    return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
     return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
 }
 
