@@ -12,6 +12,7 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_event_loop;
 struct aws_event_loop_group;
+struct aws_event_loop_options;
 struct aws_shutdown_callback_options;
 struct aws_task;
 
@@ -48,6 +49,25 @@ struct aws_event_loop_vtable {
 };
 
 /**
+ * Event Loop Type.  If set to `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s
+ * default.
+ *
+ * Default Event Loop Type
+ * Linux       | AWS_EVENT_LOOP_EPOLL
+ * Windows     | AWS_EVENT_LOOP_IOCP
+ * BSD Variants| AWS_EVENT_LOOP_KQUEUE
+ * macOS       | AWS_EVENT_LOOP_KQUEUE
+ * iOS         | AWS_EVENT_LOOP_DISPATCH_QUEUE
+ */
+enum aws_event_loop_type {
+    AWS_EVENT_LOOP_PLATFORM_DEFAULT = 0,
+    AWS_EVENT_LOOP_EPOLL,
+    AWS_EVENT_LOOP_IOCP,
+    AWS_EVENT_LOOP_KQUEUE,
+    AWS_EVENT_LOOP_DISPATCH_QUEUE,
+};
+
+/**
  * Event loop group configuration options
  */
 struct aws_event_loop_group_options {
@@ -57,6 +77,12 @@ struct aws_event_loop_group_options {
      * the creation and management of an analagous amount of managed threads
      */
     uint16_t loop_count;
+
+    /**
+     * Event loop type. If the event loop type is set to AWS_EVENT_LOOP_PLATFORM_DEFAULT, the
+     * creation function will automatically use the platform’s default event loop type.
+     */
+    enum aws_event_loop_type type;
 
     /**
      * Optional callback to invoke when the event loop group finishes destruction.

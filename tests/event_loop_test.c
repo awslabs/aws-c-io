@@ -172,7 +172,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
 
 AWS_TEST_CASE(event_loop_canceled_tasks_run_in_el_thread, s_test_event_loop_canceled_tasks_run_in_el_thread)
 
-#if AWS_USE_IO_COMPLETION_PORTS
+#if AWS_ENABLE_IO_COMPLETION_PORTS
 
 int aws_pipe_get_unique_name(char *dst, size_t dst_size);
 
@@ -311,7 +311,7 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
-#else /* !AWS_USE_IO_COMPLETION_PORTS */
+#else /* !AWS_ENABLE_IO_COMPLETION_PORTS */
 
 #    include <unistd.h>
 
@@ -971,7 +971,80 @@ static int s_test_event_loop_readable_event_on_2nd_time_readable(struct aws_allo
 }
 AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_readable_event_on_2nd_time_readable);
 
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
+#endif /* AWS_ENABLE_IO_COMPLETION_PORTS */
+
+/* Verify default event loop type */
+static int s_test_event_loop_creation(
+    struct aws_allocator *allocator,
+    enum aws_event_loop_type type,
+    bool expect_success) {
+    struct aws_event_loop_options event_loop_options = {
+        .thread_options = NULL,
+        .clock = aws_high_res_clock_get_ticks,
+        .type = type,
+    };
+
+    struct aws_event_loop *event_loop = aws_event_loop_new(allocator, &event_loop_options);
+
+    if (expect_success) {
+        ASSERT_NOT_NULL(event_loop);
+        /* Clean up tester*/
+        aws_event_loop_destroy(event_loop);
+    } else {
+        ASSERT_NULL(event_loop);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_eventloop_test_enable_kqueue = false;
+static bool s_eventloop_test_enable_epoll = false;
+static bool s_eventloop_test_enable_iocp = false;
+static bool s_eventloop_test_enable_dispatch_queue = false;
+
+static int s_test_event_loop_epoll_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_EPOLL
+    s_eventloop_test_enable_epoll = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_EPOLL, s_eventloop_test_enable_epoll);
+}
+
+AWS_TEST_CASE(event_loop_epoll_creation, s_test_event_loop_epoll_creation)
+
+static int s_test_event_loop_iocp_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    s_eventloop_test_enable_iocp = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_IOCP, s_eventloop_test_enable_iocp);
+}
+
+AWS_TEST_CASE(event_loop_iocp_creation, s_test_event_loop_iocp_creation)
+
+static int s_test_event_loop_kqueue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+#ifdef AWS_ENABLE_KQUEUE
+    s_eventloop_test_enable_kqueue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_KQUEUE, s_eventloop_test_enable_kqueue);
+}
+
+AWS_TEST_CASE(event_loop_kqueue_creation, s_test_event_loop_kqueue_creation)
+
+static int s_test_event_loop_dispatch_queue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_DISPATCH_QUEUE
+// TODO: Dispatch queue support is not yet implemented. Uncomment the following line once the dispatch queue is ready.
+//    s_eventloop_test_enable_dispatch_queue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_DISPATCH_QUEUE, s_eventloop_test_enable_dispatch_queue);
+}
+
+AWS_TEST_CASE(event_loop_dispatch_queue_creation, s_test_event_loop_dispatch_queue_creation)
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
