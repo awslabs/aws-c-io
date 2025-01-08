@@ -18,20 +18,6 @@ AWS_PUSH_SANE_WARNING_LEVEL
 struct aws_event_loop;
 struct aws_overlapped;
 
-typedef void aws_io_set_queue_on_handle_fn(struct aws_io_handle *handle, void *queue);
-typedef void aws_io_clear_queue_on_handle_fn(struct aws_io_handle *handle);
-
-struct aws_io_handle {
-    union {
-        int fd;
-        /* on Apple systems, handle is of type nw_connection_t. On Windows, it's a SOCKET handle. */
-        void *handle;
-    } data;
-    void *additional_data;
-    aws_io_set_queue_on_handle_fn *set_queue;
-    aws_io_clear_queue_on_handle_fn *clear_queue;
-};
-
 typedef void(aws_event_loop_on_completion_fn)(
     struct aws_event_loop *event_loop,
     struct aws_overlapped *overlapped,

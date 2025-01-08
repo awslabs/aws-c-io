@@ -11,17 +11,6 @@
 #include <aws/io/tls_channel_handler.h>
 #include <dispatch/dispatch.h>
 
-struct secure_transport_ctx {
-    struct aws_tls_ctx ctx;
-    CFAllocatorRef wrapped_allocator;
-    CFArrayRef certs;
-    SecIdentityRef secitem_identity;
-    CFArrayRef ca_cert;
-    enum aws_tls_versions minimum_version;
-    struct aws_string *alpn_list;
-    bool verify_peer;
-};
-
 struct dispatch_loop;
 struct dispatch_loop_context;
 
@@ -40,6 +29,10 @@ struct dispatch_loop {
 
     /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
+        /**
+         * The lock is used to protect synced_data across the threads. It should be acquired whenever we touched the
+         * data in this synced_data struct.
+         */
         struct aws_mutex lock;
         /*
          * `is_executing` flag and `current_thread_id` together are used
