@@ -29,6 +29,10 @@ struct dispatch_loop {
 
     /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
+        /**
+         * The lock is used to protect synced_data across the threads. It should be acquired whenever we touched the
+         * data in this synced_data struct.
+         */
         struct aws_mutex lock;
         /*
          * `is_executing` flag and `current_thread_id` together are used
