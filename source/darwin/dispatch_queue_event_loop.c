@@ -328,8 +328,6 @@ clean_up:
     return NULL;
 }
 
-#endif // AWS_ENABLE_DISPATCH_QUEUE
-
 static void s_dispatch_queue_destroy_task(void *context) {
     struct dispatch_loop *dispatch_loop = context;
     s_rlock_dispatch_loop_context(dispatch_loop->context);
