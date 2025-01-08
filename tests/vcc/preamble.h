@@ -812,7 +812,7 @@ struct aws_event_loop *aws_event_loop_new_default(
         \fresh(c_mutex) && \wrapped0(c_mutex) && \claims_object(c_mutex, &(epoll_loop_of(\result)->task_pre_queue_mutex))))
 ;
 
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_with_epoll(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options
     _(out \claim(c_mutex))

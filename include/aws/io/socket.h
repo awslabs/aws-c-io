@@ -6,7 +6,6 @@
  */
 
 #include <aws/io/channel.h>
-#include <aws/io/event_loop.h>
 #include <aws/io/io.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
@@ -110,7 +109,8 @@ typedef void(aws_socket_retrieve_tls_options_fn)(struct tls_connection_context *
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations. The user must call `aws_socket_release()` when they're done with the socket, to free it.
+ * performing IO operations. The user must call `aws_socket_clean_up()` and "aws_mem_release()" when they're done with
+ * the new_socket, to free it.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -148,8 +148,6 @@ struct aws_socket_endpoint {
     char address[AWS_ADDRESS_MAX_LEN];
     uint32_t port;
 };
-
-struct aws_socket;
 
 struct aws_socket {
     struct aws_socket_vtable *vtable;
@@ -198,10 +196,6 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  *
  * In TCP, LOCAL and VSOCK this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
- *
- * The function will failed with error if the endpoint is invalid, except for Apple Network Framework. In Apple network
- * framework, as connect is an async api, we would not know if the local endpoint is valid until we have the connection
- * state returned in callback. The error will returned in `on_connection_result` callback
  *
  * If an event_loop is provided for UDP sockets, a notification will be sent on
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned

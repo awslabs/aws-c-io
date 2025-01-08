@@ -116,26 +116,25 @@ bool aws_socket_is_open(struct aws_socket *socket) {
  * function failed to retrieve the default type value.
  */
 static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
-    enum aws_socket_impl_type type = AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
 // override default socket
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    type = AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
-#endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
-    if (type != AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
-        return type;
-    }
+    return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
+#else // ! AWS_USE_APPLE_NETWORK_FRAMEWORK
 /**
  * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
  * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
  */
-#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+#    if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
     return AWS_SOCKET_IMPL_POSIX;
-#elif AWS_ENABLE_DISPATCH_QUEUE
+#    elif defined(AWS_ENABLE_DISPATCH_QUEUE)
     return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
-#elif AWS_ENABLE_IO_COMPLETION_PORTS
+#    elif defined(AWS_ENABLE_IO_COMPLETION_PORTS)
     return AWS_SOCKET_IMPL_WINSOCK;
-#else
+#    else
+    AWS_FATAL_ASSERT(
+        true && "Invalid default socket impl type. Please check make sure the library is compiled the correct ");
     return AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
+#    endif
 #endif
 }
 

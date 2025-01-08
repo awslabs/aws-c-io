@@ -407,8 +407,8 @@ static int s_socket_init(
     struct aws_allocator *alloc,
     const struct aws_socket_options *options,
     bool create_underlying_socket) {
-    AWS_ASSERT(options->domain <= AWS_SOCKET_LOCAL);
-    AWS_ASSERT(options->type <= AWS_SOCKET_DGRAM);
+    AWS_FATAL_ASSERT(options->domain <= AWS_SOCKET_LOCAL);
+    AWS_FATAL_ASSERT(options->type <= AWS_SOCKET_DGRAM);
     AWS_ZERO_STRUCT(*socket);
 
     struct iocp_socket *impl = aws_mem_calloc(alloc, 1, sizeof(struct iocp_socket));
