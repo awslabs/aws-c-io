@@ -24,7 +24,7 @@
 #include <dlfcn.h>
 #include <math.h>
 
-#include "dispatch_queue.h"
+#include "./dispatch_queue_event_loop_private.h"
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wunused-variable"

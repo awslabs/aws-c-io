@@ -18,7 +18,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
-#include "dispatch_queue.h"
+#include "./dispatch_queue_event_loop_private.h"
 
 static int s_determine_socket_error(int error) {
     switch (error) {
