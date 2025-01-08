@@ -542,7 +542,7 @@ static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_
      * unnecessarily, even if the app has shutdown. To avoid this, Ensure an iteration is scheduled within a
      * 1-second interval to prevent it from remaining in the Apple dispatch queue indefinitely.
      */
-    delta = MIN(delta, AWS_TIMESTAMP_NANOS);
+    delta = aws_min_u64(delta, AWS_TIMESTAMP_NANOS);
 
     if (delta == 0) {
         // dispatch_after_f(0 , ...) is equivclient to dispatch_async_f(...) functionality wise, while
