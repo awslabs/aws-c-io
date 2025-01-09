@@ -1127,21 +1127,7 @@ static int s_setup_tls_options_from_context(
                 return AWS_OP_ERR;
             }
         }
-    }
 
-    if (tls_connection_context->host_name != NULL) {
-        if (nw_socket->host_name != NULL) {
-            aws_string_destroy(nw_socket->host_name);
-            nw_socket->host_name = NULL;
-        }
-        nw_socket->host_name =
-            aws_string_new_from_string(tls_connection_context->host_name->allocator, tls_connection_context->host_name);
-        if (nw_socket->host_name == NULL) {
-            return AWS_OP_ERR;
-        }
-    }
-
-    if (tls_connection_context->tls_ctx) {
         if (nw_socket->tls_ctx) {
             aws_tls_ctx_release(nw_socket->tls_ctx);
             nw_socket->tls_ctx = NULL;
