@@ -248,8 +248,8 @@ static bool s_should_schedule_iteration(
 /* On dispatch event loop context ref-count reaches 0 */
 static void s_dispatch_loop_context_destroy(void *context) {
     struct dispatch_loop_context *dispatch_loop_context = context;
-    aws_mutex_clean_up(&dispatch_loop_context->scheduling_state.services_lock);
     aws_priority_queue_clean_up(&dispatch_loop_context->scheduling_state.scheduled_services);
+    aws_mutex_clean_up(&dispatch_loop_context->scheduling_state.services_lock);
     aws_rw_lock_clean_up(&dispatch_loop_context->lock);
     aws_mem_release(dispatch_loop_context->allocator, dispatch_loop_context);
 }
@@ -522,6 +522,7 @@ static void end_iteration(struct scheduled_service_entry *entry) {
 static void s_run_iteration(void *context) {
     struct scheduled_service_entry *entry = context;
     struct dispatch_loop_context *dispatch_queue_context = entry->dispatch_queue_context;
+    s_acquire_dispatch_loop_context(dispatch_queue_context);
     s_rlock_dispatch_loop_context(dispatch_queue_context);
 
     if (!begin_iteration(entry)) {
@@ -566,6 +567,7 @@ iteration_done:
     s_scheduled_service_entry_destroy(dispatch_queue_context->scheduling_state, entry);
     s_unlock_service_entries(dispatch_queue_context);
     s_runlock_dispatch_loop_context(dispatch_queue_context);
+    s_release_dispatch_loop_context(dispatch_queue_context);
 }
 
 /**
