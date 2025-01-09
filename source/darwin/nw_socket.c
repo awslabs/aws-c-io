@@ -1469,6 +1469,15 @@ static int s_socket_bind_fn(
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
+    size_t address_strlen;
+    if (aws_secure_strlen(local_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
+        return AWS_OP_ERR;
+    }
+
+    if (aws_socket_validate_port_for_bind(local_endpoint->port, socket->options.domain)) {
+        return AWS_OP_ERR;
+    }
+
     socket->local_endpoint = *local_endpoint;
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET,
@@ -1545,7 +1554,13 @@ static int s_socket_bind_fn(
     // Apple network framework requires connection besides bind.
     socket->state = BOUND;
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: successfully bound", (void *)socket);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p fd=%d: successfully bound to %s:%u",
+        (void *)socket,
+        socket->io_handle.data.fd,
+        socket->local_endpoint.address,
+        socket->local_endpoint.port);
 
     return AWS_OP_SUCCESS;
 }
