@@ -17,7 +17,7 @@
 
 #include <unistd.h>
 
-#include "./dispatch_queue_event_loop_private.h" // private header
+#include "aws_apple_network_framework.h"
 #include <Block.h>
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
@@ -255,7 +255,6 @@ static void s_get_unique_dispatch_queue_id(char result[AWS_IO_APPLE_DISPATCH_QUE
     struct aws_byte_buf uuid_buf = aws_byte_buf_from_array(uuid_str, sizeof(uuid_str));
     uuid_buf.len = 0;
     aws_uuid_to_str(&uuid, &uuid_buf);
-
     memcpy(result, AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX, AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH);
     memcpy(result + AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH, uuid_buf.buffer, uuid_buf.len);
 }
@@ -543,7 +542,7 @@ static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_
      * unnecessarily, even if the app has shutdown. To avoid this, Ensure an iteration is scheduled within a
      * 1-second interval to prevent it from remaining in the Apple dispatch queue indefinitely.
      */
-    delta = MIN(delta, AWS_TIMESTAMP_NANOS);
+    delta = aws_min_u64(delta, AWS_TIMESTAMP_NANOS);
 
     if (delta == 0) {
         // dispatch_after_f(0 , ...) is equivclient to dispatch_async_f(...) functionality wise, while
