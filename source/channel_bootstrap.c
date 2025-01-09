@@ -665,9 +665,11 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
  * where the parameters used to create the Apple Network Framework socket require TLS options. */
 static void s_retrieve_client_tls_options(struct tls_connection_context *context, void *user_data) {
     struct client_connection_args *connection_args = user_data;
-    context->host_name = connection_args->channel_data.tls_options.server_name;
-    context->alpn_list = connection_args->channel_data.tls_options.alpn_list;
-    context->tls_ctx = connection_args->channel_data.tls_options.ctx;
+    if (connection_args->channel_data.tls_options) {
+        context->host_name = connection_args->channel_data.tls_options.server_name;
+        context->alpn_list = connection_args->channel_data.tls_options.alpn_list;
+        context->tls_ctx = connection_args->channel_data.tls_options.ctx;
+    }
 }
 
 struct connection_task_data {
@@ -1090,13 +1092,16 @@ struct server_connection_args {
 
 static void s_retrieve_server_tls_options(struct tls_connection_context *context, void *user_data) {
     struct server_connection_args *connection_args = user_data;
-    context->host_name = connection_args->tls_options.server_name;
-    context->alpn_list = connection_args->tls_options.alpn_list;
-    context->tls_ctx = connection_args->tls_options.ctx;
+    if (connection_args->tls_options) {
+        context->host_name = connection_args->tls_options.server_name;
+        context->alpn_list = connection_args->tls_options.alpn_list;
+        context->tls_ctx = connection_args->tls_options.ctx;
 
-    context->event_loop = connection_args->requested_event_loop;
-    if (context->event_loop == NULL) {
-        context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
+        // verify block in an Apple Network TLS negotiation requires a dispatch loop contained within an event loop.
+        context->event_loop = connection_args->requested_event_loop;
+        if (context->event_loop == NULL) {
+            context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
+        }
     }
 }
 
