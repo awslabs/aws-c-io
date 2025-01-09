@@ -249,6 +249,7 @@ static bool s_should_schedule_iteration(
 static void s_dispatch_loop_context_destroy(void *context) {
     struct dispatch_loop_context *dispatch_loop_context = context;
     aws_mutex_clean_up(&dispatch_loop_context->scheduling_state.services_lock);
+    aws_priority_queue_clean_up(&dispatch_loop_context->scheduling_state.scheduled_services);
     aws_rw_lock_clean_up(&dispatch_loop_context->lock);
     aws_mem_release(dispatch_loop_context->allocator, dispatch_loop_context);
 }
