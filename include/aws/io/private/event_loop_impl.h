@@ -153,6 +153,16 @@ struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *
 #endif /* AWS_ENABLE_IO_COMPLETION_PORTS */
 
 /**
+ * @internal - Don't use outside of testing.
+ *
+ * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * retrieve the default type value.
+ * If `aws_event_loop_override_default_type` has been called, return the override default type.
+ */
+AWS_IO_API
+enum aws_event_loop_type aws_event_loop_get_default_type(void);
+
+/**
  * Associates an aws_io_handle with the event loop's I/O Completion Port.
  *
  * The handle must use aws_overlapped for all async operations requiring an OVERLAPPED struct.

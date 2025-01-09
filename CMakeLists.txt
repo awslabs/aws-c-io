@@ -44,7 +44,6 @@ file(GLOB AWS_IO_TESTING_HEADERS
         "include/aws/testing/*.h"
         )
 
-
 file(GLOB AWS_IO_PRIV_HEADERS
         "include/aws/io/private/*.h"
         )
