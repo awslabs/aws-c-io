@@ -298,7 +298,7 @@ jobs:
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-ASAN_OPTIONS=detect_leaks=1 --cmake-extra=-DSANITIZERS=",address,undefined" --config Debug
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DASAN_OPTIONS=detect_leaks=1 --cmake-extra=-DSANITIZERS=",address,undefined" --config Debug
 
   freebsd:
     runs-on: ubuntu-24.04  # latest
