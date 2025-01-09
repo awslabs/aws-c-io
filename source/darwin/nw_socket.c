@@ -133,6 +133,8 @@ struct nw_socket {
     struct nw_socket_timeout_args *timeout_args;
     aws_socket_on_connection_result_fn *on_connection_result_fn;
     void *connect_accept_user_data;
+    aws_socket_on_shutdown_complete_fn *on_socket_shutdown_fn;
+    void *shutdown_user_data;
 
     struct {
         struct aws_mutex lock;
@@ -290,6 +292,25 @@ static void s_clean_up_read_queue_node(struct read_queue_node *node) {
     aws_mem_release(node->allocator, node);
 }
 
+struct socket_shutdown_complete{
+    struct aws_allocator *allocator;
+    aws_socket_on_shutdown_complete_fn *shutdown_complete_fn;
+    void* user_data;
+};
+
+static void s_shutdown_callback(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct socket_shutdown_complete *task_arg = arg;
+    if (task_arg->shutdown_complete_fn) {
+        task_arg->shutdown_complete_fn(task_arg->user_data);
+    }
+    aws_mem_release(task_arg->allocator, task_arg);
+    aws_mem_release(task_arg->allocator, task);
+}
+
+
+
 static void s_socket_impl_destroy(void *sock_ptr) {
     struct nw_socket *nw_socket = sock_ptr;
 
@@ -318,6 +339,19 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_release(nw_socket->nw_listener);
         nw_socket->nw_listener = NULL;
     }
+
+    struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
+    struct socket_shutdown_complete *args =
+        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct socket_shutdown_complete));
+
+    args->shutdown_complete_fn = nw_socket->on_socket_shutdown_fn;
+    args->user_data = nw_socket->shutdown_user_data;
+    args->allocator = nw_socket->allocator;
+    task->arg = args;
+
+    aws_task_init(task, s_shutdown_callback, args, "shutdown complete task");
+
+    aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
 
     aws_mutex_clean_up(&nw_socket->synced_data.lock);
     aws_mem_release(nw_socket->allocator, nw_socket);
@@ -360,6 +394,9 @@ int aws_socket_init_apple_nw_socket(
     socket->options = *options;
     socket->impl = nw_socket;
     socket->vtable = &s_vtable;
+
+    nw_socket->on_socket_shutdown_fn = options->on_shutdown_complete;
+    nw_socket->shutdown_user_data = options->shutdown_user_data;
 
     aws_mutex_init(&nw_socket->synced_data.lock);
     aws_mutex_lock(&nw_socket->synced_data.lock);
@@ -1294,6 +1331,8 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
     socket->options = *options;
 
     struct nw_socket *nw_socket = socket->impl;
+    nw_socket->on_socket_shutdown_fn = options->on_shutdown_complete;
+    nw_socket->shutdown_user_data = options->shutdown_user_data;
 
     /* If nw_parameters_t has been previously set, they need to be released prior to assinging a new one */
     if (nw_socket->socket_options_to_params) {

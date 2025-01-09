@@ -4,6 +4,8 @@
  */
 #include <aws/io/channel_bootstrap.h>
 
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
 #include <aws/common/string.h>
 #include <aws/io/event_loop.h>
@@ -499,6 +501,25 @@ error:
     /* the channel shutdown callback will clean the channel up */
 }
 
+struct shutdown_data_close_args {
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+    bool invoked;
+};
+
+static void s_shutdown_complete_fn(void *user_data) {
+    struct shutdown_data_close_args *close_args = user_data;
+    aws_mutex_lock(&close_args->mutex);
+    close_args->invoked = true;
+    aws_condition_variable_notify_one(&close_args->condition_variable);
+    aws_mutex_unlock(&close_args->mutex);
+}
+
+static bool s_close_predicate(void *user_data) {
+    struct shutdown_data_close_args *close_args = user_data;
+    return close_args->invoked;
+}
+
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
@@ -514,7 +535,15 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     s_connection_args_shutdown_callback(connection_args, error_code, channel);
 
     aws_channel_destroy(channel);
+
+    struct shutdown_data_close_args *close_args = connection_args->channel_data.socket->options.shutdown_user_data;
+
+    aws_mutex_lock(&close_args->mutex);
     aws_socket_clean_up(connection_args->channel_data.socket);
+    aws_condition_variable_wait_pred(
+        &close_args->condition_variable, &close_args->mutex, s_close_predicate, &close_args);
+    aws_mutex_unlock(&close_args->mutex);
+
     aws_mem_release(allocator, connection_args->channel_data.socket);
     s_client_connection_args_release(connection_args);
 }
@@ -642,6 +671,15 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto task_cancelled;
     }
 
+    struct shutdown_data_close_args close_args = {
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .invoked = false,
+    };
+
+    task_data->options.shutdown_user_data = &close_args;
+    task_data->options.on_shutdown_complete = s_shutdown_complete_fn;
+
     struct aws_socket *outgoing_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
     if (aws_socket_init(outgoing_socket, allocator, &task_data->options)) {
         goto socket_init_failed;
@@ -661,7 +699,12 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
 
 socket_connect_failed:
     aws_host_resolver_record_connection_failure(task_data->args->bootstrap->host_resolver, &task_data->host_address);
+
+    aws_mutex_lock(&close_args.mutex);
     aws_socket_clean_up(outgoing_socket);
+    aws_condition_variable_wait_pred(&close_args.condition_variable, &close_args.mutex, s_close_predicate, &close_args);
+    aws_mutex_unlock(&close_args.mutex);
+
 socket_init_failed:
     aws_mem_release(allocator, outgoing_socket);
 task_cancelled:

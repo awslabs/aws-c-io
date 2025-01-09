@@ -50,6 +50,8 @@ enum aws_socket_impl_type {
 
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
 
+typedef void(aws_socket_on_shutdown_complete_fn)(void *user_data);
+
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
@@ -64,6 +66,9 @@ struct aws_socket_options {
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
+
+    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
+    void *shutdown_user_data;
 
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API
