@@ -384,8 +384,8 @@ int aws_socket_init_apple_nw_socket(
     socket->impl = nw_socket;
     socket->vtable = &s_vtable;
 
-    nw_socket->on_socket_shutdown_fn = options->on_shutdown_complete;
-    nw_socket->shutdown_user_data = options->shutdown_user_data;
+    // nw_socket->on_socket_shutdown_fn = options->on_shutdown_complete;
+    // nw_socket->shutdown_user_data = options->shutdown_user_data;
 
     aws_mutex_init(&nw_socket->synced_data.lock);
     aws_mutex_lock(&nw_socket->synced_data.lock);
@@ -1330,8 +1330,8 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
     socket->options = *options;
 
     struct nw_socket *nw_socket = socket->impl;
-    nw_socket->on_socket_shutdown_fn = options->on_shutdown_complete;
-    nw_socket->shutdown_user_data = options->shutdown_user_data;
+    // nw_socket->on_socket_shutdown_fn = options->on_shutdown_complete;
+    // nw_socket->shutdown_user_data = options->shutdown_user_data;
 
     /* If nw_parameters_t has been previously set, they need to be released prior to assinging a new one */
     if (nw_socket->socket_options_to_params) {

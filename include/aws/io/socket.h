@@ -67,8 +67,8 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
 
-    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
-    void *shutdown_user_data;
+    // aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
+    // void *shutdown_user_data;
 
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API

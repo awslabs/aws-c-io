@@ -507,13 +507,13 @@ struct shutdown_data_close_args {
     bool invoked;
 };
 
-static void s_shutdown_complete_fn(void *user_data) {
-    struct shutdown_data_close_args *close_args = user_data;
-    aws_mutex_lock(&close_args->mutex);
-    close_args->invoked = true;
-    aws_condition_variable_notify_one(&close_args->condition_variable);
-    aws_mutex_unlock(&close_args->mutex);
-}
+// static void s_shutdown_complete_fn(void *user_data) {
+//     struct shutdown_data_close_args *close_args = user_data;
+//     aws_mutex_lock(&close_args->mutex);
+//     close_args->invoked = true;
+//     aws_condition_variable_notify_one(&close_args->condition_variable);
+//     aws_mutex_unlock(&close_args->mutex);
+// }
 
 // static bool s_close_predicate(void *user_data) {
 //     struct shutdown_data_close_args *close_args = user_data;
@@ -665,14 +665,14 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto task_cancelled;
     }
 
-    struct shutdown_data_close_args close_args = {
-        .mutex = AWS_MUTEX_INIT,
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .invoked = false,
-    };
+    // struct shutdown_data_close_args close_args = {
+    //     .mutex = AWS_MUTEX_INIT,
+    //     .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+    //     .invoked = false,
+    // };
 
-    task_data->options.shutdown_user_data = &close_args;
-    task_data->options.on_shutdown_complete = s_shutdown_complete_fn;
+    // task_data->options.shutdown_user_data = &close_args;
+    // task_data->options.on_shutdown_complete = s_shutdown_complete_fn;
 
     struct aws_socket *outgoing_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
     if (aws_socket_init(outgoing_socket, allocator, &task_data->options)) {

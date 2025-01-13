@@ -315,9 +315,9 @@ static void s_socket_clean_up(struct aws_socket *socket) {
         aws_socket_close(socket);
     }
     struct posix_socket *socket_impl = socket->impl;
-    if (socket->options.on_shutdown_complete) {
-        socket->options.on_shutdown_complete(socket->options.shutdown_user_data);
-    }
+    // if (socket->options.on_shutdown_complete) {
+    //     socket->options.on_shutdown_complete(socket->options.shutdown_user_data);
+    // }
 
     if (aws_ref_count_release(&socket_impl->internal_refcount) != 0) {
         AWS_LOGF_DEBUG(
