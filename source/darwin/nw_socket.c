@@ -1623,7 +1623,8 @@ static int s_socket_get_error_fn(struct aws_socket *socket) {
 
 static bool s_socket_is_open_fn(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
-    if (!socket->io_handle.data.handle) {
+    if ((!nw_socket->is_listener && nw_socket->nw_connection == NULL) ||
+        (nw_socket->is_listener && nw_socket->nw_listener == NULL)) {
         return false;
     }
 
