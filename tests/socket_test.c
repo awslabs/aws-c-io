@@ -97,9 +97,16 @@ struct socket_io_args {
     size_t amount_read;
     int error_code;
     bool close_completed;
+    bool shutdown_complete;
     struct aws_mutex *mutex;
     struct aws_condition_variable condition_variable;
 };
+
+// static bool s_shutdown_completed_predicate(void *arg) {
+//     struct socket_io_args *io_args = arg;
+
+//     return io_args->shutdown_complete;
+// }
 
 static void s_on_written(struct aws_socket *socket, int error_code, size_t amount_written, void *user_data) {
     (void)socket;
@@ -185,6 +192,15 @@ static void s_socket_close_task(struct aws_task *task, void *args, enum aws_task
     aws_mutex_unlock(io_args->mutex);
     aws_condition_variable_notify_one(&io_args->condition_variable);
 }
+
+// static void s_socket_shutdown_complete_fn(struct aws_socket* socket, void*args) {
+//     struct socket_io_args *io_args = args;
+//     aws_mutex_lock(io_args->mutex);
+//     io_args->shutdown_complete = true;
+//     aws_mutex_unlock(io_args->mutex);
+//     aws_condition_variable_notify_one(&io_args->condition_variable);
+// }
+
 
 /* we have tests that need to check the error handling path, but it's damn near
    impossible to predictably make sockets fail, the best idea we have is to

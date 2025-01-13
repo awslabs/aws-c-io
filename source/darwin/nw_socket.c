@@ -298,16 +298,16 @@ struct socket_shutdown_complete{
     void* user_data;
 };
 
-static void s_shutdown_callback(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-    (void)status;
-    struct socket_shutdown_complete *task_arg = arg;
-    if (task_arg->shutdown_complete_fn) {
-        task_arg->shutdown_complete_fn(task_arg->user_data);
-    }
-    aws_mem_release(task_arg->allocator, task_arg);
-    aws_mem_release(task_arg->allocator, task);
-}
+// static void s_shutdown_callback(struct aws_task *task, void *arg, enum aws_task_status status) {
+//     (void)task;
+//     (void)status;
+//     struct socket_shutdown_complete *task_arg = arg;
+//     if (task_arg->shutdown_complete_fn) {
+//         task_arg->shutdown_complete_fn(task_arg->user_data);
+//     }
+//     aws_mem_release(task_arg->allocator, task_arg);
+//     aws_mem_release(task_arg->allocator, task);
+// }
 
 
 
@@ -329,29 +329,18 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_release(nw_socket->socket_options_to_params);
         nw_socket->socket_options_to_params = NULL;
     }
+    // struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
+    // struct socket_shutdown_complete *args =
+    //     aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct socket_shutdown_complete));
 
-    if (nw_socket->nw_connection) {
-        nw_release(nw_socket->nw_connection);
-        nw_socket->nw_connection = NULL;
-    }
+    // args->shutdown_complete_fn = nw_socket->on_socket_shutdown_fn;
+    // args->user_data = nw_socket->shutdown_user_data;
+    // args->allocator = nw_socket->allocator;
+    // task->arg = args;
 
-    if (nw_socket->nw_listener) {
-        nw_release(nw_socket->nw_listener);
-        nw_socket->nw_listener = NULL;
-    }
+    // aws_task_init(task, s_shutdown_callback, args, "shutdown complete task");
 
-    struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
-    struct socket_shutdown_complete *args =
-        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct socket_shutdown_complete));
-
-    args->shutdown_complete_fn = nw_socket->on_socket_shutdown_fn;
-    args->user_data = nw_socket->shutdown_user_data;
-    args->allocator = nw_socket->allocator;
-    task->arg = args;
-
-    aws_task_init(task, s_shutdown_callback, args, "shutdown complete task");
-
-    aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
+    // aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
 
     aws_mutex_clean_up(&nw_socket->synced_data.lock);
     aws_mem_release(nw_socket->allocator, nw_socket);
@@ -1298,6 +1287,16 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     }
     nw_socket->currently_connected = false;
     socket->state = CLOSED;
+
+    if (nw_socket->nw_connection) {
+        nw_release(nw_socket->nw_connection);
+        nw_socket->nw_connection = NULL;
+    }
+
+    if (nw_socket->nw_listener) {
+        nw_release(nw_socket->nw_listener);
+        nw_socket->nw_listener = NULL;
+    }
 
     return AWS_OP_SUCCESS;
 }
