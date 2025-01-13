@@ -413,9 +413,6 @@ static int s_test_socket_ex(
 
     aws_event_loop_destroy(event_loop);
 
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(1000000000);
-
     return 0;
 }
 
@@ -592,9 +589,6 @@ static int s_test_socket_udp_dispatch_queue(
     aws_socket_clean_up(&listener);
 
     aws_event_loop_destroy(event_loop);
-
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(5000000000);
 
     return 0;
 }
@@ -1699,9 +1693,6 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     aws_socket_clean_up(&outgoing);
     aws_event_loop_destroy(event_loop);
 
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(1000000000);
-
     return 0;
 }
 AWS_TEST_CASE(cleanup_in_accept_doesnt_explode, s_cleanup_in_accept_doesnt_explode)
@@ -1843,9 +1834,6 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     aws_mem_release(allocator, server_sock);
     aws_socket_clean_up(&listener);
     aws_event_loop_destroy(event_loop);
-
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(1000000000);
 
     return 0;
 }

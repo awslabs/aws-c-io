@@ -840,10 +840,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     aws_array_list_clean_up(&bh_addresses);
 
     aws_io_library_clean_up();
-
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(1000000000);
-
+    
     return 0;
 }
 
