@@ -60,6 +60,7 @@ struct local_outgoing_args {
     bool connect_invoked;
     bool error_invoked;
     int last_error;
+    bool shutdown_complete;
     struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
 };
@@ -88,6 +89,22 @@ static void s_local_outgoing_connection(struct aws_socket *socket, int error_cod
     aws_condition_variable_notify_one(outgoing_args->condition_variable);
 }
 
+static void s_local_outgoing_connection_shutdown_complete(void *user_data) {
+    (void)socket;
+    struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
+
+    aws_mutex_lock(outgoing_args->mutex);
+    outgoing_args->shutdown_complete = true;
+    aws_mutex_unlock(outgoing_args->mutex);
+    aws_condition_variable_notify_one(outgoing_args->condition_variable);
+}
+
+static bool s_outgoing_shutdown_completed_predicate(void *arg) {
+    struct local_outgoing_args *io_args = arg;
+
+    return io_args->shutdown_complete;
+}
+
 struct socket_io_args {
     struct aws_socket *socket;
     struct aws_byte_cursor *to_write;
@@ -102,11 +119,11 @@ struct socket_io_args {
     struct aws_condition_variable condition_variable;
 };
 
-// static bool s_shutdown_completed_predicate(void *arg) {
-//     struct socket_io_args *io_args = arg;
+static bool s_shutdown_completed_predicate(void *arg) {
+    struct socket_io_args *io_args = arg;
 
-//     return io_args->shutdown_complete;
-// }
+    return io_args->shutdown_complete;
+}
 
 static void s_on_written(struct aws_socket *socket, int error_code, size_t amount_written, void *user_data) {
     (void)socket;
@@ -193,14 +210,13 @@ static void s_socket_close_task(struct aws_task *task, void *args, enum aws_task
     aws_condition_variable_notify_one(&io_args->condition_variable);
 }
 
-// static void s_socket_shutdown_complete_fn(struct aws_socket* socket, void*args) {
-//     struct socket_io_args *io_args = args;
-//     aws_mutex_lock(io_args->mutex);
-//     io_args->shutdown_complete = true;
-//     aws_mutex_unlock(io_args->mutex);
-//     aws_condition_variable_notify_one(&io_args->condition_variable);
-// }
-
+static void s_socket_shutdown_complete_fn(void *user_data) {
+    struct socket_io_args *close_args = user_data;
+    aws_mutex_lock(close_args->mutex);
+    close_args->shutdown_complete = true;
+    aws_mutex_unlock(close_args->mutex);
+    aws_condition_variable_notify_one(&close_args->condition_variable);
+}
 
 /* we have tests that need to check the error handling path, but it's damn near
    impossible to predictably make sockets fail, the best idea we have is to
@@ -251,6 +267,30 @@ static int s_test_socket_ex(
         .error_invoked = false,
     };
 
+    /* now test the read and write across the connection. */
+    const char read_data[] = "I'm a little teapot";
+    char write_data[sizeof(read_data)] = {0};
+
+    struct aws_byte_buf read_buffer = aws_byte_buf_from_array((const uint8_t *)read_data, sizeof(read_data));
+    struct aws_byte_buf write_buffer = aws_byte_buf_from_array((const uint8_t *)write_data, sizeof(write_data));
+    write_buffer.len = 0;
+
+    struct aws_byte_cursor read_cursor = aws_byte_cursor_from_buf(&read_buffer);
+
+    struct socket_io_args io_args = {
+        .socket = NULL,
+        .to_write = &read_cursor,
+        .to_read = &read_buffer,
+        .read_data = &write_buffer,
+        .mutex = &mutex,
+        .amount_read = 0,
+        .amount_written = 0,
+        .error_code = 0,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .close_completed = false,
+        .shutdown_complete = false,
+    };
+
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
@@ -272,6 +312,7 @@ static int s_test_socket_ex(
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
 
     struct aws_socket outgoing;
+
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
         ASSERT_SUCCESS(aws_socket_bind(&outgoing, local));
@@ -306,28 +347,7 @@ static int s_test_socket_ex(
     aws_socket_subscribe_to_readable_events(server_sock, s_on_readable, NULL);
     aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
 
-    /* now test the read and write across the connection. */
-    const char read_data[] = "I'm a little teapot";
-    char write_data[sizeof(read_data)] = {0};
-
-    struct aws_byte_buf read_buffer = aws_byte_buf_from_array((const uint8_t *)read_data, sizeof(read_data));
-    struct aws_byte_buf write_buffer = aws_byte_buf_from_array((const uint8_t *)write_data, sizeof(write_data));
-    write_buffer.len = 0;
-
-    struct aws_byte_cursor read_cursor = aws_byte_cursor_from_buf(&read_buffer);
-
-    struct socket_io_args io_args = {
-        .socket = &outgoing,
-        .to_write = &read_cursor,
-        .to_read = &read_buffer,
-        .read_data = &write_buffer,
-        .mutex = &mutex,
-        .amount_read = 0,
-        .amount_written = 0,
-        .error_code = 0,
-        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
-        .close_completed = false,
-    };
+    io_args.socket = &outgoing;
 
     struct aws_task write_task = {
         .fn = s_write_task,
@@ -384,9 +404,12 @@ static int s_test_socket_ex(
     if (listener_args.incoming) {
         io_args.socket = listener_args.incoming;
         io_args.close_completed = false;
+        io_args.shutdown_complete = false;
+        aws_socket_set_shutdown_callback(listener_args.incoming, s_socket_shutdown_complete_fn, &io_args);
         aws_event_loop_schedule_task_now(event_loop, &close_task);
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_close_completed_predicate, &io_args);
+        aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
         ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
         aws_socket_clean_up(listener_args.incoming);
@@ -395,18 +418,24 @@ static int s_test_socket_ex(
 
     io_args.socket = &outgoing;
     io_args.close_completed = false;
+    io_args.shutdown_complete = false;
+    aws_socket_set_shutdown_callback(&outgoing, s_socket_shutdown_complete_fn, &io_args);
     aws_event_loop_schedule_task_now(event_loop, &close_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_close_completed_predicate, &io_args);
+    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     aws_socket_clean_up(&outgoing);
 
     io_args.socket = &listener;
     io_args.close_completed = false;
+    io_args.shutdown_complete = false;
+    aws_socket_set_shutdown_callback(&listener, s_socket_shutdown_complete_fn, &io_args);
     aws_event_loop_schedule_task_now(event_loop, &close_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_close_completed_predicate, &io_args);
+    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     aws_socket_clean_up(&listener);
@@ -1037,18 +1066,25 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
         .condition_variable = &condition_variable,
         .connect_invoked = false,
         .error_invoked = false,
+        .shutdown_complete = false,
     };
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
+    aws_socket_set_shutdown_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
     aws_event_loop_group_release(el_group);
 
     aws_thread_join_all_managed();
 
     ASSERT_INT_EQUALS(AWS_IO_EVENT_LOOP_SHUTDOWN, outgoing_args.last_error);
+
+    ASSERT_SUCCESS(aws_mutex_lock(outgoing_args.mutex));
     aws_socket_clean_up(&outgoing);
+    aws_condition_variable_wait_pred(
+        outgoing_args.condition_variable, outgoing_args.mutex, s_outgoing_shutdown_completed_predicate, &outgoing_args);
+    ASSERT_SUCCESS(aws_mutex_unlock(outgoing_args.mutex));
 
     aws_io_library_clean_up();
 
@@ -1664,6 +1700,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
         .error_code = 0,
         .condition_variable = AWS_CONDITION_VARIABLE_INIT,
         .close_completed = false,
+        .shutdown_complete = false,
     };
 
     struct aws_task close_task = {
@@ -1673,10 +1710,14 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
 
     if (listener_args.incoming) {
         io_args.socket = listener_args.incoming;
+        aws_socket_set_shutdown_callback(io_args.socket, s_socket_shutdown_complete_fn, &io_args);
         io_args.close_completed = false;
+        io_args.shutdown_complete = false;
+        aws_socket_assign_to_event_loop(io_args.socket, event_loop);
         aws_event_loop_schedule_task_now(event_loop, &close_task);
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_close_completed_predicate, &io_args);
+        aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
         ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
         aws_socket_clean_up(listener_args.incoming);
@@ -1684,10 +1725,13 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     }
 
     io_args.socket = &outgoing;
+    aws_socket_set_shutdown_callback(io_args.socket, s_socket_shutdown_complete_fn, &io_args);
     io_args.close_completed = false;
+    io_args.shutdown_complete = false;
     aws_event_loop_schedule_task_now(event_loop, &close_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_close_completed_predicate, &io_args);
+    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     aws_socket_clean_up(&outgoing);
@@ -1832,7 +1876,13 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
 
     aws_mem_release(allocator, server_sock);
+    io_args.shutdown_complete = false;
+    aws_socket_set_shutdown_callback(&listener, s_socket_shutdown_complete_fn, &io_args);
     aws_socket_clean_up(&listener);
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
+
     aws_event_loop_destroy(event_loop);
 
     return 0;

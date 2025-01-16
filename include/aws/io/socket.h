@@ -67,8 +67,8 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
 
-    // aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
-    // void *shutdown_user_data;
+    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
+    void *shutdown_user_data;
 
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API
@@ -243,6 +243,8 @@ AWS_IO_API int aws_socket_start_accept(
  * until the event loop finishes processing the request for unsubscribe in it's own thread.
  */
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
+
+AWS_IO_API int aws_socket_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 
 /**
  * Calls `close()` on the socket and unregisters all io operations from the event loop. This function must be called
