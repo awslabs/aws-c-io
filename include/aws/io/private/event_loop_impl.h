@@ -90,7 +90,29 @@ struct aws_event_loop_local_object {
 struct aws_event_loop_options {
     aws_io_clock_fn *clock;
     struct aws_thread_options *thread_options;
+
+    /**
+     * Event loop type. If the event loop type is set to AWS_EVENT_LOOP_PLATFORM_DEFAULT, the
+     * creation function will automatically use the platform’s default event loop type.
+     */
+    enum aws_event_loop_type type;
 };
+
+struct aws_event_loop *aws_event_loop_new_with_iocp(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
+
+struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
+
+struct aws_event_loop *aws_event_loop_new_with_kqueue(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
+
+struct aws_event_loop *aws_event_loop_new_with_epoll(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options);
 
 typedef struct aws_event_loop *(aws_new_event_loop_fn)(struct aws_allocator *alloc,
                                                        const struct aws_event_loop_options *options,
@@ -105,7 +127,7 @@ struct aws_event_loop_group {
 
 AWS_EXTERN_C_BEGIN
 
-#ifdef AWS_USE_IO_COMPLETION_PORTS
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
 
 /**
  * Prepares aws_overlapped for use, and sets a function to call when the overlapped operation completes.
@@ -128,6 +150,7 @@ void aws_overlapped_reset(struct aws_overlapped *overlapped);
  */
 AWS_IO_API
 struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *overlapped);
+#endif /* AWS_ENABLE_IO_COMPLETION_PORTS */
 
 /**
  * Associates an aws_io_handle with the event loop's I/O Completion Port.
@@ -144,8 +167,6 @@ int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle);
 
-#else
-
 /**
  * Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were
  * received. The definition for these values can be found in aws_io_event_type. Currently, only
@@ -161,8 +182,6 @@ int aws_event_loop_subscribe_to_io_events(
     aws_event_loop_on_event_fn *on_event,
     void *user_data);
 
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
-
 /**
  * Creates an instance of the default event loop implementation for the current architecture and operating system.
  */
@@ -174,9 +193,7 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
  * extendable options.
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_new_default_with_options(
-    struct aws_allocator *alloc,
-    const struct aws_event_loop_options *options);
+struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
 
 /**
  * Initializes common event-loop data structures.

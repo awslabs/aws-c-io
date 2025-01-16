@@ -229,6 +229,10 @@ jobs:
 
   macos:
     runs-on: macos-14 # latest
+    strategy:
+      fail-fast: false
+      matrix:
+        eventloop: ["kqueue"] # TODO: Add "dispatch_queue" when apple network framework is implemented.
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -238,7 +242,7 @@ jobs:
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }}
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }}
 
   macos-x64:
     runs-on: macos-14-large # latest
@@ -255,6 +259,10 @@ jobs:
 
   macos-debug:
     runs-on: macos-14 # latest
+    strategy:
+      fail-fast: false
+      matrix:
+        eventloop: ["kqueue"] # TODO: Add "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON" when apple network framework is implemented.
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -264,7 +272,7 @@ jobs:
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --config Debug
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }} --config Debug
 
   freebsd:
     runs-on: ubuntu-24.04  # latest
