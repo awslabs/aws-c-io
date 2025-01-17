@@ -840,7 +840,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     aws_array_list_clean_up(&bh_addresses);
 
     aws_io_library_clean_up();
-    
+
     return 0;
 }
 

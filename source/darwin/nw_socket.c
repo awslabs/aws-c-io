@@ -981,6 +981,9 @@ static void s_schedule_connection_state_changed_fn(
     nw_connection_state_t state,
     nw_error_t error) {
 
+    if (socket->state == CLOSED)
+        return;
+
     struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
 
     struct connection_state_change_args *args =
@@ -997,7 +1000,7 @@ static void s_schedule_connection_state_changed_fn(
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p: nw_socket_acquire_internal_ref: s_schedule_connection_state_changed_fn",
+        "id=%p: nw_socket_acquire_internal_ref: s_process_connection_state_change_task",
         (void *)nw_socket);
     aws_task_init(task, s_process_connection_state_changed_task, args, "writtenTask");
     aws_mutex_lock(&nw_socket->synced_data.lock);
