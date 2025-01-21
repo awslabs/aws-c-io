@@ -817,24 +817,26 @@ static void s_schedule_write_fn(
     size_t bytes_written,
     void *user_data,
     aws_socket_on_write_completed_fn *written_fn) {
-
-    struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
-
-    struct nw_socket_written_args *args =
-        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
-
-    args->nw_socket = nw_socket;
-    args->allocator = nw_socket->allocator;
-    args->error_code = error_code;
-    args->written_fn = written_fn;
-    args->user_data = user_data;
-    args->bytes_written = bytes_written;
-    nw_socket_acquire_internal_ref(nw_socket);
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: nw_socket_acquire_internal_ref: s_process_write_task", (void *)nw_socket);
-    aws_task_init(task, s_process_write_task, args, "writtenTask");
     aws_mutex_lock(&nw_socket->synced_data.lock);
     if (nw_socket->synced_data.event_loop) {
+
+        struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
+
+        struct nw_socket_written_args *args =
+            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
+
+        args->nw_socket = nw_socket;
+        args->allocator = nw_socket->allocator;
+        args->error_code = error_code;
+        args->written_fn = written_fn;
+        args->user_data = user_data;
+        args->bytes_written = bytes_written;
+        nw_socket_acquire_internal_ref(nw_socket);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET, "id=%p: nw_socket_acquire_internal_ref: s_process_write_task", (void *)nw_socket);
+        aws_task_init(task, s_process_write_task, args, "writtenTask");
+
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
@@ -988,27 +990,28 @@ static void s_schedule_connection_state_changed_fn(
     if (socket->state == CLOSED) {
         return;
     }
-    struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
-
-    struct nw_socket *nw_socket = socket->impl;
-    struct connection_state_change_args *args =
-        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct connection_state_change_args));
-
-    args->socket = socket;
-    args->allocator = nw_socket->allocator;
-    args->error = error ? nw_error_get_error_code(error) : 0;
-    args->state = state;
-    args->nw_connection = nw_connection;
-
-    nw_socket_acquire_internal_ref(nw_socket);
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET,
-        "id=%p: nw_socket_acquire_internal_ref: s_process_connection_state_change_task",
-        (void *)nw_socket);
-    aws_task_init(task, s_process_connection_state_changed_task, args, "ConnectionStateChangedTask");
     aws_mutex_lock(&nw_socket->synced_data.lock);
     if (nw_socket->synced_data.event_loop) {
+        struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
+
+        struct nw_socket *nw_socket = socket->impl;
+        struct connection_state_change_args *args =
+            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct connection_state_change_args));
+
+        args->socket = socket;
+        args->allocator = nw_socket->allocator;
+        args->error = error ? nw_error_get_error_code(error) : 0;
+        args->state = state;
+        args->nw_connection = nw_connection;
+
+        nw_socket_acquire_internal_ref(nw_socket);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p: nw_socket_acquire_internal_ref: s_process_connection_state_change_task",
+            (void *)nw_socket);
+        aws_task_init(task, s_process_connection_state_changed_task, args, "ConnectionStateChangedTask");
+
         aws_event_loop_schedule_task_now(nw_socket->synced_data.event_loop, task);
     }
 
