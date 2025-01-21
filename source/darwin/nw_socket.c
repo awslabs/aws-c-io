@@ -990,11 +990,11 @@ static void s_schedule_connection_state_changed_fn(
     if (socket->state == CLOSED) {
         return;
     }
+    struct nw_socket *nw_socket = socket->impl;
     aws_mutex_lock(&nw_socket->synced_data.lock);
     if (nw_socket->synced_data.event_loop) {
         struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
 
-        struct nw_socket *nw_socket = socket->impl;
         struct connection_state_change_args *args =
             aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct connection_state_change_args));
 
