@@ -441,9 +441,11 @@ static int s_run(struct aws_event_loop *event_loop) {
         dispatch_resume(dispatch_loop->dispatch_queue);
         dispatch_loop->synced_data.suspended = false;
         s_rlock_dispatch_loop_context(dispatch_loop->context);
-        s_lock_service_entries(dispatch_loop->context);
-        s_try_schedule_new_iteration(dispatch_loop->context, 0);
-        s_unlock_service_entries(dispatch_loop->context);
+        if (dispatch_loop->context->io_dispatch_loop) {
+            s_lock_service_entries(dispatch_loop->context);
+            s_try_schedule_new_iteration(dispatch_loop->context, 0);
+            s_unlock_service_entries(dispatch_loop->context);
+        }
         s_runlock_dispatch_loop_context(dispatch_loop->context);
     }
     s_unlock_cross_thread_data(dispatch_loop);
@@ -618,6 +620,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     s_rlock_dispatch_loop_context(dispatch_loop->context);
+    if (dispatch_loop->context->io_dispatch_loop == NULL) {
+        goto schedule_task_common_cleanup;
+    }
     s_lock_cross_thread_data(dispatch_loop);
     task->timestamp = run_at_nanos;
 
@@ -653,6 +658,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     }
 
     s_unlock_cross_thread_data(dispatch_loop);
+schedule_task_common_cleanup:
     s_runlock_dispatch_loop_context(dispatch_loop->context);
 }
 

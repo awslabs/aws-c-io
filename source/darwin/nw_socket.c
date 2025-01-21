@@ -1388,22 +1388,28 @@ static int s_socket_start_accept_fn(
                   (void *)socket,
                   (void *)nw_socket->nw_connection);
 
-              struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
+              // TODO: revisit
+              aws_mutex_lock(&nw_socket->synced_data.lock);
+              if (nw_socket->synced_data.event_loop) {
+                  struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
 
-              struct nw_socket_scheduled_task_args *args =
-                  aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
+                  struct nw_socket_scheduled_task_args *args =
+                      aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
 
-              args->nw_socket = nw_socket;
-              args->allocator = nw_socket->allocator;
-              // acquire ref count for the task
-              nw_socket_acquire_internal_ref(nw_socket);
-              AWS_LOGF_DEBUG(
-                  AWS_LS_IO_SOCKET,
-                  "id=%p: nw_socket_acquire_internal_ref: s_process_set_listener_endpoint_task",
-                  (void *)nw_socket);
+                  args->nw_socket = nw_socket;
+                  args->allocator = nw_socket->allocator;
+                  // acquire ref count for the task
+                  nw_socket_acquire_internal_ref(nw_socket);
+                  AWS_LOGF_DEBUG(
+                      AWS_LS_IO_SOCKET,
+                      "id=%p: nw_socket_acquire_internal_ref: s_process_set_listener_endpoint_task",
+                      (void *)nw_socket);
 
-              aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
-              aws_event_loop_schedule_task_now(socket->event_loop, task);
+                  aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
+                  // TODO: what if event loop is shuting down & what happened if we schedule the task here.
+                  aws_event_loop_schedule_task_now(socket->event_loop, task);
+              }
+              aws_mutex_unlock(&nw_socket->synced_data.lock);
 
           } else if (state == nw_listener_state_cancelled) {
               AWS_LOGF_DEBUG(
