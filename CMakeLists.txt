@@ -142,6 +142,14 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
     list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
     set(USE_S2N ON)
 
+elseif(CMAKE_SYSTEM_NAME STREQUAL "QNX")
+    file(GLOB AWS_IO_OS_SRC
+            "source/qnx/*.c"
+            "source/posix/*.c"
+            )
+    set(EVENT_LOOP_DEFINE "IONOTIFY")
+    set(USE_S2N ON)
+    list(APPEND PLATFORM_LIBS "socket")
 endif()
 
 if (BYO_CRYPTO)
@@ -252,7 +260,7 @@ install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}-config.cmake"
         DESTINATION "${LIBRARY_DIRECTORY}/${PROJECT_NAME}/cmake/"
         COMPONENT Development)
 
-if (NOT CMAKE_CROSSCOMPILING)
+if (NOT CMAKE_CROSSCOMPILING OR AWS_BUILD_QNX_TESTS)
     if (BUILD_TESTING)
        add_subdirectory(tests)
     endif()
