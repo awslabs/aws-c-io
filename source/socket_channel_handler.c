@@ -349,7 +349,6 @@ static int s_socket_shutdown(
             close_args->slot = slot;
             close_args->free_scarce_resource_immediately = free_scarce_resource_immediately;
             close_args->dir = dir;
-            close_args->test_flag = 1123;
 
             aws_socket_set_shutdown_callback(socket_handler->socket, s_shutdown_read_dir_complete_fn, close_args);
             if (aws_socket_close(socket_handler->socket)) {
@@ -378,7 +377,7 @@ static int s_socket_shutdown(
 
         aws_socket_set_shutdown_callback(socket_handler->socket, s_shutdown_complete_fn, close_args);
         aws_socket_close(socket_handler->socket);
-    } else { // If socket is already closed, fire the close task
+    } else { // If socket is already closed, fire the close task directly.
         /* Schedule a task to complete the shutdown, in case a do_read task is currently pending.
          * It's OK to delay the shutdown, even when free_scarce_resources_immediately is true,
          * because the socket has been closed: mitigating the risk that the socket is still being abused by

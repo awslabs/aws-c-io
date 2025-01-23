@@ -348,9 +348,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     aws_linked_list_init(&dispatch_loop->synced_data.cross_thread_tasks);
 
     struct dispatch_loop_context *context = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
-    aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
-    context->allocator = alloc;
-    aws_mutex_init(&context->scheduling_state.services_lock);
 
     if (aws_priority_queue_init_dynamic(
             &context->scheduling_state.scheduled_services,
@@ -358,8 +355,19 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
             DEFAULT_QUEUE_SIZE,
             sizeof(struct scheduled_service_entry *),
             &s_compare_timestamps)) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: priority queue creation failed, clean up the context: %s",
+            (void *)loop,
+            dispatch_queue_id);
+        aws_mem_release(alloc, context);
         goto clean_up;
     };
+
+    aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
+    context->allocator = alloc;
+
+    aws_mutex_init(&context->scheduling_state.services_lock);
 
     aws_rw_lock_init(&context->lock);
     context->io_dispatch_loop = dispatch_loop;
