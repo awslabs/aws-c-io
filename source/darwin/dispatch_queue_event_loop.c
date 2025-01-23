@@ -173,29 +173,6 @@ static int s_compare_timestamps(const void *a, const void *b) {
     return a_time > b_time; /* min-heap */
 }
 
-// /** Help function to insert the service entry in the order of timestamp
-//  *  The function should always be wrapped with lock scheduling_state.lock.
-//  */
-// static int s_sorted_insert_service_entry(
-//     struct dispatch_scheduling_state *service_entry,
-//     struct scheduled_service_entry *entry) {
-
-//     size_t time_to_run = entry->timestamp;
-
-//     /* Perform a sorted insertion into timed_list. We didn't directly use a O(log(n))*/
-//     struct aws_linked_list_node *node_i;
-//     for (node_i = aws_linked_list_begin(&service_entry->scheduled_services);
-//          node_i != aws_linked_list_end(&service_entry->scheduled_services);
-//          node_i = aws_linked_list_next(node_i)) {
-
-//         struct scheduled_service_entry *entry_i = AWS_CONTAINER_OF(node_i, struct aws_task, node);
-//         if (entry_i->timestamp > time_to_run) {
-//             break;
-//         }
-//     }
-//     aws_linked_list_insert_before(node_i, &entry->node);
-// }
-
 static struct scheduled_service_entry *s_scheduled_service_entry_new(
     struct dispatch_loop_context *context,
     uint64_t timestamp) {
@@ -284,7 +261,7 @@ static void s_dispatch_event_loop_destroy(void *context) {
 
 static const char AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX[] = "com.amazonaws.commonruntime.eventloop.";
 static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH =
-    AWS_ARRAY_SIZE(AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX);
+    AWS_ARRAY_SIZE(AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX) - 1; // remove string terminator
 static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH =
     AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH + AWS_UUID_STR_LEN;
 /**
@@ -348,9 +325,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     aws_linked_list_init(&dispatch_loop->synced_data.cross_thread_tasks);
 
     struct dispatch_loop_context *context = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
-    aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
-    context->allocator = alloc;
-    aws_mutex_init(&context->scheduling_state.services_lock);
 
     if (aws_priority_queue_init_dynamic(
             &context->scheduling_state.scheduled_services,
@@ -358,8 +332,19 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
             DEFAULT_QUEUE_SIZE,
             sizeof(struct scheduled_service_entry *),
             &s_compare_timestamps)) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: priority queue creation failed, clean up the context: %s",
+            (void *)loop,
+            dispatch_queue_id);
+        aws_mem_release(alloc, context);
         goto clean_up;
     };
+
+    aws_ref_count_init(&context->ref_count, context, s_dispatch_loop_context_destroy);
+    context->allocator = alloc;
+
+    aws_mutex_init(&context->scheduling_state.services_lock);
 
     aws_rw_lock_init(&context->lock);
     context->io_dispatch_loop = dispatch_loop;
@@ -618,6 +603,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     s_rlock_dispatch_loop_context(dispatch_loop->context);
+    if (dispatch_loop->context->io_dispatch_loop == NULL) {
+        goto schedule_task_common_cleanup;
+    }
     s_lock_cross_thread_data(dispatch_loop);
     task->timestamp = run_at_nanos;
 
@@ -653,6 +641,7 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     }
 
     s_unlock_cross_thread_data(dispatch_loop);
+schedule_task_common_cleanup:
     s_runlock_dispatch_loop_context(dispatch_loop->context);
 }
 
