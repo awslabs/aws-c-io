@@ -173,29 +173,6 @@ static int s_compare_timestamps(const void *a, const void *b) {
     return a_time > b_time; /* min-heap */
 }
 
-// /** Help function to insert the service entry in the order of timestamp
-//  *  The function should always be wrapped with lock scheduling_state.lock.
-//  */
-// static int s_sorted_insert_service_entry(
-//     struct dispatch_scheduling_state *service_entry,
-//     struct scheduled_service_entry *entry) {
-
-//     size_t time_to_run = entry->timestamp;
-
-//     /* Perform a sorted insertion into timed_list. We didn't directly use a O(log(n))*/
-//     struct aws_linked_list_node *node_i;
-//     for (node_i = aws_linked_list_begin(&service_entry->scheduled_services);
-//          node_i != aws_linked_list_end(&service_entry->scheduled_services);
-//          node_i = aws_linked_list_next(node_i)) {
-
-//         struct scheduled_service_entry *entry_i = AWS_CONTAINER_OF(node_i, struct aws_task, node);
-//         if (entry_i->timestamp > time_to_run) {
-//             break;
-//         }
-//     }
-//     aws_linked_list_insert_before(node_i, &entry->node);
-// }
-
 static struct scheduled_service_entry *s_scheduled_service_entry_new(
     struct dispatch_loop_context *context,
     uint64_t timestamp) {
