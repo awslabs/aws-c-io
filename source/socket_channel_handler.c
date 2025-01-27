@@ -291,39 +291,6 @@ static void s_close_task(struct aws_channel_task *task, void *arg, aws_task_stat
         socket_handler->slot, AWS_CHANNEL_DIR_WRITE, socket_handler->shutdown_err_code, false);
 }
 
-struct channel_shutdown_close_args {
-    struct aws_channel_handler *handler;
-    int error_code;
-    struct aws_channel *channel;
-    struct aws_channel_slot *slot;
-    enum aws_channel_direction dir;
-    bool free_scarce_resource_immediately;
-    int test_flag;
-};
-
-static void s_shutdown_complete_fn(void *user_data) {
-    struct channel_shutdown_close_args *close_args = user_data;
-
-    /* Schedule a task to complete the shutdown, in case a do_read task is currently pending.
-     * It's OK to delay the shutdown, even when free_scarce_resources_immediately is true,
-     * because the socket has been closed: mitigating the risk that the socket is still being abused by
-     * a hostile peer. */
-    struct socket_handler *socket_handler = close_args->handler->impl;
-    aws_channel_task_init(
-        &socket_handler->shutdown_task_storage, s_close_task, close_args->handler, "socket_handler_close");
-    socket_handler->shutdown_err_code = close_args->error_code;
-    aws_channel_schedule_task_now(close_args->channel, &socket_handler->shutdown_task_storage);
-    aws_mem_release(close_args->handler->alloc, close_args);
-}
-
-static void s_shutdown_read_dir_complete_fn(void *user_data) {
-    struct channel_shutdown_close_args *close_args = user_data;
-
-    aws_channel_slot_on_handler_shutdown_complete(
-        close_args->slot, close_args->dir, close_args->error_code, close_args->free_scarce_resource_immediately);
-    aws_mem_release(close_args->handler->alloc, close_args);
-}
-
 static int s_socket_shutdown(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -340,17 +307,6 @@ static int s_socket_shutdown(
             (void *)handler,
             error_code);
         if (free_scarce_resource_immediately && aws_socket_is_open(socket_handler->socket)) {
-            struct channel_shutdown_close_args *close_args =
-                aws_mem_calloc(handler->alloc, 1, sizeof(struct channel_shutdown_close_args));
-
-            close_args->error_code = error_code;
-            close_args->handler = handler;
-            close_args->channel = slot->channel;
-            close_args->slot = slot;
-            close_args->free_scarce_resource_immediately = free_scarce_resource_immediately;
-            close_args->dir = dir;
-
-            aws_socket_set_shutdown_callback(socket_handler->socket, s_shutdown_read_dir_complete_fn, close_args);
             if (aws_socket_close(socket_handler->socket)) {
                 return AWS_OP_ERR;
             }
@@ -365,28 +321,16 @@ static int s_socket_shutdown(
         (void *)handler,
         error_code);
     if (aws_socket_is_open(socket_handler->socket)) {
-        struct channel_shutdown_close_args *close_args =
-            aws_mem_calloc(handler->alloc, 1, sizeof(struct channel_shutdown_close_args));
-
-        close_args->error_code = error_code;
-        close_args->handler = handler;
-        close_args->channel = slot->channel;
-        close_args->slot = slot;
-        close_args->free_scarce_resource_immediately = free_scarce_resource_immediately;
-        close_args->dir = dir;
-
-        aws_socket_set_shutdown_callback(socket_handler->socket, s_shutdown_complete_fn, close_args);
         aws_socket_close(socket_handler->socket);
-    } else { // If socket is already closed, fire the close task directly.
-        /* Schedule a task to complete the shutdown, in case a do_read task is currently pending.
-         * It's OK to delay the shutdown, even when free_scarce_resources_immediately is true,
-         * because the socket has been closed: mitigating the risk that the socket is still being abused by
-         * a hostile peer. */
-        aws_channel_task_init(&socket_handler->shutdown_task_storage, s_close_task, handler, "socket_handler_close");
-        socket_handler->shutdown_err_code = error_code;
-        aws_channel_schedule_task_now(slot->channel, &socket_handler->shutdown_task_storage);
     }
 
+    /* Schedule a task to complete the shutdown, in case a do_read task is currently pending.
+     * It's OK to delay the shutdown, even when free_scarce_resources_immediately is true,
+     * because the socket has been closed: mitigating the risk that the socket is still being abused by
+     * a hostile peer. */
+    aws_channel_task_init(&socket_handler->shutdown_task_storage, s_close_task, handler, "socket_handler_close");
+    socket_handler->shutdown_err_code = error_code;
+    aws_channel_schedule_task_now(slot->channel, &socket_handler->shutdown_task_storage);
     return AWS_OP_SUCCESS;
 }
 
