@@ -30,8 +30,8 @@ struct dispatch_loop {
     /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
         /**
-         * The lock is used to protect synced_data across the threads. It should be acquired whenever we touched the
-         * data in this synced_data struct.
+         * The lock is used to protect synced_data across the threads. It should be acquired whenever data in the
+         * synched_data struct is accessed or modified.
          */
         struct aws_mutex lock;
         /*
@@ -45,6 +45,12 @@ struct dispatch_loop {
         // once suspended is set to true, event loop will no longer schedule any future services entry (the running
         // iteration will still be finished.).
         bool suspended;
+
+        /*
+         * Will be true when the underlying dispatch_queue has been suspended and is no longer processing any further
+         * blocks. `run()` must be called to resume the event loop and for stopped to be false.
+         */
+        bool stopped;
 
         struct aws_linked_list cross_thread_tasks;
     } synced_data;

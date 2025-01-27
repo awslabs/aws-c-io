@@ -217,7 +217,7 @@ static void s_dispatch_loop_context_destroy(void *context) {
 }
 
 // Manually called to destroy an aws_event_loop
-static void s_dispatch_event_loop_destroy(aws_event_loop *event_loop) {
+static void s_dispatch_event_loop_destroy(struct aws_event_loop *event_loop) {
     // release dispatch loop
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
@@ -271,6 +271,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     AWS_PRECONDITION(options);
     AWS_PRECONDITION(options->clock);
 
+    struct dispatch_loop *dispatch_loop = NULL;
     struct aws_event_loop *loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing dispatch_queue event-loop", (void *)loop);
@@ -280,7 +281,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     loop->vtable = &s_vtable;
 
-    struct dispatch_loop *dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
+    dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop));
     dispatch_loop->allocator = alloc;
     loop->impl_data = dispatch_loop;
     dispatch_loop->base_loop = loop;
@@ -299,6 +300,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     aws_mutex_init(&dispatch_loop->synced_data.lock);
     dispatch_loop->synced_data.is_executing = false;
+    dispatch_loop->synced_data.stopped = false;
 
     if (aws_task_scheduler_init(&dispatch_loop->scheduler, alloc)) {
         AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "id=%p: Initialization of task scheduler failed", (void *)loop);
@@ -309,7 +311,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     struct dispatch_loop_context *dispatch_loop_context =
         aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
-    aws_ref_count_init(&context->ref_count, dispatch_loop_context, s_dispatch_loop_context_destroy);
+    aws_ref_count_init(&dispatch_loop_context->ref_count, dispatch_loop_context, s_dispatch_loop_context_destroy);
     dispatch_loop_context->allocator = alloc;
     dispatch_loop->context = dispatch_loop_context;
     aws_rw_lock_init(&dispatch_loop_context->lock);
@@ -401,10 +403,11 @@ static int s_run(struct aws_event_loop *event_loop) {
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     s_lock_cross_thread_data(dispatch_loop);
-    if (dispatch_loop->synced_data.suspended) {
+    if (dispatch_loop->synced_data.suspended || dispatch_loop->synced_data.stopped) {
         AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
         dispatch_resume(dispatch_loop->dispatch_queue);
         dispatch_loop->synced_data.suspended = false;
+        dispatch_loop->synced_data.stopped = false;
         s_rlock_dispatch_loop_context(dispatch_loop->context);
         s_lock_service_entries(dispatch_loop->context);
         s_try_schedule_new_iteration(dispatch_loop->context, 0);
@@ -518,9 +521,9 @@ iteration_done:
     // destroy the completed service entry.
     s_lock_service_entries(dispatch_queue_context);
     if (aws_priority_queue_node_is_in_queue(&entry->priority_queue_node)) {
-        aws_priority_queue_remove(&scheduling_status.scheduled_services, entry, &entry->priority_queue_node);
+        aws_priority_queue_remove(
+            &dispatch_queue_context->scheduling_state.scheduled_services, entry, &entry->priority_queue_node);
     }
-    struct dispatch_loop_context *dispatch_queue_context = entry->dispatch_queue_context;
     s_release_dispatch_loop_context(dispatch_queue_context);
     aws_mem_release(entry->allocator, entry);
     s_unlock_service_entries(dispatch_queue_context);
