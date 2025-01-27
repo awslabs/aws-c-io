@@ -311,11 +311,12 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     struct dispatch_loop_context *dispatch_loop_context =
         aws_mem_calloc(alloc, 1, sizeof(struct dispatch_loop_context));
-    aws_ref_count_init(&dispatch_loop_context->ref_count, dispatch_loop_context, s_dispatch_loop_context_destroy);
     dispatch_loop_context->allocator = alloc;
+    aws_ref_count_init(&dispatch_loop_context->ref_count, dispatch_loop_context, s_dispatch_loop_context_destroy);
     dispatch_loop->context = dispatch_loop_context;
-    aws_rw_lock_init(&dispatch_loop_context->lock);
     dispatch_loop_context->io_dispatch_loop = dispatch_loop;
+
+    aws_rw_lock_init(&dispatch_loop_context->lock);
 
     aws_mutex_init(&dispatch_loop_context->scheduling_state.services_lock);
     if (aws_priority_queue_init_dynamic(
