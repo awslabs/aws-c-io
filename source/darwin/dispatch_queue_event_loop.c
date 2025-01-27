@@ -100,12 +100,12 @@ struct dispatch_scheduling_state {
 struct dispatch_loop_context {
     /**
      * This is a read-write lock used to protect dispatch_loop.
-     * The write lock needs to be acquired when we make changes to dispatch_loop. T
+     * The write lock needs to be acquired when we make changes to dispatch_loop.
      * The read lock needs to be acquired when we verify whether dispatch_loop is alive.
      * This insures dispatch_loop will not be destroyed from other threads while we are using it.
      */
     struct aws_allocator *allocator;
-    struct aws_rw_lock lock;
+    struct aws_rw_lock dispatch_loop_context_lock;
     struct dispatch_loop *io_dispatch_loop;
     struct dispatch_scheduling_state scheduling_state;
     struct aws_ref_count ref_count;
@@ -134,27 +134,27 @@ static size_t s_release_dispatch_loop_context(struct dispatch_loop_context *cont
 
 /** Help functions to lock status */
 static int s_rlock_dispatch_loop_context(struct dispatch_loop_context *context) {
-    return aws_rw_lock_rlock(&context->lock);
+    return aws_rw_lock_rlock(&context->dispatch_loop_context_lock);
 }
 
 static int s_runlock_dispatch_loop_context(struct dispatch_loop_context *context) {
-    return aws_rw_lock_runlock(&context->lock);
+    return aws_rw_lock_runlock(&context->dispatch_loop_context_lock);
 }
 
 static int s_wlock_dispatch_loop_context(struct dispatch_loop_context *context) {
-    return aws_rw_lock_wlock(&context->lock);
+    return aws_rw_lock_wlock(&context->dispatch_loop_context_lock);
 }
 
 static int s_wunlock_dispatch_loop_context(struct dispatch_loop_context *context) {
-    return aws_rw_lock_wunlock(&context->lock);
+    return aws_rw_lock_wunlock(&context->dispatch_loop_context_lock);
 }
 
 static int s_lock_cross_thread_data(struct dispatch_loop *loop) {
-    return aws_mutex_lock(&loop->synced_data.lock);
+    return aws_mutex_lock(&loop->synced_data.synced_data_lock);
 }
 
 static int s_unlock_cross_thread_data(struct dispatch_loop *loop) {
-    return aws_mutex_unlock(&loop->synced_data.lock);
+    return aws_mutex_unlock(&loop->synced_data.synced_data_lock);
 }
 
 static int s_lock_service_entries(struct dispatch_loop_context *context) {
@@ -212,7 +212,7 @@ static void s_dispatch_loop_context_destroy(void *context) {
     struct dispatch_loop_context *dispatch_loop_context = context;
     aws_priority_queue_clean_up(&dispatch_loop_context->scheduling_state.scheduled_services);
     aws_mutex_clean_up(&dispatch_loop_context->scheduling_state.services_lock);
-    aws_rw_lock_clean_up(&dispatch_loop_context->lock);
+    aws_rw_lock_clean_up(&dispatch_loop_context->dispatch_loop_context_lock);
     aws_mem_release(dispatch_loop_context->allocator, dispatch_loop_context);
 }
 
@@ -235,7 +235,7 @@ static void s_dispatch_event_loop_destroy(struct aws_event_loop *event_loop) {
         aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
     }
 
-    aws_mutex_clean_up(&dispatch_loop->synced_data.lock);
+    aws_mutex_clean_up(&dispatch_loop->synced_data.synced_data_lock);
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
@@ -298,7 +298,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     AWS_LOGF_INFO(
         AWS_LS_IO_EVENT_LOOP, "id=%p: Apple dispatch queue created with id: %s", (void *)loop, dispatch_queue_id);
 
-    aws_mutex_init(&dispatch_loop->synced_data.lock);
+    aws_mutex_init(&dispatch_loop->synced_data.synced_data_lock);
     dispatch_loop->synced_data.is_executing = false;
     dispatch_loop->synced_data.stopped = false;
 
@@ -316,7 +316,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     dispatch_loop->context = dispatch_loop_context;
     dispatch_loop_context->io_dispatch_loop = dispatch_loop;
 
-    aws_rw_lock_init(&dispatch_loop_context->lock);
+    aws_rw_lock_init(&dispatch_loop_context->dispatch_loop_context_lock);
 
     aws_mutex_init(&dispatch_loop_context->scheduling_state.services_lock);
     if (aws_priority_queue_init_dynamic(
@@ -541,7 +541,7 @@ iteration_done:
  *
  * The function should be wrapped with the following locks:
  *      dispatch_loop->context->lock: To retain the dispatch loop
- *      dispatch_loop->synced_data.lock : To verify if the dispatch loop is suspended
+ *      dispatch_loop->synced_data.synced_data_lock : To verify if the dispatch loop is suspended
  *      dispatch_loop_context->scheduling_state->services_lock: To modify the scheduled_services list
  */
 static void s_try_schedule_new_iteration(struct dispatch_loop_context *dispatch_loop_context, uint64_t timestamp) {
