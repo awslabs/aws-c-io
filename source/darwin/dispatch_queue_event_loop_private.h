@@ -42,13 +42,18 @@ struct dispatch_loop {
         bool is_executing;
         aws_thread_id_t current_thread_id;
 
-        // once suspended is set to true, event loop will no longer schedule any future services entry (the running
-        // iteration will still be finished.).
+        /*
+         * Set to true when `stop()` is called on event loop. Once suspended is set to true, underlying dispatch queue
+         * is set to suspend and event loop will no longer schedule any future service entries. If an iteration block is
+         * running it will continue till it finishes. `run()` must be called on a suspended dispatch queue event loop to
+         * schedule an iteration block.
+         */
         bool suspended;
 
         /*
-         * Will be true when the underlying dispatch_queue has been suspended and is no longer processing any further
-         * blocks. `run()` must be called to resume the event loop and for stopped to be false.
+         * Will be true when the underlying dispatch_queue is both suspended and has completed running any in progress
+         * iteration block. `run()` must be called to resume the event loop and its underlying dispatch queue to
+         * schedule an iteration block.
          */
         bool stopped;
 
