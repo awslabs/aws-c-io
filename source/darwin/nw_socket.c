@@ -381,16 +381,6 @@ static void s_socket_internal_destroy(void *sock_ptr) {
     struct nw_socket *nw_socket = sock_ptr;
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p : start s_socket_internal_destroy", (void *)sock_ptr);
 
-    /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
-    if (nw_socket->is_listener && nw_socket->nw_listener != NULL) {
-        // nw_listener_set_state_changed_handler(nw_socket->nw_listener, NULL);
-        nw_listener_cancel(nw_socket->nw_listener);
-    } else if (nw_socket->nw_connection != NULL) {
-        /* Setting to NULL removes previously set handler from nw_connection_t */
-        // nw_connection_set_state_changed_handler(nw_socket->nw_connection, NULL);
-        nw_connection_cancel(nw_socket->nw_connection);
-    }
-
     aws_ref_count_release(&nw_socket->ref_count);
 }
 
@@ -1522,6 +1512,16 @@ static int s_socket_close_fn(struct aws_socket *socket) {
             // if the timeout args is not triggered, cancel it and clean up
             nw_socket->timeout_args->cancelled = true;
             s_schedule_cancel_task(nw_socket, &nw_socket->timeout_args->task);
+        }
+
+        /* disable the handlers. We already know it closed and don't need pointless use-after-free event/async hell*/
+        if (nw_socket->is_listener && nw_socket->nw_listener != NULL) {
+            // nw_listener_set_state_changed_handler(nw_socket->nw_listener, NULL);
+            nw_listener_cancel(nw_socket->nw_listener);
+        } else if (nw_socket->nw_connection != NULL) {
+            /* Setting to NULL removes previously set handler from nw_connection_t */
+            // nw_connection_set_state_changed_handler(nw_socket->nw_connection, NULL);
+            nw_connection_cancel(nw_socket->nw_connection);
         }
     }
 
