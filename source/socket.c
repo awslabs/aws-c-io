@@ -53,6 +53,11 @@ int aws_socket_close(struct aws_socket *socket) {
     return socket->vtable->socket_close_fn(socket);
 }
 
+int aws_socket_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_shutdown_callback);
+    return socket->vtable->socket_set_shutdown_callback(socket, fn, user_data);
+}
+
 int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_shutdown_dir_fn);
     return socket->vtable->socket_shutdown_dir_fn(socket, dir);
@@ -153,8 +158,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
         case AWS_SOCKET_IMPL_WINSOCK:
             return aws_socket_init_winsock(socket, alloc, options);
         case AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK:
-            // Apple Network Framework is not implemented yet. We should not use it yet.
-            AWS_ASSERT(false && "Invalid socket implementation on platform.");
             return aws_socket_init_apple_nw_socket(socket, alloc, options);
         default:
             AWS_ASSERT(false && "Invalid socket implementation on platform.");
@@ -184,9 +187,11 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
     AWS_FATAL_ASSERT(aws_uuid_to_str(&uuid, &uuid_buf) == AWS_OP_SUCCESS);
 
     enum aws_socket_impl_type socket_type = aws_socket_get_default_impl_type();
-    if (socket_type == AWS_SOCKET_IMPL_POSIX)
+    if (socket_type == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".local", AWS_BYTE_BUF_PRI(uuid_buf));
+    } else if (socket_type == AWS_SOCKET_IMPL_POSIX) {
         snprintf(endpoint->address, sizeof(endpoint->address), "testsock" PRInSTR ".sock", AWS_BYTE_BUF_PRI(uuid_buf));
-    else if (socket_type == AWS_SOCKET_IMPL_WINSOCK) {
+    } else if (socket_type == AWS_SOCKET_IMPL_WINSOCK) {
         snprintf(
             endpoint->address, sizeof(endpoint->address), "\\\\.\\pipe\\testsock" PRInSTR, AWS_BYTE_BUF_PRI(uuid_buf));
     }
@@ -246,6 +251,7 @@ int aws_socket_init_winsock(
 }
 #endif
 
+
 int aws_socket_init_apple_nw_socket(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -256,3 +262,4 @@ int aws_socket_init_apple_nw_socket(
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Apple Network Framework is not supported on the platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
+

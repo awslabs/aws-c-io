@@ -1,0 +1,467 @@
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [tls-handler] - static: initializing TLS implementation as Apple SecureTransport.
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [tls-handler] - static: ALPN support detected.
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [event-loop] - id=0x108401520: Initializing dispatch_queue event-loop
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [dns] - id=0x108a03c40: Initializing default host resolver with 1 max host entries.
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [event-loop] - id=0x108400f00: Initializing dispatch_queue event-loop
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [tls-handler] - static: a pkcs$12 certificate and key has been set, setting it up now.
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [channel-bootstrap] - id=0x10be5a850: Initializing server bootstrap with event-loop group 0x107d01a20
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [channel-bootstrap] - id=0x10be5a850: attempting to initialize a new server socket listener for testsock4222f181-c801-9049-e1f3-1377a795e25f.local:0
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [channel-bootstrap] - id=0x104b35750: using tls on listener
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [socket] - id=0x107c00388: binding to testsock4222f181-c801-9049-e1f3-1377a795e25f.local:0.
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [socket] - id=0x107c00388: successfully bound
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [socket] - id=0x107c00388 handle=0x1083349c0: successfully listening
+[TRACE] [2024-10-15T00:00:32Z] [00000002003acf40] [event-loop] - id=0x108401520: subscribing to events on handle 0x1083349c0
+[INFO] [2024-10-15T00:00:32Z] [00000002003acf40] [channel-bootstrap] - id=0x108018770: Initializing client bootstrap with event-loop group 0x107d01920
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [tls-handler] - static: loading custom CA file.
+[TRACE] [2024-10-15T00:00:32Z] [00000002003acf40] [channel-bootstrap] - id=0x108018770: attempting to initialize a new client channel to testsock4222f181-c801-9049-e1f3-1377a795e25f.local:0
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [channel-bootstrap] - id=0x108018770: acquiring bootstrap reference
+[TRACE] [2024-10-15T00:00:32Z] [00000002003acf40] [channel-bootstrap] - acquiring client connection args, args=0x108712740
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [socket] - id=0x108e08700 handle=0x0: beginning connect.
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [socket] - id=0x108e08700 handle=0x0: connecting to endpoint testsock4222f181-c801-9049-e1f3-1377a795e25f.local:0.
+[TRACE] [2024-10-15T00:00:32Z] [00000002003acf40] [event-loop] - id=0x108400f00: subscribing to events on handle 0x107c0ba80
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [socket] - id=0x108e08700 handle=0x107c0ba80: start connection at 1555023612208.
+[DEBUG] [2024-10-15T00:00:32Z] [00000002003acf40] [socket] - id=0x108e08700 hanlde=0x107c0ba80: scheduling timeout task for 1558023612208.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107d0b520: Scheduling NWSocketConnectionTimeoutTask task for future execution at time 1558023612208
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x107c00388 handle=0x0: lisnter on port ready 
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076543e0: Scheduling listenerSuccessTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076543e0: Running listenerSuccessTask task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: socket connection is in the process of establishing.
+[INFO] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: connection success
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: local endpoint :0
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107d0b520: Schedule cancel cancelTaskTask task
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076514a0: Scheduling cancelTaskTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107651440: Scheduling connectionSuccessTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076514a0: Running cancelTaskTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [event-loop] - id=0x108400f00: cancelling task 0x107d0b520
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107d0b520: Running NWSocketConnectionTimeoutTask task with <Canceled> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - task_id=0x107d0b520: timeout task triggered, evaluating timeouts.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107651440: Running connectionSuccessTask task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - id=0x108018770: client connection on socket 0x108e08700 completed with error 0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - id=0x108018770: Successful connection, creating a new channel using socket 0x108e08700.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: Beginning creation and setup of new channel.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107d0d740: Scheduling on_channel_setup_complete task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107d0d740: Running on_channel_setup_complete task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: setup complete, notifying caller.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107654380: Scheduling listenerSuccessTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107654380: Running listenerSuccessTask task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: no message pool is currently stored in the event-loop local storage, adding 0x1081144e0 with max message size 4096, message count 4, with 4 small blocks of 128 bytes.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x107c00388 handle=0x1083349c0: incoming connection
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - id=0x108018770: channel 0x108f07c80 setup succeeded: bootstrapping.
+[INFO] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x107c00388 handle=0x1083349c0: connected to :0, incoming handle 0x107c07880
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: creating new slot 0x1076513e0.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel-bootstrap] - id=0x10be5a850: server connection on socket 0x107c00388 completed with error 0.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: Socket handler created with max_read_size of 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel-bootstrap] - id=0x10be5a850: creating a new channel for incoming connection using socket 0x107c00388.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: assigning to event loop 0x108401520
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [event-loop] - id=0x108401520: subscribing to events on handle 0x107c07880
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - id=0x108018770: Setting up socket handler on channel 0x108f07c80 with handler 0x108339ac0 on slot 0x1076513e0.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: Beginning creation and setup of new channel.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108f07f20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: creating new slot 0x107651380.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107d0f7c0: Scheduling on_channel_setup_complete task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107d0f7c0: Running on_channel_setup_complete task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: setup complete, notifying caller.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: no message pool is currently stored in the event-loop local storage, adding 0x108117960 with max message size 4096, message count 4, with 4 small blocks of 128 bytes.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel-bootstrap] - id=0x10be5a850: channel 0x108f0bc80 setup succeeded: bootstrapping.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: setting ALPN list h2;http/1.1
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: creating new slot 0x1076542c0.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: Socket handler created with max_read_size of 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - id=0x108018770: Setting up client TLS on channel 0x108f07c80 with handler 0x10880b980 on slot 0x107651380
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel-bootstrap] - id=0x10be5a850: Setting up socket handler on channel 0x108f0bc80 with handler 0x10833dfc0 on slot 0x1076542c0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x108f0bf20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980, starting TLS negotiation
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: creating new slot 0x107654260.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x10880b9b0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 187 from pool 0x1081144e0. Requested size was 187
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending write message of size 187, from slot 0x107651380 to slot 0x1076513e0 with handler 0x108339ac0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: writing message of size 187
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x10880b9b0: Scheduling tls_timeout task for future execution at time 1565024549333
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Running window update task task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108339af8.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339af8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339af8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c0f100 of capacity 4096 from pool 0x1081144e0. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: send written size 187
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107651140: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107651140: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - static: write of size 187, completed on channel 0x108f07c80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel-bootstrap] - id=0x10be5a850: Setting up server TLS on channel 0x108f0bc80 with handler 0x10880f800 on slot 0x107654260
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 0, max_to_read 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x1087179c0 handle=0x107c07880: queued read buffer of size 187
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107654020: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Running window update task task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x10833dff8.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107654020: Running readableTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: socket on-readable with error code 0(AWS_ERROR_SUCCESS)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c1cd00 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10be6a720, [DEBUG READ DATA] start processing node 
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10be6a720, [DEBUG READ DATA] clean up the node
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read of 187
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: read 187 from socket
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending read message of size 187, from slot 0x1076542c0 to slot 0x107654260 with handler 0x10880f800.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x10880f830.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x10833e140 of capacity 94 from pool 0x108117960. Requested size was 94
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 94, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 94
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c1cd00 of capacity 1023 from pool 0x108117960. Requested size was 1023
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 1023, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 1023
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 338 from pool 0x108117960. Requested size was 338
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 338, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 338
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x10833e2c0 of capacity 9 from pool 0x108117960. Requested size was 9
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 9, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 9
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x108f0bf20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c17d00 of capacity 3909 from pool 0x108117960. Requested size was 3909
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 187
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x1087124c0 handle=0x107c0ba80: queued read buffer of size 1464
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: send written size 94
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076510e0: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076510e0: Running readableTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: send written size 1023
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: socket on-readable with error code 0(AWS_ERROR_SUCCESS)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4096 from pool 0x1081144e0. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: send written size 338
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x10bedaca0, [DEBUG READ DATA] start processing node 
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: send written size 9
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x10bedaca0, [DEBUG READ DATA] clean up the node
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read of 1464
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: read 1464 from socket
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending read message of size 1464, from slot 0x1076513e0 to slot 0x107651380 with handler 0x10880b980.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10880f830: Scheduling tls_timeout task for future execution at time 1565024880208
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076539c0: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653960: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653900: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076538a0: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 6981, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c17d00 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Running window update task task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x10833dff8.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076539c0: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 94, completed on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653960: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 1023, completed on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653900: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 338, completed on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076538a0: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 9, completed on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108339c40 of capacity 75 from pool 0x1081144e0. Requested size was 75
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending write message of size 75, from slot 0x107651380 to slot 0x1076513e0 with handler 0x108339ac0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: writing message of size 75
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108339dc0 of capacity 6 from pool 0x1081144e0. Requested size was 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending write message of size 6, from slot 0x107651380 to slot 0x1076513e0 with handler 0x108339ac0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: writing message of size 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108339f40 of capacity 45 from pool 0x1081144e0. Requested size was 45
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending write message of size 45, from slot 0x107651380 to slot 0x1076513e0 with handler 0x108339ac0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: writing message of size 45
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108f07f20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 2632 from pool 0x1081144e0. Requested size was 2632
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: total read on this tick 1464
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Running window update task task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108339af8.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x1087179c0 handle=0x107c07880: queued read buffer of size 75
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: send written size 75
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653840: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339af8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653840: Running readableTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656720: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339af8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: socket on-readable with error code 0(AWS_ERROR_SUCCESS)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4096 from pool 0x1081144e0. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656720: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - static: write of size 75, completed on channel 0x108f07c80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: send written size 6
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10c602ce0, [DEBUG READ DATA] start processing node 
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: send written size 45
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10c602ce0, [DEBUG READ DATA] clean up the node
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read of 75
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076566c0: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656660: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076566c0: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - static: write of size 6, completed on channel 0x108f07c80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: read 75 from socket
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656660: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending read message of size 75, from slot 0x1076542c0 to slot 0x107654260 with handler 0x10880f800.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - static: write of size 45, completed on channel 0x108f07c80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x108f0bf20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4021 from pool 0x108117960. Requested size was 4021
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 75
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Running window update task task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x10833dff8.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x1087179c0 handle=0x107c07880: queued read buffer of size 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x1087179c0 handle=0x107c07880: queued read buffer of size 45
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076537e0: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653780: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076537e0: Running readableTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: socket on-readable with error code 0(AWS_ERROR_SUCCESS)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10c6028e0, [DEBUG READ DATA] start processing node 
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10c6028e0, [DEBUG READ DATA] clean up the node
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read of 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: read 6 from socket
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending read message of size 6, from slot 0x1076542c0 to slot 0x107654260 with handler 0x10880f800.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x108f0bf20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4090 from pool 0x108117960. Requested size was 4090
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653780: Running readableTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: socket on-readable with error code 0(AWS_ERROR_SUCCESS)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 7162, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10c602720, [DEBUG READ DATA] start processing node 
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x10c602720, [DEBUG READ DATA] clean up the node
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read of 45
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: read 45 from socket
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending read message of size 45, from slot 0x1076542c0 to slot 0x107654260 with handler 0x10880f800.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x10833e2c0 of capacity 6 from pool 0x108117960. Requested size was 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 6, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x10833e140 of capacity 45 from pool 0x108117960. Requested size was 45
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 45, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 45
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: negotiation succeeded
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel-bootstrap] - id=0x10be5a850: tls negotiation result 0 on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: creating new slot 0x1076534e0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x1087124c0 handle=0x107c0ba80: queued read buffer of size 51
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4051 from pool 0x108117960. Requested size was 4051
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 45
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656600: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: send written size 6
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656600: Running readableTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: send written size 45
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: socket on-readable with error code 0(AWS_ERROR_SUCCESS)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076533c0: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4096 from pool 0x1081144e0. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653360: Scheduling writtenTask task for immediate execution
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x10c608420, [DEBUG READ DATA] start processing node 
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Running window update task task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x10c608420, [DEBUG READ DATA] clean up the node
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: increment read window message received 18446744073709551615
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read of 51
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: Propagating read window increment of size 18446744073709544498
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x108f0bf20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x10880f930.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: read 51 from socket
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x10833dff8.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending read message of size 51, from slot 0x1076513e0 to slot 0x107651380 with handler 0x10880b980.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x1076533c0: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 6, completed on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653360: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 45, completed on channel 0x108f0bc80
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: negotiation succeeded
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Scheduling window update task task for immediate execution
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: Remote Server Name: localhost
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10880f930: Scheduling secure_transport_channel_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bf20: Running window update task task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - id=0x108018770: tls negotiation result 0 on channel 0x108f07c80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: increment read window message received 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10880f930: Running secure_transport_channel_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: creating new slot 0x107656540.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: downstream window is 18446744073709551615
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108f07f20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4096 from pool 0x108117960. Requested size was 18446744073709551615
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - releasing client connection args, args=0x108712740
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: bytes read 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4045 from pool 0x1081144e0. Requested size was 4045
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800, Remaining window for this event-loop tick: 18446744073709551615
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833dff8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: invoking read. Downstream window 18446744073709551615, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: total read on this tick 51
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x108c16900 of capacity 4096 from pool 0x108117960. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [00000002003acf40] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x107f08ce8 from outside the event-loop thread.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0be58: Scheduling schedule_cross_thread_tasks task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Running window update task task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0be58: Running schedule_cross_thread_tasks task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: increment read window message received 8
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x10833e140 of capacity 20 from pool 0x108117960. Requested size was 20
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x10880bab0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: increment read window message received, scheduling task for another read operation.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 20, from slot 0x1076534e0 to slot 0x107654260 with handler 0x10880f800.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108339af8.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x10880bab0: Scheduling secure_transport_channel_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339af8: Scheduling socket_handler_read_on_window_increment task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x10833e2c0 of capacity 49 from pool 0x108117960. Requested size was 49
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x10880bab0: Running secure_transport_channel_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 49, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: downstream window is 8
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 49
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108339f40 of capacity 8 from pool 0x1081144e0. Requested size was 8
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: bytes read 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: bytes written: 20
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980, Remaining window for this event-loop tick: 8
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339af8: Running socket_handler_read_on_window_increment task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4096 from pool 0x1081144e0. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: send written size 49
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653240: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653240: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 49, completed on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x1087124c0 handle=0x107c0ba80: queued read buffer of size 49
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076564e0: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x1076564e0: Running readableTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: socket on-readable with error code 0(AWS_ERROR_SUCCESS)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: invoking read. Downstream window 7168, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4096 from pool 0x1081144e0. Requested size was 4096
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x10c607fe0, [DEBUG READ DATA] start processing node 
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x10c607fe0, [DEBUG READ DATA] clean up the node
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read of 49
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: read 49 from socket
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending read message of size 49, from slot 0x1076513e0 to slot 0x107651380 with handler 0x10880b980.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: downstream window is 8
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108339f40 of capacity 8 from pool 0x1081144e0. Requested size was 8
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: bytes read 8
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: sending read message of size 8, from slot 0x107651380 to slot 0x107656540 with handler 0x10783c460.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f0bc80: channel shutdown task is scheduled
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x108f0be98 from outside the event-loop thread.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0be58: Scheduling schedule_cross_thread_tasks task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0be58: Running schedule_cross_thread_tasks task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: beginning shutdown process
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: shutting down slot 0x1076542c0 (the first one) in the read direction
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: shutting down slot 0x1076542c0, with handler 0x10833dfc0 in read direction with error code 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: shutting down read direction with error_code 0
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: handler 0x10833dfc0 shutdown in read dir completed.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: shutting down read direction with error 0.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: handler 0x10880f800 shutdown in read dir completed.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: handler 0x10783c3d0 shutdown in read dir completed.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bca8: Scheduling (null) task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bca8: Running (null) task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: handler 0x10783c3d0 shutdown in write dir completed.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [tls-handler] - id=0x10880f800: shutting down write direction.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: acquired message 0x10833e2c0 of capacity 31 from pool 0x108117960. Requested size was 31
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: sending write message of size 31, from slot 0x107654260 to slot 0x1076542c0 with handler 0x10833dfc0.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: writing message of size 31
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: handler 0x10880f800 shutdown in write dir completed.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - id=0x10833dfc0: shutting down write direction with error_code 0
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: closing
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: scheduling task with wrapper task id 0x10833e060.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833e060: Scheduling socket_handler_close task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10833e060: Running socket_handler_close task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: handler 0x10833dfc0 shutdown in write dir completed.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bca8: Scheduling (null) task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x108f0bca8: Running (null) task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: during shutdown, canceling task 0x10880f830
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [event-loop] - id=0x108401520: cancelling task 0x10880f830
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x10880f830: Running tls_timeout task with <Canceled> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel-bootstrap] - id=0x10be5a850: channel 0x108f0bc80 shutdown with error 0.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [channel] - id=0x108f0bc80: destroying channel.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980, Remaining window for this event-loop tick: 0
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 nw_socket=0x1087179c0: is still open, closing...
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4047 from pool 0x1081144e0. Requested size was 4047
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket] - id=0x108e13980 handle=0x107c07880: closing
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read queue is empty, scheduling another read
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: total read on this tick 49
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: out of data to read on socket. Waiting on event-loop notification.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653120: Scheduling writtenTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [task-scheduler] - id=0x107653120: Running writtenTask task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b8d7000] [socket-handler] - static: write of size 0, completed on channel 0x108f0bc80
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80:complete hange up 
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656420: Scheduling readableTask task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x107656420: Running readableTask task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: closing
+[TRACE] [2024-10-15T00:00:32Z] [00000002003acf40] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x107e0ba58 from outside the event-loop thread.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: socket on-readable with error code 1051(AWS_IO_SOCKET_CLOSED)
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: invoking read. Downstream window 7119, max_to_read 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: acquired message 0x108c15500 of capacity 4096 from pool 0x1081144e0. Requested size was 4096
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: read queue is empty, scheduling another read
+Error:  [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: socket is not connected to read.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: total read on this tick 0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: channel shutdown task is scheduled
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108f07e98.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07e58: Scheduling schedule_cross_thread_tasks task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07e98: Scheduling channel_shutdown task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07e58: Running schedule_cross_thread_tasks task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108f07f20.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07e98: Running channel_shutdown task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: beginning shutdown process
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: shutting down slot 0x1076513e0 (the first one) in the read direction
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: shutting down slot 0x1076513e0, with handler 0x108339ac0 in read direction with error code 1051
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: shutting down read direction with error_code 1051
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: handler 0x108339ac0 shutdown in read dir completed.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [tls-handler] - id=0x10880b980: shutting down read direction with error 1051.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: handler 0x10880b980 shutdown in read dir completed.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: handler 0x10783c460 shutdown in read dir completed.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Scheduling window update task task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07ca8: Scheduling (null) task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07f20: Running window update task task with <Running> status
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07ca8: Running (null) task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: handler 0x10783c460 shutdown in write dir completed.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: handler 0x10880b980 shutdown in write dir completed.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [socket-handler] - id=0x108339ac0: shutting down write direction with error_code 1051
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [socket] - id=0x108e08700 handle=0x107c0ba80: closing
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: scheduling task with wrapper task id 0x108339b60.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339b60: Scheduling socket_handler_close task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108339b60: Running socket_handler_close task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: handler 0x108339ac0 shutdown in write dir completed.
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07ca8: Scheduling (null) task for immediate execution
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x108f07ca8: Running (null) task with <Running> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: during shutdown, canceling task 0x10880b9b0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [event-loop] - id=0x108400f00: cancelling task 0x10880b9b0
+[TRACE] [2024-10-15T00:00:32Z] [000000016b84b000] [task-scheduler] - id=0x10880b9b0: Running tls_timeout task with <Canceled> status
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel-bootstrap] - id=0x108018770: channel 0x108f07c80 shutdown with error 1051.
+[DEBUG] [2024-10-15T00:00:32Z] [000000016b84b000] [channel] - id=0x108f07c80: destroying channel.
+***FAILURE*** 2 != 1: ***FAILURE*** 2 != s_server_client_tester.client_rw_args.read_invocations 
