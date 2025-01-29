@@ -18,7 +18,8 @@
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
 #else
-static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
+// DEBUG WIP CHANGE THIS BACK TO AWS_EVENT_LOOP_PLATFORM_DEFAULT
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
 #endif
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {

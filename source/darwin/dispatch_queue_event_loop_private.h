@@ -34,33 +34,38 @@ struct dispatch_loop {
          * synced_data struct is accessed or modified.
          */
         struct aws_mutex synced_data_lock;
+
         /*
-         * `is_executing` flag and `current_thread_id` together are used
-         * to identify the executing thread id for dispatch queue. See `static bool s_is_on_callers_thread(struct
-         * aws_event_loop *event_loop)` for details.
+         * `is_executing` flag and `current_thread_id` are used together to identify the thread id of the dispatch queue
+         * running the current block. See dispatch queue's `s_is_on_callers_thread()` implementation for details.
          */
         bool is_executing;
         aws_thread_id_t current_thread_id;
 
         /*
-         * Set to true when `stop()` is called on event loop. Once suspended is set to true, underlying dispatch queue
-         * is set to suspend and event loop will no longer schedule any future service entries. If an iteration block is
-         * running it will continue till it finishes. `run()` must be called on a suspended dispatch queue event loop to
-         * schedule an iteration block.
+         * Will be true if dispatch queue is in a suspended state. A dispatch queue in a suspended state will not start
+         * any blocks that are already enqueued but will not prevent additional blocks from being queued.
+         *
+         * Set to true when `stop()` is called on event loop.
+         * `run()` must be called on owning event_loop to resume processing of blocks on a suspended dispatch queue.
+         *
+         * Calling dispatch_sync() on a suspended dispatch queue will deadlock.
          */
         bool suspended;
 
         /*
-         * Will be true when the underlying dispatch_queue is both suspended and has completed running any in progress
-         * iteration block. `run()` must be called to resume the event loop and its underlying dispatch queue to
-         * schedule an iteration block.
+         * Will be true when the underlying dispatch_queue has completed running all enqueued blocks and no futher work
+         * is enqueued.
          */
         bool stopped;
 
+        /*
+         * Will be true when dispatch loop has entered state where it is being destroyed.
+         */
+        bool is_destroying;
+
         struct aws_linked_list cross_thread_tasks;
     } synced_data;
-
-    bool is_destroying;
 };
 
 #endif /* #ifndef AWS_IO_DARWIN_DISPATCH_QUEUE_H */
