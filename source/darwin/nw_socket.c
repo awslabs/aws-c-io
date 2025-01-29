@@ -379,6 +379,7 @@ static void s_socket_impl_destroy(void *sock_ptr) {
 
 static void s_socket_internal_destroy(void *sock_ptr) {
     struct nw_socket *nw_socket = sock_ptr;
+    nw_socket->currently_connected = false;
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p : start s_socket_internal_destroy", (void *)sock_ptr);
 
     aws_ref_count_release(&nw_socket->ref_count);
@@ -814,6 +815,8 @@ static void s_schedule_connection_state_changed_fn(
     nw_connection_state_t state,
     nw_error_t error) {
 
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: s_schedule_connection_state_changed_fn start...", (void *)nw_socket);
+
     aws_mutex_lock(&nw_socket->synced_data.lock);
 
     if (nw_socket->synced_data.event_loop && nw_socket->synced_data.event_loop->vtable &&
@@ -980,7 +983,6 @@ static void s_schedule_on_listener_success(
 
 static void s_socket_close_and_release(struct aws_socket *socket) {
     struct nw_socket *nw_socket = socket->impl;
-    nw_socket->currently_connected = false;
 
     if (nw_socket->nw_connection) {
         nw_release(nw_socket->nw_connection);
@@ -1640,6 +1642,7 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                   s_schedule_on_readable(nw_socket, AWS_ERROR_SUCCESS, data);
               }
               if (!is_complete) {
+                  // timeout read task
                   s_schedule_next_read(nw_socket);
               } else {
                   if (socket->options.type != AWS_SOCKET_DGRAM) {

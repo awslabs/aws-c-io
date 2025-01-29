@@ -253,6 +253,7 @@ static int s_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shut
 
 static void s_socket_destroy_impl(void *user_data) {
     struct posix_socket *socket_impl = user_data;
+
     if (socket_impl->on_shutdown_complete) {
         socket_impl->on_shutdown_complete(socket_impl->shutdown_user_data);
     }
