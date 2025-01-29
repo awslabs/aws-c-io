@@ -133,6 +133,15 @@ static size_t s_release_dispatch_loop_context(struct dispatch_loop_context *cont
 }
 
 /** Help functions to lock status */
+/*
+ * When multiple locks are used, they should always follow the same layerd ordering pattern.
+ * Top level:    dispatch_loop_context_lock
+ * Middle level: synced_data_lock
+ * Bottom level: schedule_services_lock
+ *
+ * Sticking to this structure will help prevent a deadlock where two locks are attempting to
+ * acquire the lock for each other from within themselves.
+ */
 static int s_rlock_dispatch_loop_context(struct dispatch_loop_context *context) {
     return aws_rw_lock_rlock(&context->dispatch_loop_context_lock);
 }
@@ -418,21 +427,29 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 
 static void s_try_schedule_new_iteration(struct dispatch_loop_context *loop, uint64_t timestamp);
 
+/*
+ * Called to resume a suspended dispatch queue.
+ *
+ * Locks Used:
+ *      - synched_data_lock
+ *      - dispatch_loop_context_lock
+ *      - scheduled_services_lock
+ */
 static int s_run(struct aws_event_loop *event_loop) {
     struct dispatch_loop *dispatch_loop = event_loop->impl_data;
 
+    s_rlock_dispatch_loop_context(dispatch_loop->context);
     s_lock_synced_data(dispatch_loop);
     if (dispatch_loop->synced_data.suspended) {
         AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Starting event-loop thread.", (void *)event_loop);
         dispatch_resume(dispatch_loop->dispatch_queue);
         dispatch_loop->synced_data.suspended = false;
-        s_rlock_dispatch_loop_context(dispatch_loop->context);
         s_lock_service_entries(dispatch_loop->context);
         s_try_schedule_new_iteration(dispatch_loop->context, 0);
         s_unlock_service_entries(dispatch_loop->context);
-        s_runlock_dispatch_loop_context(dispatch_loop->context);
     }
     s_unlock_synced_data(dispatch_loop);
+    s_runlock_dispatch_loop_context(dispatch_loop->context);
 
     return AWS_OP_SUCCESS;
 }
