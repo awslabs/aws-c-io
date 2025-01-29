@@ -119,7 +119,7 @@ struct scheduled_service_entry {
     struct aws_allocator *allocator;
     uint64_t timestamp;
     struct aws_priority_queue_node priority_queue_node;
-    struct dispatch_loop_context *dispatch_queue_context;
+    struct dispatch_loop_context *dispatch_loop_context;
 };
 
 /** Help functions to track context ref-count */
@@ -139,7 +139,7 @@ static size_t s_release_dispatch_loop_context(struct dispatch_loop_context *cont
  * Middle level: synced_data_lock
  * Bottom level: schedule_services_lock
  *
- * Sticking to this structure will help prevent a deadlock where two locks are attempting to
+ * Adhering to this structure will help prevent a deadlock where two locks are attempting to
  * acquire the lock for each other from within themselves.
  */
 static int s_rlock_dispatch_loop_context(struct dispatch_loop_context *context) {
@@ -190,7 +190,7 @@ static struct scheduled_service_entry *s_scheduled_service_entry_new(
 
     entry->allocator = context->allocator;
     entry->timestamp = timestamp;
-    entry->dispatch_queue_context = s_acquire_dispatch_loop_context(context);
+    entry->dispatch_loop_context = s_acquire_dispatch_loop_context(context);
     aws_priority_queue_node_init(&entry->priority_queue_node);
 
     return entry;
@@ -199,8 +199,7 @@ static struct scheduled_service_entry *s_scheduled_service_entry_new(
 /**
  * Helper function to check if another scheduled iteration already exists that will handle our needs
  *
- * The function should be wrapped with the following locks:
- *      scheduled_services lock: To safely access the scheduled_services list
+ * The function should be wrapped with the scheduled_services lock to safely access the scheduled_services list
  */
 static bool s_should_schedule_iteration(
     struct aws_priority_queue *scheduled_services,
@@ -410,7 +409,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
      * Schedules `s_dispatch_queue_destroy_task()` to run on the Apple dispatch queue of the event loop.
      *
      * Any block that is currently running or already scheduled on the dispatch queue will be completed before
-     * `s_dispatch_queue_destroy_task()`.
+     * `s_dispatch_queue_destroy_task()` block is executed.
      *
      * `s_dispatch_queue_destroy_task()` will cancel outstanding tasks and then run `s_dispatch_event_loop_destroy()`
      */
@@ -419,6 +418,7 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)event_loop);
 }
 
+// DEBUG WIP what is this and do we need to do anything here to have parity with other event loops?
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     (void)event_loop;
 
@@ -461,8 +461,12 @@ static int s_stop(struct aws_event_loop *event_loop) {
     if (!dispatch_loop->synced_data.suspended) {
         dispatch_loop->synced_data.suspended = true;
         AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
-        /* Suspend will increase the dispatch reference count. It is required to call resume before
-         * releasing the dispatch queue. */
+
+        /*
+         * Suspend will increase the Apple's ref count on the dispatch queue by one. For Apple to fully release the
+         * dispatch queue, it must be manually released to drop its ref count or dispatch_resume() must be called on the
+         * dispatch queue to release the acquired ref count.
+         */
         dispatch_suspend(dispatch_loop->dispatch_queue);
     }
     s_unlock_synced_data(dispatch_loop);
@@ -476,17 +480,17 @@ static int s_stop(struct aws_event_loop *event_loop) {
  * */
 static void s_end_iteration(struct scheduled_service_entry *entry) {
 
-    struct dispatch_loop_context *dispatch_queue_context = entry->dispatch_queue_context;
-    struct dispatch_loop *dispatch_loop = dispatch_queue_context->io_dispatch_loop;
+    struct dispatch_loop_context *dispatch_loop_context = entry->dispatch_loop_context;
+    struct dispatch_loop *dispatch_loop = dispatch_loop_context->io_dispatch_loop;
 
     s_lock_synced_data(dispatch_loop);
     dispatch_loop->synced_data.is_executing = false;
 
     // Remove the node before do scheduling so we didnt consider the entry itself
-    s_lock_service_entries(dispatch_queue_context);
+    s_lock_service_entries(dispatch_loop_context);
     aws_priority_queue_remove(
-        &dispatch_queue_context->scheduling_state.scheduled_services, entry, &entry->priority_queue_node);
-    s_unlock_service_entries(dispatch_queue_context);
+        &dispatch_loop_context->scheduling_state.scheduled_services, entry, &entry->priority_queue_node);
+    s_unlock_service_entries(dispatch_loop_context);
 
     bool should_schedule = false;
     uint64_t should_schedule_at_time = 0;
@@ -499,9 +503,9 @@ static void s_end_iteration(struct scheduled_service_entry *entry) {
     }
 
     if (should_schedule) {
-        s_lock_service_entries(dispatch_queue_context);
-        s_try_schedule_new_iteration(dispatch_queue_context, should_schedule_at_time);
-        s_unlock_service_entries(dispatch_queue_context);
+        s_lock_service_entries(dispatch_loop_context);
+        s_try_schedule_new_iteration(dispatch_loop_context, should_schedule_at_time);
+        s_unlock_service_entries(dispatch_loop_context);
     }
 
     s_unlock_synced_data(dispatch_loop);
@@ -510,10 +514,10 @@ static void s_end_iteration(struct scheduled_service_entry *entry) {
 // Iteration function that scheduled and executed by the Dispatch Queue API
 static void s_run_iteration(void *service_entry) {
     struct scheduled_service_entry *entry = service_entry;
-    struct dispatch_loop_context *dispatch_queue_context = entry->dispatch_queue_context;
-    s_acquire_dispatch_loop_context(dispatch_queue_context);
-    s_rlock_dispatch_loop_context(dispatch_queue_context);
-    struct dispatch_loop *dispatch_loop = entry->dispatch_queue_context->io_dispatch_loop;
+    struct dispatch_loop_context *dispatch_loop_context = entry->dispatch_loop_context;
+    s_acquire_dispatch_loop_context(dispatch_loop_context);
+    s_rlock_dispatch_loop_context(dispatch_loop_context);
+    struct dispatch_loop *dispatch_loop = entry->dispatch_loop_context->io_dispatch_loop;
 
     // If the dispatch loop has been cleaned up, we ignore all scheduled tasks and return.
     if (dispatch_loop == NULL) {
@@ -555,17 +559,17 @@ static void s_run_iteration(void *service_entry) {
 
 iteration_done:
     // destroy the completed service entry.
-    s_lock_service_entries(dispatch_queue_context);
+    s_lock_service_entries(dispatch_loop_context);
     if (aws_priority_queue_node_is_in_queue(&entry->priority_queue_node)) {
         aws_priority_queue_remove(
-            &dispatch_queue_context->scheduling_state.scheduled_services, entry, &entry->priority_queue_node);
+            &dispatch_loop_context->scheduling_state.scheduled_services, entry, &entry->priority_queue_node);
     }
-    s_release_dispatch_loop_context(dispatch_queue_context);
+    s_release_dispatch_loop_context(dispatch_loop_context);
     aws_mem_release(entry->allocator, entry);
-    s_unlock_service_entries(dispatch_queue_context);
+    s_unlock_service_entries(dispatch_loop_context);
 
-    s_runlock_dispatch_loop_context(dispatch_queue_context);
-    s_release_dispatch_loop_context(dispatch_queue_context);
+    s_runlock_dispatch_loop_context(dispatch_loop_context);
+    s_release_dispatch_loop_context(dispatch_loop_context);
 }
 
 /**
