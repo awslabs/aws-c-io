@@ -486,7 +486,7 @@ static void s_end_iteration(struct scheduled_service_entry *entry) {
     s_lock_synced_data(dispatch_loop);
     dispatch_loop->synced_data.is_executing = false;
 
-    // Remove the node before do scheduling so we didnt consider the entry itself
+    // Remove the entry that's ending its iteration before further scheduling
     s_lock_service_entries(dispatch_loop_context);
     aws_priority_queue_remove(
         &dispatch_loop_context->scheduling_state.scheduled_services, entry, &entry->priority_queue_node);
@@ -494,10 +494,18 @@ static void s_end_iteration(struct scheduled_service_entry *entry) {
 
     bool should_schedule = false;
     uint64_t should_schedule_at_time = 0;
+    /*
+     * We first check if there were any cross thread tasks scheduled during the execution of the current
+     * iteration. If there were, we schedule a new iteration to execute immediately during which cross thread tasks
+     * will be migrated into the dispatch_loop->scheduler.
+     */
     if (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
         should_schedule = true;
     }
-    /* we already know there are tasks to be scheduled, we just want the next run time. */
+    /*
+     * If we are not scheduling a new iteration for immediate executuion, we check whether there are any tasks scheduled
+     * to execute now or in the future and scheudle the next iteration using that time.
+     */
     else if (aws_task_scheduler_has_tasks(&dispatch_loop->scheduler, &should_schedule_at_time)) {
         should_schedule = true;
     }
