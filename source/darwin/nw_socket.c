@@ -701,9 +701,9 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                 "id=%p handle=%p: connection on port cancelled ",
                 (void *)socket,
                 socket->io_handle.data.handle);
-            aws_mutex_lock(nw_socket->synced_data.lock);
+            aws_mutex_lock(&nw_socket->synced_data.lock);
             nw_socket->synced_data.event_loop = NULL;
-            aws_mutex_unlock(nw_socket->synced_data.lock);
+            aws_mutex_unlock(&nw_socket->synced_data.lock);
             socket->state = CLOSED;
             nw_socket_release_internal_ref(nw_socket);
             AWS_LOGF_DEBUG(
