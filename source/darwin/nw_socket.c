@@ -301,10 +301,15 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
     struct nw_socket *nw_socket = socket->impl;
 
-    // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
-    aws_mutex_lock(&nw_socket->synced_data.lock);
-    nw_socket->synced_data.base_socket = NULL;
-    aws_mutex_unlock(&nw_socket->synced_data.lock);
+    if (socket->event_loop && !aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+        // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
+        aws_mutex_lock(&nw_socket->synced_data.lock);
+        nw_socket->synced_data.base_socket = NULL;
+        aws_mutex_unlock(&nw_socket->synced_data.lock);
+    } else {
+        // If we are already on event loop, we should already acquire the lock for base socket access
+        nw_socket->synced_data.base_socket = NULL;
+    }
 
     aws_ref_count_release(&nw_socket->ref_count);
     socket->impl = NULL;
