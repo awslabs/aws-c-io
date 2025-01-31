@@ -252,6 +252,9 @@ AWS_IO_API int aws_socket_set_shutdown_callback(struct aws_socket *socket, aws_s
  * non-event-loop thread or the event-loop the socket is currently assigned to. If called from outside the event-loop,
  * this function will block waiting on the socket to close. If this is called from an event-loop thread other than
  * the one it's assigned to, it presents the possibility of a deadlock, so don't do it.
+ *
+ * If you are using Apple Network Framework, you should always call this function from an event-loop thread regardless
+ * it is a server or client socket.
  */
 AWS_IO_API int aws_socket_close(struct aws_socket *socket);
 

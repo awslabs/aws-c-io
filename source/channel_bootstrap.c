@@ -1410,14 +1410,34 @@ error_cleanup:
     s_server_connection_args_release(connection_args);
 }
 
+struct channel_listener_cleanup_args {
+    struct server_connection_args *server_connection_args;
+    struct aws_allocator *allocator;
+};
+
+static void s_shutdown_complete_fn(void *user_data) {
+    struct channel_listener_cleanup_args *close_args = user_data;
+
+    s_server_connection_args_release(close_args->server_connection_args);
+
+    aws_mem_release(close_args->allocator, close_args);
+}
+
 static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)status;
     (void)task;
     struct server_connection_args *server_connection_args = arg;
 
     aws_socket_stop_accept(&server_connection_args->listener);
+
+    struct aws_allocator *allocator = server_connection_args->listener.allocator;
+    struct channel_listener_cleanup_args *close_args =
+        aws_mem_calloc(allocator, 1, sizeof(struct channel_listener_cleanup_args));
+
+    close_args->allocator = allocator;
+    close_args->server_connection_args = server_connection_args;
+    aws_socket_set_shutdown_callback(&server_connection_args->listener, s_shutdown_complete_fn, close_args);
     aws_socket_clean_up(&server_connection_args->listener);
-    s_server_connection_args_release(server_connection_args);
 }
 
 struct aws_socket *aws_server_bootstrap_new_socket_listener(
