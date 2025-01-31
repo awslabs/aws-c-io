@@ -88,7 +88,18 @@ add_test_case(sock_write_cb_is_async)
 add_test_case(socket_validate_port)
 
 if(WIN32)
+    set(WIN_VERSION ${CMAKE_SYSTEM_VERSION})
+    string(REPLACE "." ";" BUILD_VERSION ${CMAKE_SYSTEM_VERSION})
+    separate_arguments(BUILD_VERSION)
+    list(GET BUILD_VERSION 2 BUILD_V)
+    message("Windows Version " ${CMAKE_SYSTEM_VERSION})
+
+    if(${BUILD_V} GREATER_EQUAL 20348)
+        message("Building for version 22000 or higher: supporting TLS1.3")
+        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls1_3)
+    endif()
     add_test_case(local_socket_pipe_connected_race)
+    add_test_case(tls_client_channel_negotiation_success_ecc384_deprecated)
 endif()
 
 add_test_case(channel_setup)
