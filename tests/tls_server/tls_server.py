@@ -19,5 +19,5 @@ with socket.socket(socket.AF_INET, socket.SOCK_STREAM, 0) as sock:
             try:
                 conn, addr = ssock.accept()
                 print("accepted new connection: {}".format(addr))
-            except Exceptions as e:
+            except Exception as e:
                 print("accept failed: {}".format(e))
