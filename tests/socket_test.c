@@ -1048,9 +1048,9 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_set_shutdown_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
     aws_mutex_lock(&mutex);
-    aws_socket_set_shutdown_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
     aws_mutex_unlock(&mutex);
@@ -1153,7 +1153,7 @@ static int s_test_connect_timeout_cancellation(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
-    aws_socket_set_shutdown_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
+    aws_socket_set_cleanup_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
     aws_event_loop_group_release(el_group);
 
     aws_thread_join_all_managed();

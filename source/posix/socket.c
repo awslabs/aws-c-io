@@ -1628,6 +1628,7 @@ static int s_socket_close(struct aws_socket *socket) {
             aws_mem_release(socket->allocator, write_request);
         }
     }
+
     if (socket_impl->on_shutdown_complete) {
         socket_impl->on_shutdown_complete(socket_impl->shutdown_user_data);
     }
