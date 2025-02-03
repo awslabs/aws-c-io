@@ -68,6 +68,10 @@ struct aws_socket_vtable {
     int (*socket_get_error_fn)(struct aws_socket *socket);
     bool (*socket_is_open_fn)(struct aws_socket *socket);
     int (*socket_set_shutdown_callback)(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void* user_data);
+    int (*socket_set_cleanup_callback)(
+        struct aws_socket *socket,
+        aws_socket_on_shutdown_complete_fn fn,
+        void *user_data);
 };
 
 #endif // AWS_IO_SOCKET_IMPL_H

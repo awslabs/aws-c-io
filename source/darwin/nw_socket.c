@@ -141,6 +141,9 @@ struct nw_socket {
     aws_socket_on_shutdown_complete_fn *on_socket_shutdown_fn;
     void *shutdown_user_data;
 
+    aws_socket_on_shutdown_complete_fn *on_socket_cleanup_fn;
+    void *cleanup_user_data;
+
     struct {
         struct aws_mutex lock;
         struct aws_event_loop *event_loop;
@@ -264,6 +267,7 @@ static int s_socket_write_fn(
 static int s_socket_get_error_fn(struct aws_socket *socket);
 static bool s_socket_is_open_fn(struct aws_socket *socket);
 static int s_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 
 static struct aws_socket_vtable s_vtable = {
     .socket_cleanup_fn = s_socket_cleanup_fn,
@@ -282,6 +286,7 @@ static struct aws_socket_vtable s_vtable = {
     .socket_get_error_fn = s_socket_get_error_fn,
     .socket_is_open_fn = s_socket_is_open_fn,
     .socket_set_shutdown_callback = s_set_shutdown_callback,
+    .socket_set_cleanup_callback = s_set_cleanup_callback,
 };
 
 static void s_schedule_next_read(struct nw_socket *socket);
@@ -369,11 +374,18 @@ static void s_socket_impl_destroy(void *sock_ptr) {
         nw_socket->socket_options_to_params = NULL;
     }
 
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = nw_socket->on_socket_cleanup_fn;
+    void *cleanup_user_data = nw_socket->cleanup_user_data;
+
     aws_mutex_clean_up(&nw_socket->synced_data.lock);
     aws_mutex_clean_up(&nw_socket->synced_state.lock);
     aws_mem_release(nw_socket->allocator, nw_socket);
 
     nw_socket = NULL;
+
+    if (on_cleanup_complete) {
+        on_cleanup_complete(cleanup_user_data);
+    }
 }
 
 static void s_socket_internal_destroy(void *sock_ptr) {
@@ -2063,5 +2075,12 @@ static int s_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shut
     struct nw_socket *nw_socket = socket->impl;
     nw_socket->shutdown_user_data = user_data;
     nw_socket->on_socket_shutdown_fn = fn;
+    return 0;
+}
+
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct nw_socket *nw_socket = socket->impl;
+    nw_socket->cleanup_user_data = user_data;
+    nw_socket->on_socket_cleanup_fn = fn;
     return 0;
 }

@@ -58,6 +58,11 @@ int aws_socket_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_sh
     return socket->vtable->socket_set_shutdown_callback(socket, fn, user_data);
 }
 
+int aws_socket_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_cleanup_callback);
+    return socket->vtable->socket_set_cleanup_callback(socket, fn, user_data);
+}
+
 int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_shutdown_dir_fn);
     return socket->vtable->socket_shutdown_dir_fn(socket, dir);

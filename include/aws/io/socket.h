@@ -245,6 +245,10 @@ AWS_IO_API int aws_socket_start_accept(
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
 AWS_IO_API int aws_socket_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+AWS_IO_API int aws_socket_set_cleanup_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
 
 /**
  * Calls `close()` on the socket and unregisters all io operations from the event loop. This function must be called
