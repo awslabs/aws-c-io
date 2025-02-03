@@ -52,6 +52,12 @@ static bool s_validate_thread_id_equal(aws_thread_id_t thread_id, bool expected_
     return expected_result;
 }
 
+static void s_dispatch_queue_sleep(void) {
+#if defined(AWS_USE_APPLE_DISPATCH_QUEUE)
+    sleep(2);
+#endif
+}
+
 /*
  * Test that a scheduled task from a non-event loop owned thread executes.
  */
@@ -178,6 +184,8 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     ASSERT_TRUE(task2_args.was_in_thread);
     ASSERT_TRUE(s_validate_thread_id_equal(task2_args.thread_id, true));
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
+
+    s_dispatch_queue_sleep();
 
     return AWS_OP_SUCCESS;
 }
