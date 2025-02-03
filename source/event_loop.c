@@ -15,12 +15,11 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+#if defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
+#elif defined(AWS_USE_APPLE_DISPATCH_QUEUE)
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
 #else
-// DEBUG WIP CHANGE THIS BACK TO AWS_EVENT_LOOP_PLATFORM_DEFAULT
-// Currently forcing it to be AWS_EVENT_LOOP_DISPATCH_QUEUE for local testing of dispatch queue.
-// static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
 #endif
 
