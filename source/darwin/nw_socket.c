@@ -301,7 +301,8 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
 
     struct nw_socket *nw_socket = socket->impl;
 
-    if (socket->event_loop && !aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+    if (socket->event_loop && socket->event_loop->vtable && socket->event_loop->impl_data &&
+        !aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
         // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
         aws_mutex_lock(&nw_socket->synced_data.lock);
         nw_socket->synced_data.base_socket = NULL;
@@ -1105,7 +1106,7 @@ static void s_process_write_task(struct aws_task *task, void *args, enum aws_tas
     if (status != AWS_TASK_STATUS_CANCELED) {
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        if (task_args->written_fn) {
+        if (socket && task_args->written_fn) {
             task_args->written_fn(socket, task_args->error_code, task_args->bytes_written, task_args->user_data);
         }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
