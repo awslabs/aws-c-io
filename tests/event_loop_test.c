@@ -13,6 +13,8 @@
 #include <aws/io/private/event_loop_impl.h>
 #include <aws/testing/aws_test_harness.h>
 
+#include <unistd.h> // for sleep()
+
 struct task_args {
     bool invoked;
     bool was_in_thread;
@@ -53,6 +55,11 @@ static bool s_validate_thread_id_equal(aws_thread_id_t thread_id, bool expected_
 }
 
 static void s_dispatch_queue_sleep(void) {
+    /*
+     * The dispatch queue can have a block waiting to execute up to one second in the future. This iteration block needs
+     * to run to clean up memory allocated to the paired scheduled iteration entry. We wait for two seconds to allow the
+     * Apple dispatch queue to run its delayed blocks and clean up for memory release purposes.
+     */
 #if defined(AWS_USE_APPLE_DISPATCH_QUEUE)
     sleep(2);
 #endif
