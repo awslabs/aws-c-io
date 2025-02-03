@@ -220,8 +220,8 @@ static void s_socket_close_task(struct aws_task *task, void *args, enum aws_task
     (void)task;
     (void)status;
     struct socket_io_args *io_args = args;
-    aws_mutex_lock(io_args->mutex);
     aws_socket_close(io_args->socket);
+    aws_mutex_lock(io_args->mutex);
     io_args->close_completed = true;
     aws_mutex_unlock(io_args->mutex);
     aws_condition_variable_notify_one(&io_args->condition_variable);
@@ -1181,7 +1181,9 @@ static void s_null_sock_connection(struct aws_socket *socket, int error_code, vo
     if (error_code) {
         error_args->error_code = error_code;
     }
+    aws_mutex_unlock(&error_args->mutex);
     aws_socket_close(socket);
+    aws_mutex_lock(&error_args->mutex);
     aws_condition_variable_notify_one(&error_args->condition_variable);
     aws_mutex_unlock(&error_args->mutex);
 }
