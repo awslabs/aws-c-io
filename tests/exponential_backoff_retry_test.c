@@ -250,6 +250,8 @@ static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_a
 
     aws_io_library_clean_up();
 
+    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
+    aws_thread_current_sleep(2000000000);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(

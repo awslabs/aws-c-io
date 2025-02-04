@@ -1158,6 +1158,8 @@ static int s_test_connect_timeout_cancellation(struct aws_allocator *allocator, 
     aws_event_loop_group_release(el_group);
 
     aws_thread_join_all_managed();
+    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
+    aws_thread_current_sleep(2000000000);
 
     ASSERT_INT_EQUALS(AWS_IO_EVENT_LOOP_SHUTDOWN, outgoing_args.last_error);
 

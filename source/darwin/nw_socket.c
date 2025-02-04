@@ -1822,7 +1822,13 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                   // timeout read task
                   s_schedule_next_read(nw_socket);
               } else {
-                  if (socket && socket->options.type != AWS_SOCKET_DGRAM) {
+                  // TODO socket!!!!
+                  // The cleanup of nw_connection_t will be handled in the s_socket_impl_destroy
+                  aws_mutex_lock(&nw_socket->synced_data.lock);
+                  struct aws_socket *base_socket = nw_socket->synced_data.base_socket;
+
+                  if (base_socket && base_socket->options.type != AWS_SOCKET_DGRAM) {
+                      aws_mutex_unlock(&nw_socket->synced_data.lock);
                       // the message is complete socket the socket
                       AWS_LOGF_TRACE(
                           AWS_LS_IO_SOCKET,
@@ -1831,6 +1837,8 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                           (void *)nw_socket->nw_connection);
                       aws_raise_error(AWS_IO_SOCKET_CLOSED);
                       s_schedule_on_readable(nw_socket, AWS_IO_SOCKET_CLOSED, NULL);
+                  } else {
+                      aws_mutex_unlock(&nw_socket->synced_data.lock);
                   }
               }
           } else {
@@ -2027,13 +2035,13 @@ static int s_socket_write_fn(
               (void *)nw_socket->nw_connection,
               (int)written_size);
           s_schedule_write_fn(nw_socket, error_code, !error_code ? written_size : 0, user_data, written_fn);
-    nw_socket_release:
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p: nw_socket_release_internal_ref: nw_connection_send  %lu",
-            (void *)nw_socket,
-            aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
-        nw_socket_release_internal_ref(nw_socket);
+      nw_socket_release:
+          AWS_LOGF_DEBUG(
+              AWS_LS_IO_SOCKET,
+              "id=%p: nw_socket_release_internal_ref: nw_connection_send  %lu",
+              (void *)nw_socket,
+              aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
+          nw_socket_release_internal_ref(nw_socket);
         });
 
     return AWS_OP_SUCCESS;
