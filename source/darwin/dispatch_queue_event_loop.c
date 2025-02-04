@@ -153,7 +153,7 @@ static bool s_should_schedule_iteration(
     return entry->timestamp > proposed_iteration_time;
 }
 
-// Manually called to destroy an aws_event_loop
+/* Manually called to destroy an aws_event_loop */
 static void s_dispatch_event_loop_destroy(struct aws_event_loop *event_loop) {
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
 
@@ -301,6 +301,7 @@ static void s_dispatch_queue_destroy_task(void *context) {
     }
     s_unlock_synced_data(dispatch_loop);
 
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Cancelling scheduled tasks.", (void *)dispatch_loop->base_loop);
     /* Cancel all tasks currently scheduled in the task scheduler. */
     aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
 
@@ -460,8 +461,6 @@ static void s_run_iteration(void *service_entry) {
     aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
     s_unlock_synced_data(dispatch_loop);
 
-    aws_event_loop_register_tick_start(dispatch_loop->base_loop);
-
     // run the full iteration here: local cross-thread tasks
     while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
@@ -475,9 +474,11 @@ static void s_run_iteration(void *service_entry) {
         }
     }
 
+    aws_event_loop_register_tick_start(dispatch_loop->base_loop);
     // run all scheduled tasks
     uint64_t now_ns = 0;
     aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
+    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks.", (void *)dispatch_loop->base_loop);
     aws_task_scheduler_run_all(&dispatch_loop->scheduler, now_ns);
     aws_event_loop_register_tick_end(dispatch_loop->base_loop);
 
@@ -557,6 +558,8 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
          * immediately using `dispatch_async_f()` which schedules a block to run on the dispatch queue in a FIFO order.
          */
         dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: Scheduling run iteration on event loop.", (void *)dispatch_loop->base_loop);
     } else {
         /*
          * If the timestamp is set to execute sometime in the future, we clamp the time to 1 second max, convert the
@@ -569,6 +572,11 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
         delta = aws_min_u64(delta, AWS_TIMESTAMP_NANOS);
         dispatch_time_t when = dispatch_time(DISPATCH_TIME_NOW, delta);
         dispatch_after_f(when, dispatch_loop->dispatch_queue, entry, s_run_iteration);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Scheduling future run iteration on event loop with next occurring in %llu ns.",
+            (void *)dispatch_loop->base_loop,
+            delta);
     }
 }
 
