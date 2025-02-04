@@ -502,6 +502,10 @@ static int s_test_socket_ex(
 
     aws_event_loop_destroy(event_loop);
 
+#if defined(AWS_USE_APPLE_DISPATCH_QUEUE || AWS_USE_APPLE_NETWORK_FRAMEWORK)
+    sleep(2);
+#endif
+
     return 0;
 }
 

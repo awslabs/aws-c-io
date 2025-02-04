@@ -60,7 +60,7 @@ static void s_dispatch_queue_sleep(void) {
      * to run to clean up memory allocated to the paired scheduled iteration entry. We wait for two seconds to allow the
      * Apple dispatch queue to run its delayed blocks and clean up for memory release purposes.
      */
-#if defined(AWS_USE_APPLE_DISPATCH_QUEUE)
+#if defined(AWS_USE_APPLE_DISPATCH_QUEUE || AWS_USE_APPLE_NETWORK_FRAMEWORK)
     sleep(2);
 #endif
 }
