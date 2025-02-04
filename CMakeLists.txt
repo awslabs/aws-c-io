@@ -204,6 +204,10 @@ if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
 endif()
 
+if (AWS_USE_APPLE_DISPATCH_QUEUE)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
+endif()
+
 target_include_directories(${PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
