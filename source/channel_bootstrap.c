@@ -564,7 +564,7 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
 
     aws_channel_destroy(channel);
 
-    aws_socket_set_cleanup_callback(socket, s_socket_shutdown_complete_client_channel_shutdown, close_args);
+    aws_socket_set_cleanup_complete_callback(socket, s_socket_shutdown_complete_client_channel_shutdown, close_args);
 
     aws_socket_clean_up(socket);
 
@@ -671,7 +671,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         close_args->connection_args = connection_args;
         close_args->error_code = error_code;
 
-        aws_socket_set_cleanup_callback(socket, s_socket_shutdown_complete_setup_connection_args_fn, close_args);
+        aws_socket_set_cleanup_complete_callback(socket, s_socket_shutdown_complete_setup_connection_args_fn, close_args);
 
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, socket);
@@ -721,7 +721,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         close_args->connection_args = connection_args;
         close_args->error_code = error_code;
 
-        aws_socket_set_cleanup_callback(
+        aws_socket_set_cleanup_complete_callback(
             socket, s_socket_shutdown_complete_setup_connection_args_no_release_fn, close_args);
 
         aws_socket_clean_up(socket);
@@ -821,7 +821,7 @@ socket_connect_failed:
     close_args->task_data = task_data;
     close_args->error_code = aws_last_error();
 
-    aws_socket_set_cleanup_callback(outgoing_socket, s_socket_shutdown_complete_attempt_connection_fn, close_args);
+    aws_socket_set_cleanup_complete_callback(outgoing_socket, s_socket_shutdown_complete_attempt_connection_fn, close_args);
 
     aws_socket_clean_up(outgoing_socket);
     aws_mem_release(allocator, outgoing_socket);
@@ -1121,7 +1121,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
             close_args->allocator = bootstrap->allocator;
             close_args->connection_args = client_connection_args;
 
-            aws_socket_set_cleanup_callback(
+            aws_socket_set_cleanup_complete_callback(
                 outgoing_socket, s_socket_shutdown_complete_release_client_connection_args, close_args);
 
             aws_socket_clean_up(outgoing_socket);
@@ -1469,7 +1469,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
         close_args->channel_data = channel_data;
         close_args->error_code = aws_last_error();
 
-        aws_socket_set_cleanup_callback(
+        aws_socket_set_cleanup_complete_callback(
             channel_data->socket, socket_shutdown_server_channel_setup_complete_fn, close_args);
 
         aws_socket_clean_up(channel_data->socket);
@@ -1592,7 +1592,7 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     close_args->channel_data = channel_data;
     close_args->error_code = error_code;
 
-    aws_socket_set_cleanup_callback(socket, socket_shutdown_server_channel_shutdown_fn, close_args);
+    aws_socket_set_cleanup_complete_callback(socket, socket_shutdown_server_channel_shutdown_fn, close_args);
 
     aws_socket_clean_up(socket);
     aws_mem_release(allocator, socket);
@@ -1693,7 +1693,7 @@ error_cleanup:
     close_args->connection_args = connection_args;
     close_args->error_code = aws_last_error();
 
-    aws_socket_set_cleanup_callback(new_socket, s_socket_shutdown_server_connection_result_fn, close_args);
+    aws_socket_set_cleanup_complete_callback(new_socket, s_socket_shutdown_server_connection_result_fn, close_args);
 
     aws_socket_clean_up(new_socket);
     aws_mem_release(allocator, (void *)new_socket);
@@ -1713,7 +1713,7 @@ static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_t
     close_args->allocator = server_connection_args->bootstrap->allocator;
     close_args->connection_args = server_connection_args;
 
-    aws_socket_set_cleanup_callback(
+    aws_socket_set_cleanup_complete_callback(
         &server_connection_args->listener, s_socket_shutdown_complete_release_server_connection_args, close_args);
 
     aws_socket_clean_up(&server_connection_args->listener);
@@ -1840,7 +1840,7 @@ cleanup_listener:
     close_args->allocator = bootstrap_options->bootstrap->allocator;
     close_args->connection_args = server_connection_args;
 
-    aws_socket_set_cleanup_callback(
+    aws_socket_set_cleanup_complete_callback(
         &server_connection_args->listener, s_socket_shutdown_complete_release_server_connection_args, close_args);
     aws_socket_clean_up(&server_connection_args->listener);
     return NULL;
