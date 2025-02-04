@@ -292,6 +292,7 @@ static bool s_test_running_as_root(struct aws_allocator *alloc) {
 
     bool is_root = !err;
     aws_socket_clean_up(&socket);
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &args.condition_variable, &args.mutex, s_outgoing_socket_error_shutdown_predicate, &args));
     ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
