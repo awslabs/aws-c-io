@@ -449,12 +449,14 @@ static void s_run_iteration(void *service_entry) {
         return;
     }
 
-    // swap the cross-thread tasks into task-local data
     struct aws_linked_list local_cross_thread_tasks;
     aws_linked_list_init(&local_cross_thread_tasks);
+
     s_lock_synced_data(dispatch_loop);
     dispatch_loop->synced_data.current_thread_id = aws_thread_current_thread_id();
     dispatch_loop->synced_data.is_executing = true;
+
+    // swap the cross-thread tasks into task-local data
     aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
     s_unlock_synced_data(dispatch_loop);
 
@@ -605,11 +607,29 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
     s_schedule_task_common(event_loop, task, run_at_nanos);
 }
 
-// DEBUG WIP THIS MAY NOT BE DOING WHAT WE WANT IT TO. ESPECIALLY IF A TASK IS STILL IN THE CROSS SCHEDULE LIST.
-// CHECK THAT WE ARE PROPERLY CANCELLING TASKS WHEREVER THEY MAY BE.
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
+
+    /* First we move all cross thread tasks into the scheduler in case the task to be cancelled hasn't moved yet. */
+    struct aws_linked_list local_cross_thread_tasks;
+    aws_linked_list_init(&local_cross_thread_tasks);
+    s_lock_synced_data(dispatch_loop);
+    aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
+    s_unlock_synced_data(dispatch_loop);
+    while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
+        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+
+        /* Timestamp 0 is used to denote "now" tasks */
+        if (task->timestamp == 0) {
+            aws_task_scheduler_schedule_now(&dispatch_loop->scheduler, task);
+        } else {
+            aws_task_scheduler_schedule_future(&dispatch_loop->scheduler, task, task->timestamp);
+        }
+    }
+
+    /* Then we attempt to cancel the task. */
     aws_task_scheduler_cancel_task(&dispatch_loop->scheduler, task);
 }
 
