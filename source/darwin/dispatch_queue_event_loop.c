@@ -123,31 +123,16 @@ static struct scheduled_iteration_entry *s_scheduled_iteration_entry_new(
     entry->dispatch_loop = dispatch_loop;
     aws_priority_queue_node_init(&entry->priority_queue_node);
 
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "      DEBUG CREATING ITERATION ENTRY %p with timestamp %llu and allocator %p",
-        (void *)entry,
-        timestamp,
-        (void *)entry->allocator);
-
     return entry;
 }
 
 /* Cleans up a `scheduled_iteration_entry` */
 static void s_scheduled_iteration_entry_destroy(struct scheduled_iteration_entry *entry) {
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "      DEBUG DESTROYING ITERATION ENTRY: %p dispatch_loop: %p timestamp: %llu allocator: %p",
-        (void *)entry,
-        (void *)entry->dispatch_loop,
-        entry->timestamp,
-        (void *)entry->allocator);
-    entry->dispatch_loop = NULL;
     aws_mem_release(entry->allocator, entry);
 }
 
 /**
- * Helper function to check if another scheduled iteration already exists that will handle our needs
+ * Helper function to check if another scheduled iteration already exists that will handle our needs.
  *
  * The function should be wrapped with the synced_data_lock to safely access the scheduled_iterations list
  */
@@ -163,12 +148,6 @@ static bool s_should_schedule_iteration(
     AWS_FATAL_ASSERT(entry_ptr != NULL);
     struct scheduled_iteration_entry *entry = *entry_ptr;
     AWS_FATAL_ASSERT(entry != NULL);
-
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "DEBUG s_should_schedule_iteration() comparing against %p from priority queue with timestamp %llu",
-        (void *)entry,
-        entry->timestamp);
 
     // is the next scheduled iteration later than what we require?
     return entry->timestamp > proposed_iteration_time;
@@ -224,7 +203,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct aws_dispatch_loop *dispatch_loop = NULL;
     struct aws_event_loop *loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_event_loop));
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing dispatch_queue event-loop", (void *)loop);
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Initializing Dispatch Queue Event Loop", (void *)loop);
     if (aws_event_loop_init_base(loop, alloc, options->clock)) {
         goto clean_up;
     }
@@ -258,8 +237,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     aws_mutex_init(&dispatch_loop->synced_data.synced_data_lock);
 
-    /* The dispatch queue has no active blocks processing on it at this point. */
-    dispatch_loop->synced_data.stopped = true;
     /* The dispatch queue is suspended at this point. */
     dispatch_loop->synced_data.suspended = true;
     dispatch_loop->synced_data.is_executing = false;
@@ -309,37 +286,37 @@ static void s_dispatch_queue_destroy_task(void *context) {
     dispatch_loop->synced_data.is_executing = true;
 
     /*
+     * Because this task was scheudled on the dispatch queue using `dispatch_async_and_wait_t()` we are certain that
+     * any scheduled iterations will occur AFTER this point and it is safe to NULL the dispatch_queue from all iteration
+     * blocks scheduled to run in the future.
+     */
+    struct aws_array_list *scheduled_iterations_array = &dispatch_loop->synced_data.scheduled_iterations.container;
+    for (size_t i = 0; i < aws_array_list_length(scheduled_iterations_array); ++i) {
+        struct scheduled_iteration_entry **entry_ptr = NULL;
+        aws_array_list_get_at_ptr(scheduled_iterations_array, (void **)&entry_ptr, i);
+        struct scheduled_iteration_entry *entry = *entry_ptr;
+        if (entry->dispatch_loop) {
+            entry->dispatch_loop = NULL;
+        }
+    }
+    s_unlock_synced_data(dispatch_loop);
+
+    /* Cancel all tasks currently scheduled in the task scheduler. */
+    aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
+
+    /*
      * Swap tasks from cross_thread_tasks into local_cross_thread_tasks to cancel them as well as the tasks already
      * in the scheduler.
      */
     struct aws_linked_list local_cross_thread_tasks;
     aws_linked_list_init(&local_cross_thread_tasks);
+
+    s_lock_synced_data(dispatch_loop);
+populate_local_cross_thread_tasks:
     aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
-
-    /*
-     * Because this task was scheudled on the dispatch queue using `dispatch_async_and_wait_t()` we can be sure that
-     * any blocks running after it, and any scheduled iterations will occur AFTER we have cancelled all existing tasks
-     * in both the cross_thread_tasks and scheduler. It is safe at this point to NULL the dispatch_queue from all
-     * iteration blocks scheduled to run in the future.
-     */
-    struct aws_array_list *scheduled_iterations_array = &dispatch_loop->synced_data.scheduled_iterations.container;
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "DEBUG ITERATION ENTRY COUNT AT DESTROY %zu",
-        aws_array_list_length(scheduled_iterations_array));
-    for (size_t i = 0; i < aws_array_list_length(scheduled_iterations_array); ++i) {
-        struct scheduled_iteration_entry **entry_ptr = NULL;
-        aws_array_list_get_at_ptr(scheduled_iterations_array, (void **)&entry_ptr, i);
-        struct scheduled_iteration_entry *entry = *entry_ptr;
-        // aws_array_list_get_at_ptr(scheduled_iterations_array, (void **)&entry, i);
-        if (entry->dispatch_loop) {
-            AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "X X X X X X X X DEBUG NULLING ITERATION ENTRY %p", (void *)entry);
-            entry->dispatch_loop = NULL;
-        }
-    }
-
     s_unlock_synced_data(dispatch_loop);
-    aws_task_scheduler_clean_up(&dispatch_loop->scheduler); /* Tasks in scheduler get cancelled */
+
+    /* Cancel all tasks that were in cross_thread_tasks */
     while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
@@ -347,6 +324,15 @@ static void s_dispatch_queue_destroy_task(void *context) {
     }
 
     s_lock_synced_data(dispatch_loop);
+
+    /*
+     * Check if more cross thread tasks have been added since cancelling existing tasks. If there were, we must run
+     * them with AWS_TASK_STATUS_CANCELED as well before moving on with cleanup and destruction.
+     */
+    if (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
+        goto populate_local_cross_thread_tasks;
+    }
+
     dispatch_loop->synced_data.is_executing = false;
     s_unlock_synced_data(dispatch_loop);
 
@@ -361,22 +347,34 @@ static void s_destroy(struct aws_event_loop *event_loop) {
     s_run(event_loop);
 
     /*
-     * Schedules `s_dispatch_queue_destroy_task()` to run on the Apple dispatch queue of the event loop.
+     * `dispatch_async_and_wait_f()` schedules a block to execute in FIFO order on Apple's dispatch queue and waits
+     * for it to complete before moving on.
      *
      * Any block that is currently running or already scheduled on the dispatch queue will be completed before
      * `s_dispatch_queue_destroy_task()` block is executed.
      *
-     * `s_dispatch_queue_destroy_task()` will cancel outstanding tasks and then run `s_dispatch_event_loop_destroy()`'
+     * `s_dispatch_queue_destroy_task()` will cancel outstanding tasks that have already been scheduled to the task
+     * scheduler and then iterate through cross thread tasks before finally running `s_dispatch_event_loop_destroy()`
+     * which will clean up both aws_event_loop and aws_dispatch_loop from memory.
      *
      * It is possible that there are scheduled_iterations that are be queued to run s_run_iteration() up to 1 second
-     * AFTER s_dispatch_queue_destroy_task() has executued.
+     * AFTER s_dispatch_queue_destroy_task() has executued. Any iteration blocks scheduled to run in the future will
+     * keep Apple's dispatch queue alive until the blocks complete.
      */
     dispatch_async_and_wait_f(dispatch_loop->dispatch_queue, dispatch_loop, s_dispatch_queue_destroy_task);
 }
 
-// DEBUG WIP what is this and do we need to do anything here to have parity with other event loops?
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     (void)event_loop;
+    /*
+     * This is typically called as part of the destroy process to merge running threads during cleanup. The nature
+     * of dispatch queue and Apple handling cleanup using its own reference counting system only requires us to
+     * drop all references to the dispatch queue and to leave it in a resumed state with no further blocks
+     * scheduled to run.
+     *
+     * We do not call `stop()` on the dispatch loop because a suspended dispatch queue retains a
+     * refcount and Apple will not release the dispatch loop.
+     */
 
     return AWS_OP_SUCCESS;
 }
@@ -385,8 +383,6 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
 
 /*
  * Called to resume a suspended dispatch queue.
- *
- * synched_data_lock held during check of synced_data.suspended and attempt to schedule a new iteration.
  */
 static int s_run(struct aws_event_loop *event_loop) {
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
@@ -403,18 +399,22 @@ static int s_run(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Called to suspend dispatch queue
+ */
 static int s_stop(struct aws_event_loop *event_loop) {
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     s_lock_synced_data(dispatch_loop);
     if (!dispatch_loop->synced_data.suspended) {
         dispatch_loop->synced_data.suspended = true;
-        AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Stopping event-loop thread.", (void *)event_loop);
+        AWS_LOGF_INFO(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: Suspending event loop's dispatch queue thread.", (void *)event_loop);
 
         /*
-         * Suspend will increase the Apple's ref count on the dispatch queue by one. For Apple to fully release the
-         * dispatch queue, it must be manually released to drop its ref count or dispatch_resume() must be called on the
-         * dispatch queue to release the acquired ref count.
+         * Suspend will increase the Apple's refcount on the dispatch queue. For Apple to fully release the dispatch
+         * queue, `dispatch_resume()` must be called on the dispatch queue to release the acquired refcount. Manually
+         * decreffing the dispatch queue will result in undetermined behavior.
          */
         dispatch_suspend(dispatch_loop->dispatch_queue);
     }
@@ -431,7 +431,6 @@ static int s_stop(struct aws_event_loop *event_loop) {
 static void s_run_iteration(void *service_entry) {
     struct scheduled_iteration_entry *entry = service_entry;
     struct aws_dispatch_loop *dispatch_loop = entry->dispatch_loop;
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "DEBUG RUNNING ITERATION ENTRY %p", (void *)entry);
     /*
      * A scheduled_iteration_entry can have been enqueued by Apple to run AFTER `s_dispatch_queue_destroy_task()` has
      * been executed and the `aws_dispatch_loop` and parent `aws_event_loop` have been cleaned up. During the execution
@@ -441,10 +440,10 @@ static void s_run_iteration(void *service_entry) {
      * `aws_dispatch_loop` or an `aws_event_loop`.
      */
     if (entry->dispatch_loop == NULL) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "DEBUG ENTRY DISPATCH LOOP IS NULL");
         /*
-         * At this point, both the `aws_dispatch_loop` and `aws_event_loop` have been destroyed.
-         * Clean up the `scheduled_iteration_entry` and end the block to release its refcount on Apple's dispatch queue.
+         * If dispatch_loop is NULL both the `aws_dispatch_loop` and `aws_event_loop` have been destroyed and memory
+         * cleaned up. Destroy the `scheduled_iteration_entry` to not leak memory and end the block to release its
+         * refcount on Apple's dispatch queue.
          */
         s_scheduled_iteration_entry_destroy(entry);
         return;
@@ -454,7 +453,6 @@ static void s_run_iteration(void *service_entry) {
     struct aws_linked_list local_cross_thread_tasks;
     aws_linked_list_init(&local_cross_thread_tasks);
     s_lock_synced_data(dispatch_loop);
-    dispatch_loop->synced_data.stopped = false;
     dispatch_loop->synced_data.current_thread_id = aws_thread_current_thread_id();
     dispatch_loop->synced_data.is_executing = true;
     aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
@@ -524,15 +522,15 @@ static void s_run_iteration(void *service_entry) {
  * If timestamp == 0, the function will always schedule a new iteration as long as the event loop is not suspended or
  * being destroyed.
  *
- * The function should be wrapped with the synced_data_lock
+ * This function should be wrapped with the synced_data_lock as it reads and writes to and from
+ * aws_dispatch_loop->sycned_data
  */
 static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop, uint64_t timestamp) {
-    if (!dispatch_loop || dispatch_loop->synced_data.suspended || dispatch_loop->synced_data.is_destroying) {
+    if (dispatch_loop->synced_data.suspended) {
         return;
     }
 
     if (!s_should_schedule_iteration(&dispatch_loop->synced_data.scheduled_iterations, timestamp)) {
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "DEBUG s_should_schedule_iteration() returned FALSE");
         return;
     }
 
@@ -557,8 +555,6 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
          * immediately using `dispatch_async_f()` which schedules a block to run on the dispatch queue in a FIFO order.
          */
         dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
-
-        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "     DEBUG dispatch_async_f() entry: %p", (void *)entry);
     } else {
         /*
          * If the timestamp is set to execute sometime in the future, we clamp the time to 1 second max, convert the
@@ -571,13 +567,6 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
         delta = aws_min_u64(delta, AWS_TIMESTAMP_NANOS);
         dispatch_time_t when = dispatch_time(DISPATCH_TIME_NOW, delta);
         dispatch_after_f(when, dispatch_loop->dispatch_queue, entry, s_run_iteration);
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP,
-            "     DEBUG dispatch_after_f() entry: %p now: %llu when: %llu",
-            (void *)entry,
-            now_ns,
-            (uint64_t)when);
     }
 }
 

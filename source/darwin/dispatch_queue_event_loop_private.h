@@ -44,12 +44,6 @@ struct aws_dispatch_loop {
         bool suspended;
 
         /*
-         * Will be true when the underlying dispatch_queue has completed running all enqueued blocks and no futher work
-         * is enqueued.
-         */
-        bool stopped;
-
-        /*
          * Will be true when dispatch loop has entered state where it is being destroyed.
          */
         bool is_destroying;
