@@ -558,6 +558,8 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
          * immediately using `dispatch_async_f()` which schedules a block to run on the dispatch queue in a FIFO order.
          */
         dispatch_async_f(dispatch_loop->dispatch_queue, entry, s_run_iteration);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP, "id=%p: Scheduling run iteration on event loop.", (void *)dispatch_loop->base_loop);
     } else {
         /*
          * If the timestamp is set to execute sometime in the future, we clamp the time to 1 second max, convert the
@@ -570,6 +572,11 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
         delta = aws_min_u64(delta, AWS_TIMESTAMP_NANOS);
         dispatch_time_t when = dispatch_time(DISPATCH_TIME_NOW, delta);
         dispatch_after_f(when, dispatch_loop->dispatch_queue, entry, s_run_iteration);
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: Scheduling future run iteration on event loop with next occurring in %llu ns.",
+            (void *)dispatch_loop->base_loop,
+            delta);
     }
 }
 
