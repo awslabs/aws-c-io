@@ -30,6 +30,12 @@ static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_ta
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+static int s_subscribe_to_io_events(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event_fn *on_event,
+    void *user_data);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_free_io_event_resources(void *user_data) {
     (void)user_data;
@@ -45,6 +51,7 @@ static struct aws_event_loop_vtable s_vtable = {
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
     .connect_to_io_completion_port = s_connect_to_dispatch_queue,
+    .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
     .is_on_callers_thread = s_is_on_callers_thread,
@@ -639,6 +646,19 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
 
     /* Then we attempt to cancel the task. */
     aws_task_scheduler_cancel_task(&dispatch_loop->scheduler, task);
+}
+
+static int s_subscribe_to_io_events(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event_fn *on_event,
+    void *user_data) {
+    (void)event_loop;
+    (void)handle;
+    (void)events;
+    (void)on_event;
+    (void)user_data;
 }
 
 static int s_connect_to_dispatch_queue(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
