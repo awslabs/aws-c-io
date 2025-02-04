@@ -11,6 +11,20 @@
 #include <aws/io/tls_channel_handler.h>
 #include <dispatch/dispatch.h>
 
+struct dispatch_loop;
+struct dispatch_loop_context;
+
+struct secure_transport_ctx {
+    struct aws_tls_ctx ctx;
+    CFAllocatorRef wrapped_allocator;
+    CFArrayRef certs;
+    SecIdentityRef secitem_identity;
+    CFArrayRef ca_cert;
+    enum aws_tls_versions minimum_version;
+    struct aws_string *alpn_list;
+    bool verify_peer;
+};
+
 struct aws_dispatch_loop {
     struct aws_allocator *allocator;
     dispatch_queue_t dispatch_queue;
