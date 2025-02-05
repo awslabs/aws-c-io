@@ -690,6 +690,12 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     return AWS_OP_SUCCESS;
 }
 
+/*
+ * Because dispatch queue is async we may need to acquire a refcount of the parent event loop group to prevent
+ * the event loop or dispatch loop from being cleaned out from underneath something that needs it. We expose the
+ * base elg so anything that needs to insure the event loops and dispatch loops don't get prematurely cleaned can
+ * hold a refcount.
+ */
 static void *s_get_base_event_loop_group(struct aws_event_loop *event_loop) {
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
     return dispatch_loop->base_elg;
