@@ -153,7 +153,9 @@ static struct scheduled_iteration_entry *s_scheduled_iteration_entry_new(
     return entry;
 }
 
-/* Cleans up a `scheduled_iteration_entry` */
+/*
+ * Cleans up the memory allocated for a `scheduled_iteration_entry`.
+ */
 static void s_scheduled_iteration_entry_destroy(struct scheduled_iteration_entry *entry) {
     aws_mem_release(entry->allocator, entry);
 }
