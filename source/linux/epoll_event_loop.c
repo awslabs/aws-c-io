@@ -51,6 +51,14 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
+static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    (void)handle;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: connect_to_io_completion_port() is not supported using Epoll Event Loops",
+        (void *)event_loop);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -59,6 +67,15 @@ static int s_subscribe_to_io_events(
     void *user_data);
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_free_io_event_resources(void *user_data);
+static void *s_get_base_event_loop_group(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: get_base_event_loop_group() is not supported using Epoll Event Loops",
+        (void *)event_loop);
+    aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+    return NULL;
+}
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
 static void aws_event_loop_thread(void *args);
@@ -71,9 +88,11 @@ static struct aws_event_loop_vtable s_vtable = {
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
+    .connect_to_io_completion_port = s_connect_to_io_completion_port,
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
+    .get_base_event_loop_group = s_get_base_event_loop_group,
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
