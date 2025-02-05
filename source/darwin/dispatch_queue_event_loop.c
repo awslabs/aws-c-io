@@ -668,6 +668,11 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     aws_task_scheduler_cancel_task(&dispatch_loop->scheduler, task);
 }
 
+/*
+ * We use this to obtain a direct pointer to the underlying dispatch queue. This is required to perform various
+ * operations in the socket, socket handler, and probably anything else that requires use of Apple API needing a
+ * dispatch queue.
+ */
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_PRECONDITION(handle->set_queue);
     AWS_LOGF_TRACE(
