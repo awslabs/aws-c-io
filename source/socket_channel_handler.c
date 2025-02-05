@@ -350,7 +350,7 @@ static int s_socket_shutdown(
             close_args->free_scarce_resource_immediately = free_scarce_resource_immediately;
             close_args->dir = dir;
 
-            aws_socket_set_shutdown_callback(socket_handler->socket, s_shutdown_read_dir_complete_fn, close_args);
+            aws_socket_set_close_complete_callback(socket_handler->socket, s_shutdown_read_dir_complete_fn, close_args);
             if (aws_socket_close(socket_handler->socket)) {
                 return AWS_OP_ERR;
             }
@@ -375,7 +375,7 @@ static int s_socket_shutdown(
         close_args->free_scarce_resource_immediately = free_scarce_resource_immediately;
         close_args->dir = dir;
 
-        aws_socket_set_shutdown_callback(socket_handler->socket, s_shutdown_complete_fn, close_args);
+        aws_socket_set_close_complete_callback(socket_handler->socket, s_shutdown_complete_fn, close_args);
         aws_socket_close(socket_handler->socket);
     } else { // If socket is already closed, fire the close task directly.
         /* Schedule a task to complete the shutdown, in case a do_read task is currently pending.

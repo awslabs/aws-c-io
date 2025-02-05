@@ -244,8 +244,11 @@ AWS_IO_API int aws_socket_start_accept(
  */
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
-AWS_IO_API int aws_socket_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
-AWS_IO_API int aws_socket_set_cleanup_callback(
+AWS_IO_API int aws_socket_set_close_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
+AWS_IO_API int aws_socket_set_cleanup_complete_callback(
     struct aws_socket *socket,
     aws_socket_on_shutdown_complete_fn fn,
     void *user_data);
