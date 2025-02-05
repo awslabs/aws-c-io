@@ -105,6 +105,22 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
+static int s_subscribe_to_io_events(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event_fn *on_event,
+    void *user_data) {
+    (void)handle;
+    (void)events;
+    (void)on_event;
+    (void)user_data;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: subscribe_to_io_events() is not supported using IOCP Event Loops",
+        (void *)event_loop);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_free_io_event_resources(void *user_data);
 static void aws_event_loop_thread(void *user_data);
@@ -139,9 +155,10 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
     .connect_to_io_completion_port = s_connect_to_io_completion_port,
-    .is_on_callers_thread = s_is_event_thread,
+    .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
+    .is_on_callers_thread = s_is_event_thread,
 };
 
 struct aws_event_loop *aws_event_loop_new_with_iocp(

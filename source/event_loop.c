@@ -573,8 +573,8 @@ int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 }
 
 void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_now);
     AWS_ASSERT(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_now);
     event_loop->vtable->schedule_task_now(event_loop, task);
 }
 
@@ -582,24 +582,22 @@ void aws_event_loop_schedule_task_future(
     struct aws_event_loop *event_loop,
     struct aws_task *task,
     uint64_t run_at_nanos) {
-
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_future);
     AWS_ASSERT(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_future);
     event_loop->vtable->schedule_task_future(event_loop, task, run_at_nanos);
 }
 
 void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    AWS_ASSERT(task);
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
     AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
-    AWS_ASSERT(task);
     event_loop->vtable->cancel_task(event_loop, task);
 }
 
 int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle) {
-
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->connect_to_io_completion_port);
     return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
 }
 
@@ -609,8 +607,7 @@ int aws_event_loop_subscribe_to_io_events(
     int events,
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
-
-    AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->subscribe_to_io_events);
     return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
 
