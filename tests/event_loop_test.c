@@ -13,10 +13,6 @@
 #include <aws/io/private/event_loop_impl.h>
 #include <aws/testing/aws_test_harness.h>
 
-#if defined(AWS_USE_APPLE_DISPATCH_QUEUE)
-#    include <unistd.h> // for sleep()
-#endif
-
 struct task_args {
     bool invoked;
     bool was_in_thread;
@@ -63,7 +59,7 @@ static void s_dispatch_queue_sleep(void) {
      * Apple dispatch queue to run its delayed blocks and clean up for memory release purposes.
      */
 #if defined(AWS_USE_APPLE_DISPATCH_QUEUE)
-    sleep(2);
+    aws_thread_current_sleep(2000000000);
 #endif
 }
 

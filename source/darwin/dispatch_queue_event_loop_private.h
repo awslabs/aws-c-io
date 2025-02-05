@@ -44,11 +44,6 @@ struct aws_dispatch_loop {
          */
         bool suspended;
 
-        /*
-         * Will be true when dispatch loop has entered state where it is being destroyed.
-         */
-        bool is_destroying;
-
         struct aws_linked_list cross_thread_tasks;
 
         /*

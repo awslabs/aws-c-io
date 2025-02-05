@@ -309,7 +309,6 @@ static void s_dispatch_queue_destroy_task(void *context) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)dispatch_loop->base_loop);
 
     s_lock_synced_data(dispatch_loop);
-    dispatch_loop->synced_data.is_destroying = true;
     dispatch_loop->synced_data.current_thread_id = aws_thread_current_thread_id();
     dispatch_loop->synced_data.is_executing = true;
 
@@ -557,7 +556,7 @@ static void s_run_iteration(void *service_entry) {
  * aws_dispatch_loop->sycned_data
  */
 static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop, uint64_t timestamp) {
-    if (dispatch_loop->synced_data.suspended || dispatch_loop->synced_data.is_destroying) {
+    if (dispatch_loop->synced_data.suspended || dispatch_loop->synced_data.is_executing) {
         return;
     }
 
