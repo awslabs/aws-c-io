@@ -96,6 +96,15 @@ struct aws_event_loop_options {
      * creation function will automatically use the platform’s default event loop type.
      */
     enum aws_event_loop_type type;
+
+    /**
+     * The parent `aws_event_loop_group` needs to be accessible from its individual `aws_event_loop` children when using
+     * dispatch queue event loops. Apple dispatch queue event loops are async and so we must insure that the event loops
+     * they use are alive during socket shutdown for the entirety of its shutdown process. To this end, we acquire a
+     * refcount to the parent elg when using Apple network sockets and release the refcount to the parent elg when the
+     * socket is shutdown and cleaned up.
+     */
+    struct aws_event_loop_group *parent_elg;
 };
 
 struct aws_event_loop *aws_event_loop_new_with_iocp(

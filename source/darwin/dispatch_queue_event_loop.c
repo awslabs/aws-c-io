@@ -241,6 +241,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     dispatch_loop->allocator = alloc;
     loop->impl_data = dispatch_loop;
     dispatch_loop->base_loop = loop;
+    dispatch_loop->base_elg = options->parent_elg;
 
     char dispatch_queue_id[AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH] = {0};
     s_get_unique_dispatch_queue_id(dispatch_queue_id);

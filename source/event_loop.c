@@ -288,6 +288,7 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
                 .clock = clock,
                 .thread_options = &thread_options,
                 .type = options->type,
+                .parent_elg = el_group,
             };
 
             if (pin_threads) {
