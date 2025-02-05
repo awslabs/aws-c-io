@@ -16,7 +16,6 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_io_handle;
 typedef void aws_io_set_queue_on_handle_fn(struct aws_io_handle *handle, void *queue);
-typedef void aws_io_clear_queue_on_handle_fn(struct aws_io_handle *handle);
 
 struct aws_io_handle {
     union {
@@ -26,7 +25,6 @@ struct aws_io_handle {
     } data;
     void *additional_data;
     aws_io_set_queue_on_handle_fn *set_queue;
-    aws_io_clear_queue_on_handle_fn *clear_queue;
 };
 
 enum aws_io_message_type {

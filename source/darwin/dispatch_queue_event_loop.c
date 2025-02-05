@@ -29,22 +29,37 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
-static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    (void)handle;
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_EVENT_LOOP,
-        "id=%p: connect_to_io_completion_port() is not supported using Dispatch Queue Event Loops",
-        (void *)event_loop);
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-}
+static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
     int events,
     aws_event_loop_on_event_fn *on_event,
-    void *user_data);
-static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
-static void s_free_io_event_resources(void *user_data);
+    void *user_data) {
+    (void)event_loop;
+    (void)handle;
+    (void)events;
+    (void)on_event;
+    (void)user_data;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: subscribe_to_io_events() is not supported using Dispatch Queue Event Loops",
+        (void *)event_loop);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
+static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    (void)handle;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: unsubscribe_from_io_events() is not supported using Dispatch Queue Event Loops",
+        (void *)event_loop);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
+static void s_free_io_event_resources(void *user_data) {
+    /* No io event resources to free */
+    (void)user_data;
+}
+
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
 static struct aws_event_loop_vtable s_vtable = {
@@ -653,18 +668,8 @@ static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *ta
     aws_task_scheduler_cancel_task(&dispatch_loop->scheduler, task);
 }
 
-static int s_subscribe_to_io_events(
-    struct aws_event_loop *event_loop,
-    struct aws_io_handle *handle,
-    int events,
-    aws_event_loop_on_event_fn *on_event,
-    void *user_data) {
-    (void)events;
-    (void)on_event;
-    (void)user_data;
-
-    AWS_PRECONDITION(handle->set_queue && handle->clear_queue);
-
+static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    AWS_PRECONDITION(handle->set_queue);
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: subscribing to events on handle %p",
@@ -675,25 +680,6 @@ static int s_subscribe_to_io_events(
     handle->set_queue(handle, dispatch_loop->dispatch_queue);
 
     return AWS_OP_SUCCESS;
-}
-
-static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
-    (void)handle;
-
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP,
-        "id=%p: un-subscribing from events on handle %p",
-        (void *)event_loop,
-        (void *)handle->data.handle);
-
-    handle->clear_queue(handle);
-
-    return AWS_OP_SUCCESS;
-}
-
-static void s_free_io_event_resources(void *user_data) {
-    /* dispatch queue has no additional data stored to handle I/O events */
-    (void)user_data;
 }
 
 /*
