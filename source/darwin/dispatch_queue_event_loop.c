@@ -59,7 +59,7 @@ static void s_free_io_event_resources(void *user_data) {
     /* No io event resources to free */
     (void)user_data;
 }
-
+static void *s_get_base_event_loop_group(struct aws_event_loop *event_loop);
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
 static struct aws_event_loop_vtable s_vtable = {
@@ -74,6 +74,7 @@ static struct aws_event_loop_vtable s_vtable = {
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
+    .get_base_event_loop_group = s_get_base_event_loop_group,
     .is_on_callers_thread = s_is_on_callers_thread,
 };
 
@@ -687,6 +688,11 @@ static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, st
     handle->set_queue(handle, dispatch_loop->dispatch_queue);
 
     return AWS_OP_SUCCESS;
+}
+
+static void *s_get_base_event_loop_group(struct aws_event_loop *event_loop) {
+    struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
+    return dispatch_loop->base_elg;
 }
 
 /*

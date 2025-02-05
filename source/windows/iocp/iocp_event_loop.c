@@ -123,6 +123,15 @@ static int s_subscribe_to_io_events(
 }
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_free_io_event_resources(void *user_data);
+static void *s_get_base_event_loop_group(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: get_base_event_loop_group() is not supported using IOCP Event Loops",
+        (void *)event_loop);
+    aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+    return NULL;
+}
 static void aws_event_loop_thread(void *user_data);
 
 void aws_overlapped_init(
@@ -158,6 +167,7 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
+    .get_base_event_loop_group = s_get_base_event_loop_group,
     .is_on_callers_thread = s_is_event_thread,
 };
 

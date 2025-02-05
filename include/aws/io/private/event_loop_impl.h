@@ -321,6 +321,14 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
 AWS_IO_API
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
+/**
+ * Retrieves the aws_event_loop_group that is the parent of the aws_event_loop. This is only supported when using a
+ * dispatch queue event loop as they are async and their sockets need to retain a refcount on the elg to keep it alive
+ * and insure it has not been asyncronously destroyed before anything that needs it.
+ */
+AWS_IO_API
+void *get_base_event_loop_group(struct aws_event_loop *event_loop);
+
 AWS_IO_API
 struct aws_event_loop_group *aws_event_loop_group_new_internal(
     struct aws_allocator *allocator,
