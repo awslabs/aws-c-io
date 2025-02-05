@@ -556,7 +556,7 @@ static void s_run_iteration(void *service_entry) {
  * aws_dispatch_loop->sycned_data
  */
 static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop, uint64_t timestamp) {
-    if (dispatch_loop->synced_data.suspended) {
+    if (dispatch_loop->synced_data.suspended || dispatch_loop->synced_data.is_destroying) {
         return;
     }
 
