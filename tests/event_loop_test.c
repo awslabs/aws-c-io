@@ -13,7 +13,9 @@
 #include <aws/io/private/event_loop_impl.h>
 #include <aws/testing/aws_test_harness.h>
 
-#include <unistd.h> // for sleep()
+#if defined(AWS_USE_APPLE_DISPATCH_QUEUE)
+#    include <unistd.h> // for sleep()
+#endif
 
 struct task_args {
     bool invoked;
