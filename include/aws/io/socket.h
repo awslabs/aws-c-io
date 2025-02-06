@@ -121,14 +121,15 @@ typedef void(aws_socket_on_accept_result_fn)(
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
  *
- * `socket` may be NULL in the callback if the socket is released and cleaned up before a callback is triggered.
- * by the system I/O handler,
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before the callback is triggered.
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
 /**
  * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
  * readable, error_code will be AWS_ERROR_SUCCESS.
+ *
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before the callback is triggered.
  */
 typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
