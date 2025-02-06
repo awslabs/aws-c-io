@@ -15,7 +15,9 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+#if defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
+#elif defined(AWS_USE_APPLE_DISPATCH_QUEUE)
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
 #else
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
@@ -286,6 +288,7 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
                 .clock = clock,
                 .thread_options = &thread_options,
                 .type = options->type,
+                .parent_elg = el_group,
             };
 
             if (pin_threads) {
@@ -571,8 +574,8 @@ int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 }
 
 void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_now);
     AWS_ASSERT(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_now);
     event_loop->vtable->schedule_task_now(event_loop, task);
 }
 
@@ -580,24 +583,22 @@ void aws_event_loop_schedule_task_future(
     struct aws_event_loop *event_loop,
     struct aws_task *task,
     uint64_t run_at_nanos) {
-
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_future);
     AWS_ASSERT(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_future);
     event_loop->vtable->schedule_task_future(event_loop, task, run_at_nanos);
 }
 
 void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    AWS_ASSERT(task);
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
     AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
-    AWS_ASSERT(task);
     event_loop->vtable->cancel_task(event_loop, task);
 }
 
 int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle) {
-
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->connect_to_io_completion_port);
     return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
 }
 
@@ -607,8 +608,7 @@ int aws_event_loop_subscribe_to_io_events(
     int events,
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
-
-    AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->subscribe_to_io_events);
     return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
 
@@ -621,6 +621,11 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
     event_loop->vtable->free_io_event_resources(handle->additional_data);
+}
+
+void *get_base_event_loop_group(struct aws_event_loop *event_loop) {
+    AWS_ASSERT(event_loop && event_loop->vtable->get_base_event_loop_group);
+    return event_loop->vtable->get_base_event_loop_group(event_loop);
 }
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {

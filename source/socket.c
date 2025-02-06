@@ -39,7 +39,7 @@ int aws_socket_start_accept(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data) {
-    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_listen_fn);
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_start_accept_fn);
     return socket->vtable->socket_start_accept_fn(socket, accept_loop, on_accept_result, user_data);
 }
 
