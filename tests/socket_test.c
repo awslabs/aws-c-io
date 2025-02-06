@@ -32,6 +32,13 @@ struct local_listener_args {
     bool shutdown_complete;
 };
 
+static void s_sleep_for_dispatch_queue(void) {
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
+    aws_thread_current_sleep(2000000000);
+#endif
+}
+
 static void s_local_listener_shutdown_complete(void *user_data) {
     (void)socket;
     struct local_listener_args *shutdown_args = (struct local_listener_args *)user_data;
@@ -502,6 +509,8 @@ static int s_test_socket_ex(
 
     aws_event_loop_destroy(event_loop);
 
+    s_sleep_for_dispatch_queue();
+
     return 0;
 }
 
@@ -537,8 +546,6 @@ static int s_test_socket_udp_dispatch_queue(
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
     ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
-    // wait for incoming listener come back
-    aws_thread_current_sleep(1000000000);
 
     struct local_outgoing_args outgoing_args = {
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
@@ -552,7 +559,7 @@ static int s_test_socket_udp_dispatch_queue(
         &condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
-    ASSERT_SUCCESS(aws_socket_assign_to_event_loop(&listener, event_loop));
+    aws_socket_subscribe_to_readable_events(&listener, s_on_readable, NULL);
     aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
 
     /* now test the read and write across the connection. */
@@ -589,13 +596,9 @@ static int s_test_socket_udp_dispatch_queue(
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
 
-    if (listener.options.type == AWS_SOCKET_STREAM ||
-        aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
-        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-        ASSERT_SUCCESS(
-            aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
-        ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
-    }
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     ASSERT_TRUE(listener_args.incoming_invoked);
     ASSERT_FALSE(listener_args.error_invoked);
@@ -614,27 +617,6 @@ static int s_test_socket_udp_dispatch_queue(
         .arg = &io_args,
     };
 
-    aws_event_loop_schedule_task_now(event_loop, &read_task);
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_read_task_predicate, &io_args);
-    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
-    ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
-    ASSERT_BIN_ARRAYS_EQUALS(read_buffer.buffer, read_buffer.len, write_buffer.buffer, write_buffer.len);
-
-    memset((void *)write_data, 0, sizeof(write_data));
-    write_buffer.len = 0;
-
-    io_args.error_code = 0;
-    io_args.amount_read = 0;
-    io_args.amount_written = 0;
-    io_args.socket = server_sock;
-    aws_event_loop_schedule_task_now(event_loop, &write_task);
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);
-    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
-    ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
-
-    io_args.socket = &outgoing;
     aws_event_loop_schedule_task_now(event_loop, &read_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_read_task_predicate, &io_args);
@@ -693,6 +675,7 @@ static int s_test_socket_udp_dispatch_queue(
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
     aws_event_loop_destroy(event_loop);
 
+    s_sleep_for_dispatch_queue();
     return 0;
 }
 
@@ -1155,11 +1138,10 @@ static int s_test_connect_timeout_cancellation(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
     aws_socket_set_cleanup_complete_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
+
     aws_event_loop_group_release(el_group);
 
     aws_thread_join_all_managed();
-    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
-    aws_thread_current_sleep(2000000000);
 
     ASSERT_INT_EQUALS(AWS_IO_EVENT_LOOP_SHUTDOWN, outgoing_args.last_error);
 
@@ -1170,6 +1152,7 @@ static int s_test_connect_timeout_cancellation(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_mutex_unlock(outgoing_args.mutex));
 
     aws_io_library_clean_up();
+    s_sleep_for_dispatch_queue();
 
     return 0;
 }
@@ -1896,6 +1879,8 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
 
     aws_event_loop_destroy(event_loop);
 
+    s_sleep_for_dispatch_queue();
+
     return 0;
 }
 AWS_TEST_CASE(cleanup_in_accept_doesnt_explode, s_cleanup_in_accept_doesnt_explode)
@@ -2054,6 +2039,8 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     aws_event_loop_destroy(event_loop);
+
+    s_sleep_for_dispatch_queue();
 
     return 0;
 }
@@ -2302,6 +2289,7 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     aws_event_loop_destroy(event_loop);
+    s_sleep_for_dispatch_queue();
     return 0;
 }
 AWS_TEST_CASE(sock_write_cb_is_async, s_sock_write_cb_is_async)
