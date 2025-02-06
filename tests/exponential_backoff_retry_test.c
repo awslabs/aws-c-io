@@ -19,6 +19,13 @@ struct exponential_backoff_test_data {
     struct aws_condition_variable cvar;
 };
 
+static void s_sleep_for_dispatch_queue(void) {
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
+    aws_thread_current_sleep(2000000000);
+#endif
+}
+
 static void s_too_many_retries_test_on_retry_ready(struct aws_retry_token *token, int error_code, void *user_data) {
     (void)error_code;
 
@@ -195,6 +202,8 @@ static int s_test_exponential_backoff_retry_client_errors_do_not_count_fn(struct
 
     aws_io_library_clean_up();
 
+    s_sleep_for_dispatch_queue();
+
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(
@@ -251,7 +260,7 @@ static int s_test_exponential_backoff_retry_no_jitter_time_taken_fn(struct aws_a
     aws_io_library_clean_up();
 
     // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
-    aws_thread_current_sleep(2000000000);
+    s_sleep_for_dispatch_queue();
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(
@@ -314,6 +323,8 @@ static int s_test_exponential_max_backoff_retry_no_jitter_fn(struct aws_allocato
 
     aws_io_library_clean_up();
 
+    s_sleep_for_dispatch_queue();
+
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_exponential_max_backoff_retry_no_jitter, s_test_exponential_max_backoff_retry_no_jitter_fn)
@@ -340,6 +351,8 @@ static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_alloca
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
+
+    s_sleep_for_dispatch_queue();
 
     return AWS_OP_SUCCESS;
 }

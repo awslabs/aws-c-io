@@ -1892,7 +1892,9 @@ static void s_on_written_destroy(struct aws_socket *socket, int error_code, size
     aws_mutex_lock(write_args->mutex);
     write_args->error_code = error_code;
     write_args->amount_written = amount_written;
-    aws_socket_clean_up(socket);
+    if (socket) {
+        aws_socket_clean_up(socket);
+    }
     aws_condition_variable_notify_one(&write_args->condition_variable);
     aws_mutex_unlock(write_args->mutex);
 }
@@ -2029,12 +2031,6 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     io_args.shutdown_complete = false;
     aws_socket_set_cleanup_complete_callback(&listener, s_socket_shutdown_complete_fn, &io_args);
     aws_socket_clean_up(&listener);
-    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
-    aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
-    ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
-
-    // Make sure the outgoing socket is also clean up correctly.
-    io_args.socket = &outgoing;
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));

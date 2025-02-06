@@ -620,13 +620,14 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
 
-        if (nw_socket->on_readable) {
-            if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
-                aws_socket_close(socket);
-            }
-            nw_socket->on_readable(socket, readable_args->error_code, nw_socket->on_readable_user_data);
+        if (socket && readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
+            aws_socket_close(socket);
         }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
+
+        if (nw_socket->on_readable) {
+            nw_socket->on_readable(socket, readable_args->error_code, nw_socket->on_readable_user_data);
+        }
     }
 
     // If the task is cancelled and the data is not handled, release it.
@@ -723,54 +724,6 @@ static void s_schedule_on_connection_result(struct nw_socket *nw_socket, int err
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 }
 
-static void s_process_cancel_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-
-    (void)status;
-    struct nw_socket_cancel_task_args *cancel_args = arg;
-    struct nw_socket *nw_socket = cancel_args->nw_socket;
-
-    // The task is proceed in socket event loop. The event loop had to be available.
-    AWS_ASSERT(nw_socket->event_loop);
-
-    if (status == AWS_TASK_STATUS_RUN_READY) {
-        aws_event_loop_cancel_task(nw_socket->event_loop, cancel_args->task_to_cancel);
-    }
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET,
-        "id=%p: nw_socket_release_internal_ref: s_process_cancel_task  %lu",
-        (void *)nw_socket,
-        aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
-    nw_socket_release_internal_ref(nw_socket);
-
-    aws_mem_release(cancel_args->allocator, task);
-    aws_mem_release(cancel_args->allocator, cancel_args);
-}
-
-// As cancel task has to run on the same thread & we dont have control on dispatch queue thread,
-// we always schedule the cancel task on event loop
-static void s_schedule_cancel_task(struct nw_socket *nw_socket, struct aws_task *task_to_cancel) {
-
-    aws_mutex_lock(&nw_socket->synced_data.lock);
-    if (s_validate_event_loop(nw_socket->event_loop)) {
-        struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
-        struct nw_socket_cancel_task_args *args =
-            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_cancel_task_args));
-        args->nw_socket = nw_socket;
-        args->allocator = nw_socket->allocator;
-        args->task_to_cancel = task_to_cancel;
-        nw_socket_acquire_internal_ref(nw_socket);
-
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET, "id=%p: nw_socket_acquire_internal_ref: s_process_cancel_task", (void *)nw_socket);
-        aws_task_init(task, s_process_cancel_task, args, "cancelTaskTask");
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: Schedule cancel %s task", (void *)task_to_cancel, task->type_tag);
-        aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
-    }
-
-    aws_mutex_unlock(&nw_socket->synced_data.lock);
-}
-
 struct connection_state_change_args {
     struct aws_allocator *allocator;
     struct aws_socket *socket;
@@ -847,7 +800,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
         // Cancel the connection timeout task
         if (nw_socket->timeout_args) {
             nw_socket->timeout_args->cancelled = true;
-            s_schedule_cancel_task(nw_socket, &nw_socket->timeout_args->task);
+            aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
         }
 
         nw_socket->connection_setup = true;
@@ -867,7 +820,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
         // Cancel the connection timeout task
         if (nw_socket->timeout_args) {
             nw_socket->timeout_args->cancelled = true;
-            s_schedule_cancel_task(nw_socket, &nw_socket->timeout_args->task);
+            aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
         }
         int error_code = s_determine_socket_error(connection_args->error);
         nw_socket->last_error = error_code;
@@ -911,7 +864,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
         // Cancel the connection timeout task
         if (nw_socket->timeout_args) {
             nw_socket->timeout_args->cancelled = true;
-            s_schedule_cancel_task(nw_socket, &nw_socket->timeout_args->task);
+            aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
         }
         int error_code = s_determine_socket_error(connection_args->error);
         nw_socket->last_error = error_code;
@@ -1677,7 +1630,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
             if (!nw_socket->is_listener && nw_socket->timeout_args && nw_socket->connection_setup) {
                 // if the timeout args is not triggered, cancel it and clean up
                 nw_socket->timeout_args->cancelled = true;
-                s_schedule_cancel_task(nw_socket, &nw_socket->timeout_args->task);
+                aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
             }
 
             if (nw_socket->is_listener && nw_socket->nw_listener != NULL) {
