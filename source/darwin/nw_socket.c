@@ -522,16 +522,6 @@ static void s_client_set_dispatch_queue(struct aws_io_handle *handle, void *queu
     nw_connection_set_queue(handle->data.handle, queue);
 }
 
-/*
- * WARNING!!! DO NOT USE IT UNLESS YOU KNOW WHAT YOU ARE DOING HERE.
- * The internal_ref_count of nw_socket will be released on "nw_connection/listener_state_cancelled", if
- * you set the state handler to NULL, it's highly likely the nw_socket would not released properly.
- */
-static void s_client_clear_dispatch_queue(struct aws_io_handle *handle) {
-    /*Setting to NULL removes previously set handler from nw_connection_t */
-    nw_connection_set_state_changed_handler(handle->data.handle, NULL);
-}
-
 static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_status status) {
     (void)task;
     (void)status;
@@ -1001,7 +991,6 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
                 new_socket->io_handle.data.handle = task_args->new_connection;
 
                 new_socket->io_handle.set_queue = s_client_set_dispatch_queue;
-                new_socket->io_handle.clear_queue = s_client_clear_dispatch_queue;
 
                 nw_endpoint_t endpoint = nw_connection_copy_endpoint(task_args->new_connection);
                 const char *hostname = nw_endpoint_get_hostname(endpoint);
@@ -1308,7 +1297,6 @@ static int s_socket_connect_fn(
     }
 
     socket->io_handle.set_queue = s_client_set_dispatch_queue;
-    socket->io_handle.clear_queue = s_client_clear_dispatch_queue;
 
     aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
     socket->event_loop = event_loop;
@@ -1447,12 +1435,6 @@ static void s_listener_set_dispatch_queue(struct aws_io_handle *handle, void *qu
     nw_listener_set_queue(handle->data.handle, queue);
 }
 
-static void s_listener_clear_dispatch_queue(struct aws_io_handle *handle) {
-    /* we can't actually clear the queue out, but we can cancel the handlers which is effectively what we want */
-    nw_listener_set_state_changed_handler(handle->data.handle, NULL);
-    nw_listener_set_new_connection_handler(handle->data.handle, NULL);
-}
-
 static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     (void)backlog_size;
 
@@ -1481,7 +1463,6 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     }
 
     socket->io_handle.set_queue = s_listener_set_dispatch_queue;
-    socket->io_handle.clear_queue = s_listener_clear_dispatch_queue;
 
     AWS_LOGF_INFO(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: successfully listening", (void *)socket, socket->io_handle.data.handle);
