@@ -6,10 +6,8 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/private/event_loop_impl.h>
 
-#include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
-#include <aws/common/rw_lock.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/uuid.h>
 
@@ -18,7 +16,6 @@
 #include <unistd.h>
 
 #include "./dispatch_queue_event_loop_private.h" // private header
-#include <Block.h>
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
 
@@ -128,8 +125,12 @@ static int s_unlock_synced_data(struct aws_dispatch_loop *dispatch_loop) {
     return aws_mutex_unlock(&dispatch_loop->synced_data.synced_data_lock);
 }
 
-// Not sure why use 7 as the default queue size. Just follow what we used in task_scheduler.c
-static const size_t DEFAULT_QUEUE_SIZE = 7;
+/*
+ * This is used to determine the dynamic queue size containing scheduled iteration events. Expectation is for there to
+ * be one scheduled for now, and one or two scheduled for various times in the future. It is unlikely for there to be
+ * more but if needed, the queue will double in size when it needs to.
+ */
+static const size_t DEFAULT_QUEUE_SIZE = 4;
 static int s_compare_timestamps(const void *a, const void *b) {
     uint64_t a_time = (*(struct scheduled_iteration_entry **)a)->timestamp;
     uint64_t b_time = (*(struct scheduled_iteration_entry **)b)->timestamp;
@@ -179,7 +180,7 @@ static bool s_should_schedule_iteration(
     struct scheduled_iteration_entry *entry = *entry_ptr;
     AWS_FATAL_ASSERT(entry != NULL);
 
-    // is the next scheduled iteration later than what we require?
+    /* is the next scheduled iteration later than what we require? */
     return entry->timestamp > proposed_iteration_time;
 }
 
@@ -256,17 +257,23 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     dispatch_loop->dispatch_queue = dispatch_queue_create(dispatch_queue_id, DISPATCH_QUEUE_SERIAL);
 
     /*
-     * Suspend will increase the dispatch reference count.
-     * A suspended dispatch queue must have dispatch_release() called on it for Apple to release the dispatch queue.
-     * We suspend the newly created Apple dispatch queue here to conform with other event loop types. A new event loop
-     * should start in a non-running state until run() is called.
+     * Calling `dispatch_suspend()` on a dispatch queue instructs the dispatch queue to not run any further blocks.
+     * Suspending a dispatch_queue will increase the dispatch reference count and Apple will not release the
+     * dispatch_queue. A suspended dispatch queue must be resumed before it can be fully released. We suspend the newly
+     * created Apple dispatch queue here to conform with other event loop types. A new event loop is expected to
+     * be in a stopped state until run is called.
+     *
+     * We call `s_run()` during the destruction of the event loop to insure both the execution of the cleanup/destroy
+     * task as well as to release the Apple refcount.
      */
     dispatch_suspend(dispatch_loop->dispatch_queue);
 
     AWS_LOGF_INFO(
         AWS_LS_IO_EVENT_LOOP, "id=%p: Apple dispatch queue created with id: %s", (void *)loop, dispatch_queue_id);
 
-    aws_mutex_init(&dispatch_loop->synced_data.synced_data_lock);
+    if (aws_mutex_init(&dispatch_loop->synced_data.synced_data_lock)) {
+        goto clean_up;
+    }
 
     /* The dispatch queue is suspended at this point. */
     dispatch_loop->synced_data.suspended = true;
@@ -290,7 +297,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
             (void *)loop,
             dispatch_queue_id);
         goto clean_up;
-    };
+    }
 
     return loop;
 
@@ -316,7 +323,7 @@ static void s_dispatch_queue_destroy_task(void *context) {
     dispatch_loop->synced_data.is_executing = true;
 
     /*
-     * Because this task was scheudled on the dispatch queue using `dispatch_async_and_wait_t()` we are certain that
+     * Because this task was scheudled on the dispatch queue using `dispatch_async_and_wait_f()` we are certain that
      * any scheduled iterations will occur AFTER this point and it is safe to NULL the dispatch_queue from all iteration
      * blocks scheduled to run in the future.
      */
@@ -489,7 +496,6 @@ static void s_run_iteration(void *service_entry) {
 
     // swap the cross-thread tasks into task-local data
     aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
-    s_unlock_synced_data(dispatch_loop);
 
     // run the full iteration here: local cross-thread tasks
     while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
@@ -503,6 +509,8 @@ static void s_run_iteration(void *service_entry) {
             aws_task_scheduler_schedule_future(&dispatch_loop->scheduler, task, task->timestamp);
         }
     }
+
+    s_unlock_synced_data(dispatch_loop);
 
     aws_event_loop_register_tick_start(dispatch_loop->base_loop);
     // run all scheduled tasks
