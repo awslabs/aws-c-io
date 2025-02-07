@@ -176,6 +176,8 @@ static int s_socket_write(
     void *user_data);
 static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 
 static int s_stream_subscribe_to_read(
     struct aws_socket *socket,
@@ -287,6 +289,8 @@ struct aws_socket_vtable s_winsock_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
+    .socket_set_close_callback = s_set_close_callback,
+    .socket_set_cleanup_callback = s_set_cleanup_callback,
 };
 
 /* When socket is connected, any of the CONNECT_*** flags might be set.
@@ -355,7 +359,25 @@ struct iocp_socket {
     struct socket_connect_args *connect_args;
     struct aws_linked_list pending_io_operations;
     bool stop_accept;
+    aws_socket_on_shutdown_complete_fn *on_close_complete;
+    void *close_user_data;
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete;
+    void *cleanup_user_data;
 };
+
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct posix_socket *socket_impl = socket->impl;
+    socket_impl->shutdown_user_data = user_data;
+    socket_impl->on_shutdown_complete = fn;
+    return 0;
+}
+
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct posix_socket *socket_impl = socket->impl;
+    socket_impl->cleanup_user_data = user_data;
+    socket_impl->on_cleanup_complete = fn;
+    return 0;
+}
 
 static int s_create_socket(struct aws_socket *sock, const struct aws_socket_options *options) {
     SOCKET handle = socket(s_convert_domain(options->domain), s_convert_type(options->type), 0);
@@ -480,9 +502,16 @@ static void s_socket_clean_up(struct aws_socket *socket) {
         aws_mem_release(socket->allocator, socket_impl->read_io_data);
     }
 
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
+    void *cleanup_user_data = socket_impl->cleanup_user_data;
+
     aws_mem_release(socket->allocator, socket->impl);
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.handle = INVALID_HANDLE_VALUE;
+
+    if (on_cleanup_complete) {
+        on_cleanup_complete(cleanup_user_data);
+    }
 }
 
 static int s_socket_connect(
@@ -605,7 +634,11 @@ static int s_socket_stop_accept(struct aws_socket *socket) {
 
 static int s_socket_close(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->winsock_vtable->close(socket);
+    int result = socket_impl->winsock_vtable->close(socket);
+    if (socket_impl->on_close_complete) {
+        socket_impl->on_close_complete(socket_impl->close_user_data);
+    }
+    return result;
 }
 
 static int s_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {

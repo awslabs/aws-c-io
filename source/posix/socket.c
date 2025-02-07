@@ -183,14 +183,13 @@ struct posix_socket {
      * In hindsight, aws_socket should have been heap-allocated and refcounted, but alas */
     struct aws_ref_count internal_refcount;
     struct aws_allocator *allocator;
-    struct aws_event_loop *event_loop;
     bool written_task_scheduled;
     bool currently_subscribed;
     bool continue_accept;
     bool *close_happened;
 
-    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
-    void *shutdown_user_data;
+    aws_socket_on_shutdown_complete_fn *on_close_complete;
+    void *close_user_data;
 
     aws_socket_on_shutdown_complete_fn *on_cleanup_complete;
     void *cleanup_user_data;
@@ -252,8 +251,8 @@ struct aws_socket_vtable s_posix_socket_vtable = {
 
 static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
     struct posix_socket *socket_impl = socket->impl;
-    socket_impl->shutdown_user_data = user_data;
-    socket_impl->on_shutdown_complete = fn;
+    socket_impl->close_user_data = user_data;
+    socket_impl->on_close_complete = fn;
     return 0;
 }
 
@@ -266,6 +265,11 @@ static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutd
 
 static void s_socket_destroy_impl(void *user_data) {
     struct posix_socket *socket_impl = user_data;
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
+    void *cleanup_user_data = socket_impl->cleanup_user_data;
+    if (on_cleanup_complete) {
+        on_cleanup_complete(cleanup_user_data);
+    }
     aws_mem_release(socket_impl->allocator, socket_impl);
 }
 
@@ -341,9 +345,6 @@ static void s_socket_clean_up(struct aws_socket *socket) {
     }
     struct posix_socket *socket_impl = socket->impl;
 
-    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
-    void *cleanup_user_data = socket_impl->cleanup_user_data;
-
     if (aws_ref_count_release(&socket_impl->internal_refcount) != 0) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
@@ -354,9 +355,6 @@ static void s_socket_clean_up(struct aws_socket *socket) {
 
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.fd = -1;
-    if (on_cleanup_complete) {
-        on_cleanup_complete(cleanup_user_data);
-    }
 }
 
 /* Update socket->local_endpoint based on the results of getsockname() */
@@ -795,7 +793,6 @@ static int s_socket_connect(
 
     int error_code = connect(socket->io_handle.data.fd, (struct sockaddr *)&address.sock_addr_types, sock_size);
     socket->event_loop = event_loop;
-    socket_impl->event_loop = event_loop;
 
     if (!error_code) {
         AWS_LOGF_INFO(
@@ -837,7 +834,6 @@ static int s_socket_connect(
                     (void *)event_loop);
                 socket_impl->currently_subscribed = false;
                 socket->event_loop = NULL;
-                socket_impl->event_loop = NULL;
                 goto err_clean_up;
             }
 
@@ -864,7 +860,6 @@ static int s_socket_connect(
             int aws_error = s_determine_socket_error(errno_value);
             aws_raise_error(aws_error);
             socket->event_loop = NULL;
-            socket_impl->event_loop = NULL;
             socket_impl->currently_subscribed = false;
             goto err_clean_up;
         }
@@ -1184,7 +1179,6 @@ static int s_socket_start_accept(
     struct posix_socket *socket_impl = socket->impl;
     socket_impl->continue_accept = true;
     socket_impl->currently_subscribed = true;
-    socket_impl->event_loop = accept_loop;
 
     if (aws_event_loop_subscribe_to_io_events(
             socket->event_loop, &socket->io_handle, AWS_IO_EVENT_TYPE_READABLE, s_socket_accept_event, socket)) {
@@ -1197,7 +1191,6 @@ static int s_socket_start_accept(
         socket_impl->continue_accept = false;
         socket_impl->currently_subscribed = false;
         socket->event_loop = NULL;
-        socket_impl->event_loop = NULL;
 
         return AWS_OP_ERR;
     }
@@ -1288,7 +1281,6 @@ static int s_socket_stop_accept(struct aws_socket *socket) {
         ret_val = aws_event_loop_unsubscribe_from_io_events(socket->event_loop, &socket->io_handle);
         socket_impl->currently_subscribed = false;
         socket_impl->continue_accept = false;
-        socket_impl->event_loop = NULL;
         socket->event_loop = NULL;
     }
 
@@ -1567,8 +1559,8 @@ static int s_socket_close(struct aws_socket *socket) {
             aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
             aws_mutex_unlock(&args.mutex);
             AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, fd_for_logging);
-            if (socket_impl->on_shutdown_complete) {
-                socket_impl->on_shutdown_complete(socket_impl->shutdown_user_data);
+            if (socket_impl->on_close_complete) {
+                socket_impl->on_close_complete(socket_impl->close_user_data);
             }
             if (args.ret_code) {
                 return aws_raise_error(args.ret_code);
@@ -1629,8 +1621,8 @@ static int s_socket_close(struct aws_socket *socket) {
         }
     }
 
-    if (socket_impl->on_shutdown_complete) {
-        socket_impl->on_shutdown_complete(socket_impl->shutdown_user_data);
+    if (socket_impl->on_close_complete) {
+        socket_impl->on_close_complete(socket_impl->close_user_data);
     }
     return AWS_OP_SUCCESS;
 }
