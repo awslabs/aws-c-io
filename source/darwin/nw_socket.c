@@ -342,7 +342,7 @@ static int s_socket_write_fn(
     void *user_data);
 static int s_socket_get_error_fn(struct aws_socket *socket);
 static bool s_socket_is_open_fn(struct aws_socket *socket);
-static int s_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 
 static struct aws_socket_vtable s_vtable = {
@@ -361,7 +361,7 @@ static struct aws_socket_vtable s_vtable = {
     .socket_write_fn = s_socket_write_fn,
     .socket_get_error_fn = s_socket_get_error_fn,
     .socket_is_open_fn = s_socket_is_open_fn,
-    .socket_set_shutdown_callback = s_set_shutdown_callback,
+    .socket_set_close_callback = s_set_close_callback,
     .socket_set_cleanup_callback = s_set_cleanup_callback,
 };
 
@@ -1498,35 +1498,36 @@ static int s_socket_start_accept_fn(
                       AWS_LS_IO_SOCKET,
                       "id=%p handle=%p: listener on port waiting ",
                       (void *)nw_socket,
-                      socket->io_handle.data.handle);
+                      (void *)nw_socket->nw_listener);
 
               } else if (state == nw_listener_state_failed) {
                   AWS_LOGF_DEBUG(
                       AWS_LS_IO_SOCKET,
                       "id=%p handle=%p: listener on port failed ",
                       (void *)nw_socket,
-                      socket->io_handle.data.handle);
+                      (void *)nw_socket->nw_listener);
+
                   /* any error, including if closed remotely in error */
                   int error_code = nw_error_get_error_code(error);
                   AWS_LOGF_ERROR(
                       AWS_LS_IO_SOCKET,
                       "id=%p handle=%p: connection error %d",
                       (void *)nw_socket,
-                      socket->io_handle.data.handle,
+                      (void *)nw_socket->nw_listener,
                       error_code);
               } else if (state == nw_listener_state_ready) {
                   AWS_LOGF_DEBUG(
                       AWS_LS_IO_SOCKET,
                       "id=%p handle=%p: listener on port ready ",
                       (void *)nw_socket,
-                      (void *)nw_socket->nw_connection);
+                      (void *)nw_socket->nw_listener);
 
                   aws_mutex_lock(&nw_socket->synced_data.lock);
                   if (s_validate_event_loop(nw_socket->event_loop)) {
-                      struct aws_task *task = aws_mem_calloc(socket->allocator, 1, sizeof(struct aws_task));
+                      struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
 
                       struct nw_socket_scheduled_task_args *args =
-                          aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
+                          aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
 
                       args->nw_socket = nw_socket;
                       args->allocator = nw_socket->allocator;
@@ -1539,7 +1540,7 @@ static int s_socket_start_accept_fn(
 
                       aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
                       // TODO: what if event loop is shuting down & what happened if we schedule the task here.
-                      aws_event_loop_schedule_task_now(socket->event_loop, task);
+                      aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
                   }
                   aws_mutex_unlock(&nw_socket->synced_data.lock);
 
@@ -2014,7 +2015,7 @@ static bool s_socket_is_open_fn(struct aws_socket *socket) {
     return is_open;
 }
 
-static int s_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
     struct nw_socket *nw_socket = socket->impl;
     nw_socket->close_user_data = user_data;
     nw_socket->on_socket_close_complete_fn = fn;

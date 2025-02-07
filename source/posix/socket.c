@@ -227,7 +227,7 @@ static int s_socket_write(
     void *user_data);
 static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
-static int s_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 
 struct aws_socket_vtable s_posix_socket_vtable = {
@@ -246,11 +246,11 @@ struct aws_socket_vtable s_posix_socket_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
-    .socket_set_shutdown_callback = s_set_shutdown_callback,
+    .socket_set_close_callback = s_set_close_callback,
     .socket_set_cleanup_callback = s_set_cleanup_callback,
 };
 
-static int s_set_shutdown_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
     struct posix_socket *socket_impl = socket->impl;
     socket_impl->shutdown_user_data = user_data;
     socket_impl->on_shutdown_complete = fn;
