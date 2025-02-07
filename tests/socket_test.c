@@ -1761,10 +1761,12 @@ static void s_local_listener_incoming_destroy_listener(
         listener_args->error_invoked = true;
     }
 
-    aws_socket_clean_up(socket);
-
     aws_condition_variable_notify_one(listener_args->condition_variable);
     aws_mutex_unlock(listener_args->mutex);
+
+    if (socket) {
+        aws_socket_clean_up(socket);
+    }
 }
 
 static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, void *ctx) {
@@ -1858,8 +1860,8 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
         aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_close_completed_predicate, &io_args);
         ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
-        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         aws_socket_clean_up(io_args.socket);
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
         ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
         aws_mem_release(allocator, listener_args.incoming);
@@ -1892,9 +1894,11 @@ static void s_on_written_destroy(struct aws_socket *socket, int error_code, size
     aws_mutex_lock(write_args->mutex);
     write_args->error_code = error_code;
     write_args->amount_written = amount_written;
+    aws_mutex_unlock(write_args->mutex);
     if (socket) {
         aws_socket_clean_up(socket);
     }
+    aws_mutex_lock(write_args->mutex);
     aws_condition_variable_notify_one(&write_args->condition_variable);
     aws_mutex_unlock(write_args->mutex);
 }
@@ -2020,6 +2024,7 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     io_args.amount_written = 0;
     io_args.socket = server_sock;
     io_args.shutdown_complete = false;
+    aws_socket_set_cleanup_complete_callback(io_args.socket, s_socket_shutdown_complete_fn, &io_args);
     aws_event_loop_schedule_task_now(event_loop, &write_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);
