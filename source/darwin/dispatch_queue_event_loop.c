@@ -258,13 +258,13 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 
     /*
      * Calling `dispatch_suspend()` on a dispatch queue instructs the dispatch queue to not run any further blocks.
-     * Suspending a dispatch_queue will increase the dispatch reference count and Apple will not release the
+     * Suspending a dispatch_queue will increase the dispatch queue's suspension count and Apple will not release the
      * dispatch_queue. A suspended dispatch queue must be resumed before it can be fully released. We suspend the newly
      * created Apple dispatch queue here to conform with other event loop types. A new event loop is expected to
      * be in a stopped state until run is called.
      *
      * We call `s_run()` during the destruction of the event loop to insure both the execution of the cleanup/destroy
-     * task as well as to release the Apple refcount.
+     * task as well as to release the Apple suspension count.
      */
     dispatch_suspend(dispatch_loop->dispatch_queue);
 
@@ -304,8 +304,11 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
 clean_up:
     if (dispatch_loop) {
         if (dispatch_loop->dispatch_queue) {
-            /* Apple API for releasing reference count on a dispatch object. */
-            dispatch_release(dispatch_loop->dispatch_queue);
+            /*
+             * We resume the dispatch queue in the event it has been suspended to decrement the suspension count placed
+             * on the dispatch queue by suspending it.
+             */
+            dispatch_resume(dispatch_loop->dispatch_queue);
         }
         s_dispatch_event_loop_destroy(loop);
     } else {
