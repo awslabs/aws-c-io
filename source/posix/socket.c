@@ -265,11 +265,6 @@ static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutd
 
 static void s_socket_destroy_impl(void *user_data) {
     struct posix_socket *socket_impl = user_data;
-    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
-    void *cleanup_user_data = socket_impl->cleanup_user_data;
-    if (on_cleanup_complete) {
-        on_cleanup_complete(cleanup_user_data);
-    }
     aws_mem_release(socket_impl->allocator, socket_impl);
 }
 
@@ -344,6 +339,8 @@ static void s_socket_clean_up(struct aws_socket *socket) {
         aws_socket_close(socket);
     }
     struct posix_socket *socket_impl = socket->impl;
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
+    void *cleanup_user_data = socket_impl->cleanup_user_data;
 
     if (aws_ref_count_release(&socket_impl->internal_refcount) != 0) {
         AWS_LOGF_DEBUG(
@@ -355,6 +352,10 @@ static void s_socket_clean_up(struct aws_socket *socket) {
 
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.fd = -1;
+
+    if (on_cleanup_complete) {
+        on_cleanup_complete(cleanup_user_data);
+    }
 }
 
 /* Update socket->local_endpoint based on the results of getsockname() */
