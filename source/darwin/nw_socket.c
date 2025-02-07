@@ -1452,6 +1452,133 @@ static void s_process_set_listener_endpoint_task(struct aws_task *task, void *ar
     aws_mem_release(readable_args->allocator, arg);
 }
 
+struct listener_state_changed_args {
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+    struct nw_socket *nw_socket;
+    nw_listener_state_t state;
+    int error;
+};
+
+static void s_process_listener_state_changed_task(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)status;
+
+    struct listener_state_changed_args *listener_state_changed_args = args;
+
+    struct nw_socket *nw_socket = listener_state_changed_args->nw_socket;
+    nw_listener_t nw_listener = nw_socket->nw_listener;
+    nw_listener_state_t state = listener_state_changed_args->state;
+
+    /* we're connected! */
+
+    if (state == nw_listener_state_waiting) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET, "id=%p handle=%p: listener on port waiting ", (void *)nw_socket, (void *)nw_listener);
+
+    } else if (state == nw_listener_state_failed) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET, "id=%p handle=%p: listener on port failed ", (void *)nw_socket, (void *)nw_listener);
+
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: connection error %d",
+            (void *)nw_socket,
+            (void *)nw_listener,
+            listener_state_changed_args->error);
+    } else if (state == nw_listener_state_ready) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET, "id=%p handle=%p: listener on port ready ", (void *)nw_socket, (void *)nw_listener);
+
+        aws_mutex_lock(&nw_socket->synced_data.lock);
+        if (s_validate_event_loop(nw_socket->event_loop)) {
+            struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
+
+            struct nw_socket_scheduled_task_args *args =
+                aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
+
+            args->nw_socket = nw_socket;
+            args->allocator = nw_socket->allocator;
+            // acquire ref count for the task
+            nw_socket_acquire_internal_ref(nw_socket);
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_SOCKET,
+                "id=%p: nw_socket_acquire_internal_ref: s_process_set_listener_endpoint_task",
+                (void *)nw_socket);
+
+            aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
+            // TODO: what if event loop is shuting down & what happened if we schedule the task here.
+            aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
+        }
+        aws_mutex_unlock(&nw_socket->synced_data.lock);
+
+    } else if (state == nw_listener_state_cancelled) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET, "id=%p handle=%p: listener on port cancelled ", (void *)nw_socket, (void *)nw_listener);
+
+        s_set_socket_state(nw_socket, listener_state_changed_args->socket, CLOSED);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p: nw_socket_release_internal_ref: listener port canceled  %lu",
+            (void *)nw_socket,
+            aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
+        nw_socket_release_internal_ref(nw_socket);
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p: nw_socket_release_internal_ref: s_process_listener_state_changed_task  %lu",
+        (void *)nw_socket,
+        aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
+    // Release the internal ref for the task
+    nw_socket_release_internal_ref(nw_socket);
+    aws_mem_release(listener_state_changed_args->allocator, task);
+    aws_mem_release(listener_state_changed_args->allocator, listener_state_changed_args);
+}
+
+static void s_schedule_listener_state_changed_fn(
+    struct aws_socket *socket,
+    struct nw_socket *nw_socket,
+    nw_listener_state_t state,
+    nw_error_t error) {
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: s_schedule_listener_state_changed_fn start...", (void *)nw_socket);
+
+    aws_mutex_lock(&nw_socket->synced_data.lock);
+
+    if (s_validate_event_loop(nw_socket->event_loop)) {
+        struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
+
+        struct listener_state_changed_args *args =
+            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct listener_state_changed_args));
+
+        args->socket = socket;
+        args->nw_socket = nw_socket;
+        args->allocator = nw_socket->allocator;
+        args->error = error ? nw_error_get_error_code(error) : 0;
+        args->state = state;
+
+        nw_socket_acquire_internal_ref(nw_socket);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p: nw_socket_acquire_internal_ref: s_process_listener_state_changed_task",
+            (void *)nw_socket);
+        aws_task_init(task, s_process_listener_state_changed_task, args, "ListenerStateChangedTask");
+
+        aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
+    } else if (state == nw_listener_state_cancelled) {
+        // If event loop is destroyed, no io events will be proceeded. Closed the internal socket.
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p: nw_socket_release_internal_ref: nw_listener_state_cancelled with no event loop  %lu",
+            (void *)nw_socket,
+            aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
+        nw_socket_release_internal_ref(nw_socket);
+    }
+    aws_mutex_unlock(&nw_socket->synced_data.lock);
+}
+
 static int s_socket_start_accept_fn(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
@@ -1491,83 +1618,7 @@ static int s_socket_start_accept_fn(
 
     nw_listener_set_state_changed_handler(
         socket->io_handle.data.handle, ^(nw_listener_state_t state, nw_error_t error) {
-          if (socket) {
-
-              if (state == nw_listener_state_waiting) {
-                  AWS_LOGF_DEBUG(
-                      AWS_LS_IO_SOCKET,
-                      "id=%p handle=%p: listener on port waiting ",
-                      (void *)nw_socket,
-                      (void *)nw_socket->nw_listener);
-
-              } else if (state == nw_listener_state_failed) {
-                  AWS_LOGF_DEBUG(
-                      AWS_LS_IO_SOCKET,
-                      "id=%p handle=%p: listener on port failed ",
-                      (void *)nw_socket,
-                      (void *)nw_socket->nw_listener);
-
-                  /* any error, including if closed remotely in error */
-                  int error_code = nw_error_get_error_code(error);
-                  AWS_LOGF_ERROR(
-                      AWS_LS_IO_SOCKET,
-                      "id=%p handle=%p: connection error %d",
-                      (void *)nw_socket,
-                      (void *)nw_socket->nw_listener,
-                      error_code);
-              } else if (state == nw_listener_state_ready) {
-                  AWS_LOGF_DEBUG(
-                      AWS_LS_IO_SOCKET,
-                      "id=%p handle=%p: listener on port ready ",
-                      (void *)nw_socket,
-                      (void *)nw_socket->nw_listener);
-
-                  aws_mutex_lock(&nw_socket->synced_data.lock);
-                  if (s_validate_event_loop(nw_socket->event_loop)) {
-                      struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
-
-                      struct nw_socket_scheduled_task_args *args =
-                          aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
-
-                      args->nw_socket = nw_socket;
-                      args->allocator = nw_socket->allocator;
-                      // acquire ref count for the task
-                      nw_socket_acquire_internal_ref(nw_socket);
-                      AWS_LOGF_DEBUG(
-                          AWS_LS_IO_SOCKET,
-                          "id=%p: nw_socket_acquire_internal_ref: s_process_set_listener_endpoint_task",
-                          (void *)nw_socket);
-
-                      aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
-                      // TODO: what if event loop is shuting down & what happened if we schedule the task here.
-                      aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
-                  }
-                  aws_mutex_unlock(&nw_socket->synced_data.lock);
-
-              } else if (state == nw_listener_state_cancelled) {
-                  AWS_LOGF_DEBUG(
-                      AWS_LS_IO_SOCKET,
-                      "id=%p handle=%p: listener on port cancelled ",
-                      (void *)nw_socket,
-                      (void *)nw_socket->nw_connection);
-
-                  s_set_socket_state(nw_socket, socket, CLOSED);
-
-                  AWS_LOGF_DEBUG(
-                      AWS_LS_IO_SOCKET,
-                      "id=%p: nw_socket_release_internal_ref: listener port canceled  %lu",
-                      (void *)nw_socket,
-                      aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
-                  nw_socket_release_internal_ref(nw_socket);
-              }
-          } else if (state == nw_listener_state_cancelled) {
-              AWS_LOGF_DEBUG(
-                  AWS_LS_IO_SOCKET,
-                  "id=%p: nw_socket_release_internal_ref: listener_canceled  %lu",
-                  (void *)nw_socket,
-                  aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
-              nw_socket_release_internal_ref(nw_socket);
-          }
+          s_schedule_listener_state_changed_fn(socket, nw_socket, state, error);
         });
 
     nw_listener_set_new_connection_handler(socket->io_handle.data.handle, ^(nw_connection_t connection) {
@@ -1674,7 +1725,8 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, keep-alive "
+        "id=%p handle=%p: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, "
+        "keep-alive "
         "probe "
         "count %d.",
         (void *)socket,
@@ -1759,7 +1811,8 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
     }
     s_unlock_socket_state(nw_socket);
 
-    // Acquire nw_socket as we called nw_connection_receive, and the ref will be released when the handler is called.
+    // Acquire nw_socket as we called nw_connection_receive, and the ref will be released when the handler is
+    // called.
     nw_socket_acquire_internal_ref(nw_socket);
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: nw_socket_acquire_internal_ref: nw_connection_receive", (void *)nw_socket);
 
@@ -1775,8 +1828,8 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
               int error = AWS_ERROR_SUCCESS;
 
               /* For protocols such as TCP, `is_complete` will be marked when the entire stream has be closed in the
-               * reading direction. For protocols such as UDP, this will be marked when the end of a datagram has been
-               * reached. */
+               * reading direction. For protocols such as UDP, this will be marked when the end of a datagram has
+               * been reached. */
               if (!is_complete) {
                   // schedule next read to get future I/O event
                   s_schedule_next_read(nw_socket);

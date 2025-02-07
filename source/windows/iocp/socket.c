@@ -366,14 +366,14 @@ struct iocp_socket {
 };
 
 static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
-    struct posix_socket *socket_impl = socket->impl;
-    socket_impl->shutdown_user_data = user_data;
-    socket_impl->on_shutdown_complete = fn;
+    struct iocp_socket *socket_impl = socket->impl;
+    socket_impl->close_user_data = user_data;
+    socket_impl->on_close_complete = fn;
     return 0;
 }
 
 static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
-    struct posix_socket *socket_impl = socket->impl;
+    struct iocp_socket *socket_impl = socket->impl;
     socket_impl->cleanup_user_data = user_data;
     socket_impl->on_cleanup_complete = fn;
     return 0;
