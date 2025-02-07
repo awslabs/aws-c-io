@@ -245,7 +245,8 @@ static void s_release_event_loop(struct nw_socket *nw_socket) {
         return;
     }
     aws_event_loop_group_release(get_base_event_loop_group(nw_socket->event_loop));
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: s_release_event_loop: socket release event loop group.", (void *)nw_socket);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p: s_release_event_loop: socket release event loop group.", (void *)nw_socket);
     nw_socket->event_loop = NULL;
 }
 
@@ -622,10 +623,6 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
 
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-
-        if (socket && readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
-            aws_socket_close(socket);
-        }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
 
         if (nw_socket->on_readable) {
@@ -1549,7 +1546,7 @@ static void s_schedule_listener_state_changed_fn(
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
 
-    if (s_validate_event_loop(nw_socket->event_loop)) {
+    if (socket && s_validate_event_loop(nw_socket->event_loop)) {
         struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
 
         struct listener_state_changed_args *args =
@@ -1571,7 +1568,7 @@ static void s_schedule_listener_state_changed_fn(
 
         aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
     } else if (state == nw_listener_state_cancelled) {
-        // If event loop is destroyed, no io events will be proceeded. Closed the internal socket.
+        // If socket and event loop is destroyed, no io events will be proceeded. Closed the internal socket.
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p: nw_socket_release_internal_ref: nw_listener_state_cancelled with no event loop  %lu",
