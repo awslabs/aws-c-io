@@ -108,6 +108,8 @@ static int s_test_exponential_backoff_retry_too_many_retries_for_jitter_mode(
 
     aws_io_library_clean_up();
 
+    s_sleep_for_dispatch_queue();
+
     return AWS_OP_SUCCESS;
 }
 

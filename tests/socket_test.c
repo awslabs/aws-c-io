@@ -40,7 +40,6 @@ static void s_sleep_for_dispatch_queue(void) {
 }
 
 static void s_local_listener_shutdown_complete(void *user_data) {
-    (void)socket;
     struct local_listener_args *shutdown_args = (struct local_listener_args *)user_data;
 
     aws_mutex_lock(shutdown_args->mutex);
@@ -114,7 +113,6 @@ static void s_local_outgoing_connection(struct aws_socket *socket, int error_cod
 }
 
 static void s_local_outgoing_connection_shutdown_complete(void *user_data) {
-    (void)socket;
     struct local_outgoing_args *outgoing_args = (struct local_outgoing_args *)user_data;
 
     aws_mutex_lock(outgoing_args->mutex);
@@ -255,7 +253,6 @@ static bool s_outgoing_socket_error_shutdown_predicate(void *args) {
 }
 
 static void s_outgoing_socket_error_shutdown_complete(void *user_data) {
-    (void)socket;
     struct error_test_args *test_args = (struct error_test_args *)user_data;
 
     aws_mutex_lock(&test_args->mutex);
@@ -1398,7 +1395,6 @@ struct nw_socket_bind_args {
 };
 
 static void s_bind_args_shutdown_complete(void *user_data) {
-    (void)socket;
     struct nw_socket_bind_args *bind_args = (struct nw_socket_bind_args *)user_data;
 
     aws_mutex_lock(bind_args->mutex);
