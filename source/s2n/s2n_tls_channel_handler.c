@@ -272,6 +272,8 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
             return true;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
             return true;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
+            return true;
 #endif
 
         default:
@@ -1534,6 +1536,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
             /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set
              */
+            break;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
+            /* The specific PQ policy used here may change over time. */
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             security_policy = "PQ-TLS-1-0-2021-05-26";

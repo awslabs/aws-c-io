@@ -43,6 +43,9 @@ enum aws_tls_cipher_pref {
      */
     AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10 = 7,
 
+    /* Recommended default policy with post-quantum algorithm support. This policy may change over time. */
+    AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT = 8,
+
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
 };
 
