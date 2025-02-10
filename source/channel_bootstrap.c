@@ -1509,6 +1509,8 @@ static void socket_shutdown_server_channel_shutdown_fn(void *user_data) {
             server_bootstrap, error_code, shutdown_args->channel, server_shutdown_user_data);
     }
 
+
+    aws_channel_destroy(shutdown_args->channel);
     s_server_connection_args_release(channel_data->server_connection_args);
     aws_mem_release(allocator, channel_data);
 
@@ -1524,8 +1526,6 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
         s_server_incoming_callback(channel_data, error_code, NULL);
     }
-
-    aws_channel_destroy(channel);
 
     struct socket_shutdown_server_channel_shutdown_args *close_args =
         aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_server_channel_shutdown_args));
