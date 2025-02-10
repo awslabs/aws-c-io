@@ -1862,9 +1862,9 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-    #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_socket_set_cleanup_complete_callback(&listener, s_local_listener_shutdown_complete, &listener_args);
-    #endif
+#endif
     ASSERT_SUCCESS(
         aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming_destroy_listener, &listener_args));
 
