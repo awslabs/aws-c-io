@@ -1085,7 +1085,7 @@ static int s_test_connect_timeout_cancellation(struct aws_allocator *allocator, 
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 100000;
+    options.connect_timeout_ms = 10000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
 

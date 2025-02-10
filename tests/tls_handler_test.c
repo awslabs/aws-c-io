@@ -196,7 +196,6 @@ static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
 
-    // DEBUG WIP waiting for event loop finish cleanup
 #    ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_thread_current_sleep(2000000000);
 #    endif
@@ -205,7 +204,6 @@ static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
 
     aws_condition_variable_clean_up(&tester->condition_variable);
     aws_mutex_clean_up(&tester->mutex);
-
     return AWS_OP_SUCCESS;
 }
 

@@ -689,10 +689,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
         connection_args->failed_count++;
 
-        // /* if this is the last attempted connection and it failed, notify the user */
-        // if (connection_args->failed_count == connection_args->addresses_count) {
-        //     s_connection_args_setup_callback(connection_args, error_code, NULL);
-        // }
     } else {
         s_connection_args_creation_callback(connection_args, connection_args->channel_data.channel);
     }
@@ -1424,8 +1420,6 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
 
         aws_socket_clean_up(channel_data->socket);
         aws_mem_release(allocator, (void *)channel_data->socket);
-        /* no shutdown call back will be fired, we release the ref_count of connection arg here */
-        // s_server_connection_args_release(channel_data->server_connection_args);
         return;
     }
 

@@ -646,12 +646,7 @@ void aws_channel_schedule_task_future(
 }
 
 bool aws_channel_thread_is_callers_thread(struct aws_channel *channel) {
-    // As aws_event_loop is not ref-counted, it is possible that the socket read/write callback get triggered after
-    // the event loop is released, ignore the function call here.
-    if (channel && channel->loop) {
-        return aws_event_loop_thread_is_callers_thread(channel->loop);
-    }
-    return true;
+    return aws_event_loop_thread_is_callers_thread(channel->loop);
 }
 
 static void s_update_channel_slot_message_overheads(struct aws_channel *channel) {
