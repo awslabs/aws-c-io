@@ -245,10 +245,20 @@ AWS_IO_API int aws_socket_start_accept(
  */
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
+
+/**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_close() finished. The callback 
+ * will be called from the socket event loop. 
+ */
 AWS_IO_API int aws_socket_set_close_complete_callback(
     struct aws_socket *socket,
     aws_socket_on_shutdown_complete_fn fn,
     void *user_data);
+
+/**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_cleanup() finished. And 
+ * it is only safe to release the socket afterwards. The callback will be called from the socket event loop. 
+ */
 AWS_IO_API int aws_socket_set_cleanup_complete_callback(
     struct aws_socket *socket,
     aws_socket_on_shutdown_complete_fn fn,

@@ -712,12 +712,12 @@ static void s_schedule_on_connection_result(struct nw_socket *nw_socket, int err
         args->nw_socket = nw_socket;
         args->allocator = socket->allocator;
         args->error_code = error_code;
-        nw_socket_acquire_internal_ref(nw_socket);
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p: nw_socket_acquire_internal_ref: s_process_connection_result_task",
             (void *)nw_socket);
         aws_task_init(task, s_process_connection_result_task, args, "connectionSuccessTask");
+        nw_socket_acquire_internal_ref(nw_socket);
         aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
     }
 
@@ -742,8 +742,6 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
     nw_connection_t nw_connection = connection_args->nw_connection;
     nw_connection_state_t state = connection_args->state;
 
-    // ^(nw_connection_state_t state, nw_error_t error)
-    /* we're connected! */
     if (state == nw_connection_state_cancelled) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
@@ -762,7 +760,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
             aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
         nw_socket_release_internal_ref(nw_socket);
 
-    } else if (state == nw_connection_state_ready) {
+    } else if (state == nw_connection_state_ready) { /* we're connected! */
         AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: connection success",
@@ -808,8 +806,21 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
         s_schedule_on_connection_result(nw_socket, AWS_OP_SUCCESS);
         s_schedule_next_read(nw_socket);
         aws_ref_count_release(&nw_socket->ref_count);
-
-    } else if (connection_args->error) {
+    } else if (state == nw_connection_state_waiting) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: socket connection is waiting for a usable network before re-attempting. ErrorCode: %d.",
+            (void *)nw_socket,
+            (void *)nw_socket->nw_connection,
+            connection_args->error);
+    } else if (state == nw_connection_state_preparing) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: socket connection is in the process of establishing.  ErrorCode: %d",
+            (void *)nw_socket,
+            (void *)nw_socket->nw_connection,
+            connection_args->error);
+    } else if (state == nw_connection_state_failed) {
         /* any error, including if closed remotely in error */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
@@ -817,43 +828,9 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
             (void *)nw_socket,
             (void *)nw_socket->nw_connection,
             connection_args->error);
-        // Cancel the connection timeout task
-        if (nw_socket->timeout_args) {
-            nw_socket->timeout_args->cancelled = true;
-            aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
-        }
-        int error_code = s_determine_socket_error(connection_args->error);
-        nw_socket->last_error = error_code;
-        aws_raise_error(error_code);
-        aws_mutex_lock(&nw_socket->synced_data.lock);
-        struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        s_set_socket_state(nw_socket, socket, ERROR);
+    }
 
-        if (!nw_socket->connection_setup) {
-            aws_mutex_unlock(&nw_socket->synced_data.lock);
-            s_schedule_on_connection_result(nw_socket, error_code);
-
-            nw_socket->connection_setup = true;
-            aws_mutex_lock(&nw_socket->synced_data.lock);
-        } else if (socket && socket->readable_fn) {
-            aws_mutex_unlock(&nw_socket->synced_data.lock);
-            s_schedule_on_readable(nw_socket, nw_socket->last_error, NULL);
-            aws_mutex_lock(&nw_socket->synced_data.lock);
-        }
-        aws_mutex_unlock(&nw_socket->synced_data.lock);
-    } else if (state == nw_connection_state_waiting) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket connection is waiting for a usable network before re-attempting.",
-            (void *)nw_socket,
-            (void *)nw_socket->nw_connection);
-    } else if (state == nw_connection_state_preparing) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket connection is in the process of establishing.",
-            (void *)nw_socket,
-            (void *)nw_socket->nw_connection);
-    } else if (state == nw_connection_state_failed) {
+    if (connection_args->error) {
         /* any error, including if closed remotely in error */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
