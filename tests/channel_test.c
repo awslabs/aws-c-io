@@ -669,6 +669,13 @@ static bool s_shutdown_complete_pred(void *user_data) {
     return test_args->shutdown;
 }
 
+static void s_sleep_for_dispatch_queue(void) {
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
+    aws_thread_current_sleep(2000000000);
+#endif
+}
+
 static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -841,8 +848,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
 
     aws_io_library_clean_up();
 
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(1000000000);
+    s_sleep_for_dispatch_queue();
 
     return 0;
 }

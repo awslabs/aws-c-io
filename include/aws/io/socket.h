@@ -50,6 +50,8 @@ enum aws_socket_impl_type {
 
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
 
+typedef void(aws_socket_on_shutdown_complete_fn)(void *user_data);
+
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
@@ -64,6 +66,9 @@ struct aws_socket_options {
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
+
+    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
+    void *shutdown_user_data;
 
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API
@@ -116,14 +121,15 @@ typedef void(aws_socket_on_accept_result_fn)(
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
  *
- * `socket` may be NULL in the callback if the socket is released and cleaned up before a callback is triggered.
- * by the system I/O handler,
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before the callback is triggered.
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
 /**
  * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
  * readable, error_code will be AWS_ERROR_SUCCESS.
+ *
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before the callback is triggered.
  */
 typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
@@ -240,11 +246,32 @@ AWS_IO_API int aws_socket_start_accept(
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
 /**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_close() finished. The callback
+ * will be called from the socket event loop.
+ */
+AWS_IO_API int aws_socket_set_close_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
+
+/**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_cleanup() finished. And
+ * it is only safe to release the socket afterwards. The callback will be called from the socket event loop.
+ */
+AWS_IO_API int aws_socket_set_cleanup_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
+
+/**
  * Calls `close()` on the socket and unregisters all io operations from the event loop. This function must be called
  * from the event-loop's thread unless this is a listening socket. If it's a listening socket it can be called from any
  * non-event-loop thread or the event-loop the socket is currently assigned to. If called from outside the event-loop,
  * this function will block waiting on the socket to close. If this is called from an event-loop thread other than
  * the one it's assigned to, it presents the possibility of a deadlock, so don't do it.
+ *
+ * If you are using Apple Network Framework, you should always call this function from an event-loop thread regardless
+ * it is a server or client socket.
  */
 AWS_IO_API int aws_socket_close(struct aws_socket *socket);
 

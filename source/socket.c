@@ -53,6 +53,22 @@ int aws_socket_close(struct aws_socket *socket) {
     return socket->vtable->socket_close_fn(socket);
 }
 
+int aws_socket_set_close_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_close_callback);
+    return socket->vtable->socket_set_close_callback(socket, fn, user_data);
+}
+
+int aws_socket_set_cleanup_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_cleanup_callback);
+    return socket->vtable->socket_set_cleanup_callback(socket, fn, user_data);
+}
+
 int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_shutdown_dir_fn);
     return socket->vtable->socket_shutdown_dir_fn(socket, dir);

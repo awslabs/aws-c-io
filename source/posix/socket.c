@@ -187,6 +187,12 @@ struct posix_socket {
     bool currently_subscribed;
     bool continue_accept;
     bool *close_happened;
+
+    aws_socket_on_shutdown_complete_fn *on_close_complete;
+    void *close_user_data;
+
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete;
+    void *cleanup_user_data;
 };
 
 static void s_socket_clean_up(struct aws_socket *socket);
@@ -220,6 +226,8 @@ static int s_socket_write(
     void *user_data);
 static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 
 struct aws_socket_vtable s_posix_socket_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
@@ -237,7 +245,23 @@ struct aws_socket_vtable s_posix_socket_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
+    .socket_set_close_callback = s_set_close_callback,
+    .socket_set_cleanup_callback = s_set_cleanup_callback,
 };
+
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct posix_socket *socket_impl = socket->impl;
+    socket_impl->close_user_data = user_data;
+    socket_impl->on_close_complete = fn;
+    return 0;
+}
+
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct posix_socket *socket_impl = socket->impl;
+    socket_impl->cleanup_user_data = user_data;
+    socket_impl->on_cleanup_complete = fn;
+    return 0;
+}
 
 static void s_socket_destroy_impl(void *user_data) {
     struct posix_socket *socket_impl = user_data;
@@ -315,6 +339,8 @@ static void s_socket_clean_up(struct aws_socket *socket) {
         aws_socket_close(socket);
     }
     struct posix_socket *socket_impl = socket->impl;
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
+    void *cleanup_user_data = socket_impl->cleanup_user_data;
 
     if (aws_ref_count_release(&socket_impl->internal_refcount) != 0) {
         AWS_LOGF_DEBUG(
@@ -326,6 +352,10 @@ static void s_socket_clean_up(struct aws_socket *socket) {
 
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.fd = -1;
+
+    if (on_cleanup_complete) {
+        on_cleanup_complete(cleanup_user_data);
+    }
 }
 
 /* Update socket->local_endpoint based on the results of getsockname() */
@@ -1530,6 +1560,9 @@ static int s_socket_close(struct aws_socket *socket) {
             aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_close_predicate, &args);
             aws_mutex_unlock(&args.mutex);
             AWS_LOGF_INFO(AWS_LS_IO_SOCKET, "id=%p fd=%d: close task completed.", (void *)socket, fd_for_logging);
+            if (socket_impl->on_close_complete) {
+                socket_impl->on_close_complete(socket_impl->close_user_data);
+            }
             if (args.ret_code) {
                 return aws_raise_error(args.ret_code);
             }
@@ -1589,6 +1622,9 @@ static int s_socket_close(struct aws_socket *socket) {
         }
     }
 
+    if (socket_impl->on_close_complete) {
+        socket_impl->on_close_complete(socket_impl->close_user_data);
+    }
     return AWS_OP_SUCCESS;
 }
 

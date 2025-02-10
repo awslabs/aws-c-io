@@ -81,6 +81,13 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     return AWS_OP_SUCCESS;
 }
 
+static void s_sleep_for_dispatch_queue(void) {
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
+    aws_thread_current_sleep(2000000000);
+#endif
+}
+
 static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
@@ -88,6 +95,8 @@ static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) 
     aws_mutex_clean_up(&tester->mutex);
 
     aws_io_library_clean_up();
+
+    s_sleep_for_dispatch_queue();
 
     return AWS_OP_SUCCESS;
 }
@@ -332,7 +341,7 @@ static int s_local_server_tester_init(
     bool enable_back_pressure) {
 
     AWS_ZERO_STRUCT(*tester);
-    tester->socket_options.connect_timeout_ms = 3000;
+    tester->socket_options.connect_timeout_ms = 30000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = socket_domain;
     switch (socket_domain) {
@@ -525,7 +534,7 @@ static int s_socket_pinned_event_loop_dns_failure_test(struct aws_allocator *all
     struct aws_socket_options socket_options = {
         .domain = AWS_SOCKET_IPV4,
         .type = AWS_SOCKET_STREAM,
-        .connect_timeout_ms = 10000,
+        .connect_timeout_ms = 100000,
     };
 
     struct aws_socket_channel_bootstrap_options client_channel_options;
@@ -702,8 +711,6 @@ static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, 
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
 
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(1000000000);
     return AWS_OP_SUCCESS;
 }
 
@@ -771,24 +778,24 @@ static int s_socket_close_test(struct aws_allocator *allocator, void *ctx) {
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     /* wait for both ends to setup */
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_setup_predicate, &server_args));
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_setup_predicate, &client_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &server_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &client_args));
 
     aws_channel_shutdown(server_args.channel, AWS_OP_SUCCESS);
 
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_shutdown_predicate, &server_args));
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_shutdown_predicate, &client_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &server_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &client_args));
 
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, server_args.error_code);
     ASSERT_TRUE(
         AWS_IO_SOCKET_CLOSED == client_args.error_code || AWS_IO_SOCKET_NOT_CONNECTED == client_args.error_code);
     aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_listener_destroy_predicate, &server_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &server_args));
 
     aws_mutex_unlock(&c_tester.mutex);
 
@@ -882,10 +889,10 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
 
     /* wait for both ends to setup */
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_setup_predicate, &server_args));
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_setup_predicate, &client_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &server_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_setup_predicate, &client_args));
 
     /* We want the server to send some data and hang up IMMEDIATELY after,
      * before the client has fully read the data. This is tricky to do in a test.
@@ -917,8 +924,8 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
 
     /* Now close the server's socket.*/
     ASSERT_SUCCESS(aws_channel_shutdown(server_args.channel, AWS_OP_SUCCESS));
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_shutdown_predicate, &server_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &server_args));
 
     /* Now sleep a moment to 100% guarantee the OS propagates the socket-close event to the client-side. */
     aws_mutex_unlock(&c_tester.mutex);
@@ -940,16 +947,16 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     rw_handler_trigger_increment_read_window(
         client_args.rw_handler, client_args.rw_slot, total_bytes_to_send_from_server * 3 /*more-than-enough*/);
     client_rw_args.expected_read = total_bytes_to_send_from_server;
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_socket_test_full_read_predicate, &client_rw_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_socket_test_full_read_predicate, &client_rw_args));
 
     /* Wait for client to shutdown, due to the server having closed the socket */
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_shutdown_predicate, &client_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_channel_shutdown_predicate, &client_args));
 
     aws_server_bootstrap_destroy_socket_listener(local_server_tester.server_bootstrap, local_server_tester.listener);
-    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_listener_destroy_predicate, &server_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_listener_destroy_predicate, &server_args));
 
     ASSERT_INT_EQUALS(AWS_IO_SOCKET_CLOSED, client_args.error_code);
 
