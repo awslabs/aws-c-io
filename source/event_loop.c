@@ -495,10 +495,34 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
         return;
     }
 
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->start_destroy);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->complete_destroy);
     AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
-    event_loop->vtable->destroy(event_loop);
+    event_loop->vtable->start_destroy(event_loop);
+    event_loop->vtable->complete_destroy(event_loop);
+}
+
+void aws_event_loop_start_destroy(struct aws_event_loop *event_loop) {
+    if (!event_loop) {
+        return;
+    }
+
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->start_destroy);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+
+    event_loop->vtable->start_destroy(event_loop);
+}
+
+void aws_event_loop_complete_destroy(struct aws_event_loop *event_loop) {
+    if (!event_loop) {
+        return;
+    }
+
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->complete_destroy);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+
+    event_loop->vtable->complete_destroy(event_loop);
 }
 
 int aws_event_loop_fetch_local_object(

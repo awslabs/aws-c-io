@@ -11,12 +11,21 @@
 #include <aws/io/tls_channel_handler.h>
 #include <dispatch/dispatch.h>
 
+enum aws_dispatch_loop_execution_state {
+    AWS_DLES_SUSPENDED,
+    AWS_DLES_RUNNING,
+    AWS_DLES_SHUTTING_DOWN,
+    AWS_DLES_TERMINATED
+};
+
 struct aws_dispatch_loop {
     struct aws_allocator *allocator;
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
     struct aws_event_loop *base_loop;
     struct aws_event_loop_group *base_elg;
+
+    //struct aws_ref_count ref_count;
 
     /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
@@ -43,6 +52,7 @@ struct aws_dispatch_loop {
          * Calling dispatch_sync() on a suspended dispatch queue will deadlock.
          */
         bool suspended;
+        //enum aws_dispatch_loop_execution_state execution_state;
 
         struct aws_linked_list cross_thread_tasks;
 
@@ -54,6 +64,7 @@ struct aws_dispatch_loop {
          * redundant.
          */
         struct aws_priority_queue scheduled_iterations;
+        //struct aws_linked_list scheduled_iterations;
     } synced_data;
 };
 

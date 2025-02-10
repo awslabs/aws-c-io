@@ -25,7 +25,8 @@
 #include <limits.h>
 #include <unistd.h>
 
-static void s_destroy(struct aws_event_loop *event_loop);
+static void s_start_destroy(struct aws_event_loop *event_loop);
+static void s_complete_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
@@ -135,7 +136,8 @@ enum {
 };
 
 struct aws_event_loop_vtable s_kqueue_vtable = {
-    .destroy = s_destroy,
+    .start_destroy = s_start_destroy,
+    .complete_destroy = s_complete_destroy,
     .run = s_run,
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
@@ -313,7 +315,11 @@ clean_up:
 }
 #endif // AWS_ENABLE_KQUEUE
 
-static void s_destroy(struct aws_event_loop *event_loop) {
+static void s_start_destroy(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+}
+
+static void s_complete_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event_loop", (void *)event_loop);
     struct kqueue_loop *impl = event_loop->impl_data;
 

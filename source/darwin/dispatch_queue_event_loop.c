@@ -19,7 +19,8 @@
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
 
-static void s_destroy(struct aws_event_loop *event_loop);
+static void s_start_destroy(struct aws_event_loop *event_loop);
+static void s_complete_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
@@ -60,7 +61,8 @@ static void *s_get_base_event_loop_group(struct aws_event_loop *event_loop);
 static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 
 static struct aws_event_loop_vtable s_vtable = {
-    .destroy = s_destroy,
+    .start_destroy = s_start_destroy,
+    .complete_destroy = s_complete_destroy,
     .run = s_run,
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
@@ -380,7 +382,11 @@ populate_local_cross_thread_tasks:
     s_dispatch_event_loop_destroy(dispatch_loop->base_loop);
 }
 
-static void s_destroy(struct aws_event_loop *event_loop) {
+static void s_start_destroy(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+}
+
+static void s_complete_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying Dispatch Queue Event Loop", (void *)event_loop);
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
 
