@@ -6,6 +6,7 @@
  */
 
 #include <Security/Security.h>
+#include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
 #include <aws/common/thread.h>
 #include <aws/io/tls_channel_handler.h>
@@ -36,6 +37,13 @@ struct aws_dispatch_loop {
         struct aws_mutex synced_data_lock;
 
         /*
+         * Allows blocking waits for changes in synced data state.  Currently used by the external destruction process
+         * to wait for the loop to enter the TERMINATED state.  It is acceptable to do a blocking wait because
+         * event loop group destruction is done in a dedicated thread spawned only for that purpose.
+         */
+        struct aws_condition_variable signal;
+
+        /*
          * `is_executing` flag and `current_thread_id` are used together to identify the thread id of the dispatch queue
          * running the current block. See dispatch queue's `s_is_on_callers_thread()` implementation for details.
          */
@@ -51,7 +59,6 @@ struct aws_dispatch_loop {
          *
          * Calling dispatch_sync() on a suspended dispatch queue will deadlock.
          */
-        bool suspended;
         enum aws_dispatch_loop_execution_state execution_state;
 
         struct aws_linked_list cross_thread_tasks;
@@ -63,6 +70,7 @@ struct aws_dispatch_loop {
          * When we schedule a new run iteration, scheduled_iterations is checked to see if the scheduling attempt is
          * redundant.
          */
+        // TODO: this can be a linked list
         struct aws_priority_queue scheduled_iterations;
     } synced_data;
 };
