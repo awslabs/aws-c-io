@@ -25,7 +25,7 @@ struct aws_dispatch_loop {
     struct aws_event_loop *base_loop;
     struct aws_event_loop_group *base_elg;
 
-    //struct aws_ref_count ref_count;
+    struct aws_ref_count ref_count;
 
     /* Synced data handle cross thread tasks and events, and event loop operations*/
     struct {
@@ -52,7 +52,7 @@ struct aws_dispatch_loop {
          * Calling dispatch_sync() on a suspended dispatch queue will deadlock.
          */
         bool suspended;
-        //enum aws_dispatch_loop_execution_state execution_state;
+        enum aws_dispatch_loop_execution_state execution_state;
 
         struct aws_linked_list cross_thread_tasks;
 
@@ -64,7 +64,6 @@ struct aws_dispatch_loop {
          * redundant.
          */
         struct aws_priority_queue scheduled_iterations;
-        //struct aws_linked_list scheduled_iterations;
     } synced_data;
 };
 

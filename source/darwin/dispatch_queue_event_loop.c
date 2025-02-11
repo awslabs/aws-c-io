@@ -127,6 +127,20 @@ static int s_unlock_synced_data(struct aws_dispatch_loop *dispatch_loop) {
     return aws_mutex_unlock(&dispatch_loop->synced_data.synced_data_lock);
 }
 
+static struct aws_dispatch_loop *s_dispatch_loop_acquire(struct aws_dispatch_loop *dispatch_loop) {
+    if (dispatch_loop) {
+        aws_ref_count_acquire(&dispatch_loop->ref_count);
+    }
+
+    return dispatch_loop;
+}
+
+static void s_dispatch_loop_release(struct aws_dispatch_loop *dispatch_loop) {
+    if (dispatch_loop) {
+        aws_ref_count_release(&dispatch_loop->ref_count);
+    }
+}
+
 /*
  * This is used to determine the dynamic queue size containing scheduled iteration events. Expectation is for there to
  * be one scheduled for now, and one or two scheduled for various times in the future. It is unlikely for there to be
@@ -151,7 +165,7 @@ static struct scheduled_iteration_entry *s_scheduled_iteration_entry_new(
 
     entry->allocator = dispatch_loop->allocator;
     entry->timestamp = timestamp;
-    entry->dispatch_loop = dispatch_loop;
+    entry->dispatch_loop = s_dispatch_loop_acquire(dispatch_loop);
     aws_priority_queue_node_init(&entry->priority_queue_node);
 
     return entry;
@@ -161,6 +175,11 @@ static struct scheduled_iteration_entry *s_scheduled_iteration_entry_new(
  * Cleans up the memory allocated for a `scheduled_iteration_entry`.
  */
 static void s_scheduled_iteration_entry_destroy(struct scheduled_iteration_entry *entry) {
+    if (!entry) {
+        return;
+    }
+
+    s_dispatch_loop_release(entry->dispatch_loop);
     aws_mem_release(entry->allocator, entry);
 }
 
@@ -201,6 +220,8 @@ static void s_dispatch_event_loop_destroy(struct aws_event_loop *event_loop) {
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
+
+    aws_thread_decrement_unjoined_count();
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroyed Dispatch Queue Event Loop.", (void *)event_loop);
 }
@@ -248,6 +269,8 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     loop->impl_data = dispatch_loop;
     dispatch_loop->base_loop = loop;
     dispatch_loop->base_elg = options->parent_elg;
+
+    aws_thread_increment_unjoined_count();
 
     char dispatch_queue_id[AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH] = {0};
     s_get_unique_dispatch_queue_id(dispatch_queue_id);
