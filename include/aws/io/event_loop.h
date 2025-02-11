@@ -29,7 +29,8 @@ typedef void(aws_event_loop_on_event_fn)(
  * @internal
  */
 struct aws_event_loop_vtable {
-    void (*destroy)(struct aws_event_loop *event_loop);
+    void (*start_destroy)(struct aws_event_loop *event_loop);
+    void (*complete_destroy)(struct aws_event_loop *event_loop);
     int (*run)(struct aws_event_loop *event_loop);
     int (*stop)(struct aws_event_loop *event_loop);
     int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
@@ -254,6 +255,19 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
  */
 AWS_IO_API
 void aws_event_loop_destroy(struct aws_event_loop *event_loop);
+
+/**
+ * @internal
+ */
+AWS_IO_API
+void aws_event_loop_start_destroy(struct aws_event_loop *event_loop);
+
+/**
+ * @internal
+ *
+ */
+AWS_IO_API
+void aws_event_loop_complete_destroy(struct aws_event_loop *event_loop);
 
 AWS_EXTERN_C_END
 

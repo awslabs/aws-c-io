@@ -44,7 +44,8 @@
 #    define EPOLLRDHUP 0x2000
 #endif
 
-static void s_destroy(struct aws_event_loop *event_loop);
+static void s_start_destroy(struct aws_event_loop *event_loop);
+static void s_complete_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
@@ -81,7 +82,8 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 static void aws_event_loop_thread(void *args);
 
 static struct aws_event_loop_vtable s_vtable = {
-    .destroy = s_destroy,
+    .start_destroy = s_start_destroy,
+    .complete_destroy = s_complete_destroy,
     .run = s_run,
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
@@ -248,7 +250,11 @@ clean_up_loop:
     return NULL;
 }
 
-static void s_destroy(struct aws_event_loop *event_loop) {
+static void s_start_destroy(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+}
+
+static void s_complete_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying event_loop", (void *)event_loop);
 
     struct epoll_loop *epoll_loop = event_loop->impl_data;
