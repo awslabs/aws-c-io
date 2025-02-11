@@ -500,6 +500,8 @@ static void s_run_iteration(void *service_entry) {
     // swap the cross-thread tasks into task-local data
     aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
 
+    s_unlock_synced_data(dispatch_loop);
+
     // run the full iteration here: local cross-thread tasks
     while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
@@ -512,8 +514,6 @@ static void s_run_iteration(void *service_entry) {
             aws_task_scheduler_schedule_future(&dispatch_loop->scheduler, task, task->timestamp);
         }
     }
-
-    s_unlock_synced_data(dispatch_loop);
 
     aws_event_loop_register_tick_start(dispatch_loop->base_loop);
     // run all scheduled tasks
