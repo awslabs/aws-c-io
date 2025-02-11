@@ -96,6 +96,15 @@ struct aws_event_loop;
 typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
 /**
+ * Called by a listening socket when a listener has succeeded or an error has occurred.
+ * If the connection was successful error_code will be AWS_ERROR_SUCCESS and the socket has already been assigned
+ * to the event loop specified in aws_socket_connect().
+ *
+ * If an error occurred error_code will be non-zero.
+ */
+typedef void(aws_socket_on_listen_result_fn)(struct aws_socket *socket, int error_code, void *user_data);
+
+/**
  * Called by a listening socket when either an incoming connection has been received or an error occurred.
  *
  * In the normal use-case, this function will be called multiple times over the lifetime of a single listening socket.
@@ -235,6 +244,24 @@ AWS_IO_API int aws_socket_start_accept(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data);
+
+/**
+ * Apple Network Framework only. The socket will begin accepting new connections. This is an asynchronous operation. The
+ *  `on_listen_result` will be invoked when the listen is setup. Once the `on_listen_result` is invoked with success
+ * state, the socket start to listen.
+ *
+ * New connections or errors will arrive via the `on_accept_result` callback.
+ *
+ * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
+ *
+ */
+AWS_IO_API int aws_socket_start_accept_async(
+    struct aws_socket *socket,
+    struct aws_event_loop *accept_loop,
+    aws_socket_on_accept_result_fn *on_accept_result,
+    void *on_accept_user_data,
+    aws_socket_on_listen_result_fn *on_listen_result,
+    void *on_listen_user_data);
 
 /**
  * TCP, LOCAL and VSOCK only. The listening socket will stop accepting new connections.

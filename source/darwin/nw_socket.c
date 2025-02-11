@@ -154,7 +154,9 @@ struct nw_socket {
     aws_socket_on_readable_fn *on_readable;
     void *on_readable_user_data;
     aws_socket_on_connection_result_fn *on_connection_result_fn;
-    void *connect_accept_user_data;
+    void *connect_result_user_data;
+    aws_socket_on_listen_result_fn *on_listen_result_fn;
+    void *listen_result_user_data;
     aws_socket_on_shutdown_complete_fn *on_socket_close_complete_fn;
     void *close_user_data;
     aws_socket_on_shutdown_complete_fn *on_socket_cleanup_complete_fn;
@@ -329,6 +331,13 @@ static int s_socket_start_accept_fn(
     struct aws_event_loop *accept_loop,
     aws_socket_on_accept_result_fn *on_accept_result,
     void *user_data);
+static int s_socket_start_accept_async_fn(
+    struct aws_socket *socket,
+    struct aws_event_loop *accept_loop,
+    aws_socket_on_accept_result_fn *on_accept_result,
+    void *on_accept_user_data,
+    aws_socket_on_listen_result_fn *on_listen_result,
+    void *on_listen_user_data);
 static int s_socket_stop_accept_fn(struct aws_socket *socket);
 static int s_socket_close_fn(struct aws_socket *socket);
 static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_direction dir);
@@ -355,6 +364,7 @@ static struct aws_socket_vtable s_vtable = {
     .socket_bind_fn = s_socket_bind_fn,
     .socket_listen_fn = s_socket_listen_fn,
     .socket_start_accept_fn = s_socket_start_accept_fn,
+    .socket_start_accept_async_fn = s_socket_start_accept_async_fn,
     .socket_stop_accept_fn = s_socket_stop_accept_fn,
     .socket_close_fn = s_socket_close_fn,
     .socket_shutdown_dir_fn = s_socket_shutdown_dir_fn,
@@ -585,7 +595,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
         aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
         nw_socket->timeout_args = NULL;
         aws_socket_close(socket);
-        nw_socket->on_connection_result_fn(socket, error_code, nw_socket->connect_accept_user_data);
+        nw_socket->on_connection_result_fn(socket, error_code, nw_socket->connect_result_user_data);
     } else { // else we simply clean up the timeout args
         aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
         nw_socket->timeout_args = NULL;
@@ -687,7 +697,7 @@ static void s_process_connection_result_task(struct aws_task *task, void *arg, e
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
         if (socket && nw_socket->on_connection_result_fn)
-            nw_socket->on_connection_result_fn(socket, task_args->error_code, nw_socket->connect_accept_user_data);
+            nw_socket->on_connection_result_fn(socket, task_args->error_code, nw_socket->connect_result_user_data);
         aws_mutex_unlock(&nw_socket->synced_data.lock);
     }
 
@@ -1242,7 +1252,7 @@ static int s_socket_connect_fn(
     s_set_event_loop(socket, event_loop);
 
     nw_socket->on_connection_result_fn = on_connection_result;
-    nw_socket->connect_accept_user_data = user_data;
+    nw_socket->connect_result_user_data = user_data;
 
     AWS_ASSERT(socket->options.connect_timeout_ms);
     nw_socket->timeout_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_timeout_args));
@@ -1408,30 +1418,6 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     return AWS_OP_SUCCESS;
 }
 
-static void s_process_set_listener_endpoint_task(struct aws_task *task, void *arg, enum aws_task_status status) {
-    struct nw_socket_scheduled_task_args *readable_args = arg;
-    struct nw_socket *nw_socket = readable_args->nw_socket;
-
-    aws_mutex_lock(&nw_socket->synced_data.lock);
-    struct aws_socket *aws_socket = nw_socket->synced_data.base_socket;
-    if (aws_socket && status == AWS_TASK_STATUS_RUN_READY) {
-        if (nw_socket->is_listener) {
-            aws_socket->local_endpoint.port = nw_listener_get_port(nw_socket->nw_listener);
-        }
-    }
-    aws_mutex_unlock(&nw_socket->synced_data.lock);
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET,
-        "id=%p: nw_socket_release_internal_ref: s_process_set_listener_endpoint_task  %lu",
-        (void *)nw_socket,
-        aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
-    nw_socket_release_internal_ref(nw_socket);
-
-    aws_mem_release(readable_args->allocator, task);
-    aws_mem_release(readable_args->allocator, arg);
-}
-
 struct listener_state_changed_args {
     struct aws_allocator *allocator;
     struct aws_socket *socket;
@@ -1465,29 +1451,30 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
             (void *)nw_socket,
             (void *)nw_listener,
             listener_state_changed_args->error);
+
+        aws_mutex_lock(&nw_socket->synced_data.lock);
+        struct aws_socket *aws_socket = nw_socket->synced_data.base_socket;
+        if (nw_socket->on_listen_result_fn) {
+            nw_socket->on_listen_result_fn(
+                aws_socket,
+                s_determine_socket_error(listener_state_changed_args->error),
+                nw_socket->listen_result_user_data);
+        }
+        aws_mutex_unlock(&nw_socket->synced_data.lock);
+
     } else if (state == nw_listener_state_ready) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET, "id=%p handle=%p: listener on port ready ", (void *)nw_socket, (void *)nw_listener);
 
         aws_mutex_lock(&nw_socket->synced_data.lock);
-        if (s_validate_event_loop(nw_socket->event_loop)) {
-            struct aws_task *task = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct aws_task));
-
-            struct nw_socket_scheduled_task_args *args =
-                aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
-
-            args->nw_socket = nw_socket;
-            args->allocator = nw_socket->allocator;
-            // acquire ref count for the task
-            nw_socket_acquire_internal_ref(nw_socket);
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p: nw_socket_acquire_internal_ref: s_process_set_listener_endpoint_task",
-                (void *)nw_socket);
-
-            aws_task_init(task, s_process_set_listener_endpoint_task, args, "listenerSuccessTask");
-            // TODO: what if event loop is shuting down & what happened if we schedule the task here.
-            aws_event_loop_schedule_task_now(nw_socket->event_loop, task);
+        struct aws_socket *aws_socket = nw_socket->synced_data.base_socket;
+        if (aws_socket && status == AWS_TASK_STATUS_RUN_READY) {
+            if (nw_socket->is_listener) {
+                aws_socket->local_endpoint.port = nw_listener_get_port(nw_socket->nw_listener);
+            }
+            if (nw_socket->on_listen_result_fn) {
+                nw_socket->on_listen_result_fn(aws_socket, AWS_OP_SUCCESS, nw_socket->listen_result_user_data);
+            }
         }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
 
@@ -1567,6 +1554,19 @@ static int s_socket_start_accept_fn(
     AWS_ASSERT(on_accept_result);
     AWS_ASSERT(accept_loop);
 
+    return s_socket_start_accept_async_fn(socket, accept_loop, on_accept_result, user_data, NULL, NULL);
+}
+
+static int s_socket_start_accept_async_fn(
+    struct aws_socket *socket,
+    struct aws_event_loop *accept_loop,
+    aws_socket_on_accept_result_fn *on_accept_result,
+    void *user_data,
+    aws_socket_on_listen_result_fn *on_listen_result,
+    void *on_listen_user_data) {
+    AWS_ASSERT(on_accept_result);
+    AWS_ASSERT(accept_loop);
+
     if (socket->event_loop) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
@@ -1593,6 +1593,9 @@ static int s_socket_start_accept_fn(
     aws_event_loop_connect_handle_to_io_completion_port(accept_loop, &socket->io_handle);
     socket->accept_result_fn = on_accept_result;
     socket->connect_accept_user_data = user_data;
+
+    nw_socket->on_listen_result_fn = on_listen_result;
+    nw_socket->listen_result_user_data = on_listen_user_data;
 
     s_set_event_loop(socket, accept_loop);
 

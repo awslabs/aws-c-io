@@ -38,6 +38,7 @@ struct socket_test_args {
     bool error_invoked;
     bool creation_callback_invoked;
     bool listener_destroyed;
+    bool listener_connected;
 };
 
 /* common structure for test */
@@ -128,6 +129,12 @@ static bool s_channel_shutdown_predicate(void *user_data) {
 static bool s_listener_destroy_predicate(void *user_data) {
     struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
     bool finished = setup_test_args->listener_destroyed;
+    return finished;
+}
+
+static bool s_listener_connected_predicate(void *user_data) {
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    bool finished = setup_test_args->listener_connected;
     return finished;
 }
 
@@ -308,6 +315,21 @@ static void s_socket_handler_test_server_listener_destroy_callback(
     aws_condition_variable_notify_one(setup_test_args->condition_variable);
 }
 
+static void s_socket_handler_test_server_listener_setup_callback(
+    struct aws_server_bootstrap *bootstrap,
+    int error_code,
+    void *user_data) {
+
+    (void)bootstrap;
+
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->listener_connected = true;
+    setup_test_args->error_code = error_code;
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+    aws_mutex_unlock(setup_test_args->mutex);
+}
+
 static int s_rw_args_init(
     struct socket_test_rw_args *args,
     struct socket_common_tester *s_c_tester,
@@ -371,20 +393,24 @@ static int s_local_server_tester_init(
         .incoming_callback = s_socket_handler_test_server_setup_callback,
         .shutdown_callback = s_socket_handler_test_server_shutdown_callback,
         .destroy_callback = s_socket_handler_test_server_listener_destroy_callback,
+        .setup_callback = s_socket_handler_test_server_listener_setup_callback,
         .user_data = args,
     };
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    tester->listener = aws_server_bootstrap_new_socket_listener_async(&bootstrap_options);
+    ASSERT_SUCCESS(aws_mutex_lock(args->mutex));
+    /* wait for listener to connected */
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(args->condition_variable, args->mutex, s_listener_connected_predicate, args));
+    ASSERT_TRUE(args->error_code == AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_unlock(args->mutex));
+#else
     tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
+#endif
     ASSERT_NOT_NULL(tester->listener);
 
     /* find out which port the socket is bound to */
     ASSERT_SUCCESS(aws_socket_get_bound_address(tester->listener, &tester->endpoint));
-
-    // Apple Dispatch Queue requires a listener to be ready before it can get the assigned port. We wait until the
-    // port is back. Not sure if there is a better way to work around it. Probably start_listener need a callback
-    // function to process the updated the endpoint and host.
-    while (tester->endpoint.port == 0 && tester->socket_options.domain != AWS_SOCKET_LOCAL) {
-        ASSERT_SUCCESS(aws_socket_get_bound_address(tester->listener, &tester->endpoint));
-    }
 
     return AWS_OP_SUCCESS;
 }

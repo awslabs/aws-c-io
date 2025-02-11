@@ -50,6 +50,13 @@ struct aws_socket_vtable {
         struct aws_event_loop *accept_loop,
         aws_socket_on_accept_result_fn *on_accept_result,
         void *user_data);
+    int (*socket_start_accept_async_fn)(
+        struct aws_socket *socket,
+        struct aws_event_loop *accept_loop,
+        aws_socket_on_accept_result_fn *on_accept_result,
+        void *on_accept_user_data,
+        aws_socket_on_listen_result_fn *on_listen_result,
+        void *on_listen_user_data);
     int (*socket_stop_accept_fn)(struct aws_socket *socket);
     int (*socket_close_fn)(struct aws_socket *socket);
     int (*socket_shutdown_dir_fn)(struct aws_socket *socket, enum aws_channel_direction dir);

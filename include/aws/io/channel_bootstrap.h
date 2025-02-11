@@ -133,6 +133,14 @@ typedef void(aws_server_bootstrap_on_accept_channel_shutdown_fn)(
     void *user_data);
 
 /**
+ * This function is only used for async listener (Apple Network Framework in this case).
+ * Once the server listener socket is finished setup and starting listening, this fuction
+ * will be invoked.
+ */
+typedef void(
+    aws_server_bootstrap_on_listener_setup_fn)(struct aws_server_bootstrap *bootstrap, int error_code, void *user_data);
+
+/**
  * Once the server listener socket is finished destroying, and all the existing connections are closed, this fuction
  * will be invoked.
  */
@@ -212,6 +220,7 @@ struct aws_server_socket_channel_bootstrap_options {
     const struct aws_tls_connection_options *tls_options;
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
     aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
+    aws_server_bootstrap_on_listener_setup_fn *setup_callback;
     aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
     bool enable_read_back_pressure;
     void *user_data;
@@ -294,6 +303,9 @@ AWS_IO_API int aws_server_bootstrap_set_alpn_callback(
  * bootstrap_options is copied.
  */
 AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener(
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
+
+AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
     const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
 
 /**

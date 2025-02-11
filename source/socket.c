@@ -43,6 +43,18 @@ int aws_socket_start_accept(
     return socket->vtable->socket_start_accept_fn(socket, accept_loop, on_accept_result, user_data);
 }
 
+int aws_socket_start_accept_async(
+    struct aws_socket *socket,
+    struct aws_event_loop *accept_loop,
+    aws_socket_on_accept_result_fn *on_accept_result,
+    void *on_accept_user_data,
+    aws_socket_on_listen_result_fn *on_listen_result,
+    void *on_listen_user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_start_accept_async_fn);
+    return socket->vtable->socket_start_accept_async_fn(
+        socket, accept_loop, on_accept_result, on_accept_user_data, on_listen_result, on_listen_user_data);
+}
+
 int aws_socket_stop_accept(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_stop_accept_fn);
     return socket->vtable->socket_stop_accept_fn(socket);
