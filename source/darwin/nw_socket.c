@@ -632,18 +632,21 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
         }
 
         aws_mutex_lock(&nw_socket->synced_data.lock);
+        aws_mutex_lock(&nw_socket->synced_state.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
+
         if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
             nw_socket->synced_state.state &= ~CONNECTED_READ;
             if (socket) {
                 socket->state &= ~CONNECTED_READ;
             }
         }
-        aws_mutex_unlock(&nw_socket->synced_data.lock);
+        aws_mutex_unlock(&nw_socket->synced_state.lock);
 
         if (nw_socket->on_readable) {
             nw_socket->on_readable(socket, readable_args->error_code, nw_socket->on_readable_user_data);
         }
+        aws_mutex_unlock(&nw_socket->synced_data.lock);
     }
 
     // If the task is cancelled and the data is not handled, release it.
