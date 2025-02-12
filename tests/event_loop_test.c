@@ -8,9 +8,9 @@
 #include <aws/common/condition_variable.h>
 #include <aws/common/system_info.h>
 #include <aws/common/task_scheduler.h>
-#include <aws/io/event_loop.h>
-
 #include <aws/common/thread.h>
+#include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/testing/aws_test_harness.h>
 
 struct task_args {
@@ -172,7 +172,7 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
 
 AWS_TEST_CASE(event_loop_canceled_tasks_run_in_el_thread, s_test_event_loop_canceled_tasks_run_in_el_thread)
 
-#if AWS_USE_IO_COMPLETION_PORTS
+#if AWS_ENABLE_IO_COMPLETION_PORTS
 
 int aws_pipe_get_unique_name(char *dst, size_t dst_size);
 
@@ -311,7 +311,7 @@ static int s_test_event_loop_completion_events(struct aws_allocator *allocator, 
 
 AWS_TEST_CASE(event_loop_completion_events, s_test_event_loop_completion_events)
 
-#else /* !AWS_USE_IO_COMPLETION_PORTS */
+#else /* !AWS_ENABLE_IO_COMPLETION_PORTS */
 
 #    include <unistd.h>
 
@@ -971,7 +971,80 @@ static int s_test_event_loop_readable_event_on_2nd_time_readable(struct aws_allo
 }
 AWS_TEST_CASE(event_loop_readable_event_on_2nd_time_readable, s_test_event_loop_readable_event_on_2nd_time_readable);
 
-#endif /* AWS_USE_IO_COMPLETION_PORTS */
+#endif /* AWS_ENABLE_IO_COMPLETION_PORTS */
+
+/* Verify default event loop type */
+static int s_test_event_loop_creation(
+    struct aws_allocator *allocator,
+    enum aws_event_loop_type type,
+    bool expect_success) {
+    struct aws_event_loop_options event_loop_options = {
+        .thread_options = NULL,
+        .clock = aws_high_res_clock_get_ticks,
+        .type = type,
+    };
+
+    struct aws_event_loop *event_loop = aws_event_loop_new(allocator, &event_loop_options);
+
+    if (expect_success) {
+        ASSERT_NOT_NULL(event_loop);
+        /* Clean up tester*/
+        aws_event_loop_destroy(event_loop);
+    } else {
+        ASSERT_NULL(event_loop);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static bool s_eventloop_test_enable_kqueue = false;
+static bool s_eventloop_test_enable_epoll = false;
+static bool s_eventloop_test_enable_iocp = false;
+static bool s_eventloop_test_enable_dispatch_queue = false;
+
+static int s_test_event_loop_epoll_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_EPOLL
+    s_eventloop_test_enable_epoll = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_EPOLL, s_eventloop_test_enable_epoll);
+}
+
+AWS_TEST_CASE(event_loop_epoll_creation, s_test_event_loop_epoll_creation)
+
+static int s_test_event_loop_iocp_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    s_eventloop_test_enable_iocp = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_IOCP, s_eventloop_test_enable_iocp);
+}
+
+AWS_TEST_CASE(event_loop_iocp_creation, s_test_event_loop_iocp_creation)
+
+static int s_test_event_loop_kqueue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+#ifdef AWS_ENABLE_KQUEUE
+    s_eventloop_test_enable_kqueue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_KQUEUE, s_eventloop_test_enable_kqueue);
+}
+
+AWS_TEST_CASE(event_loop_kqueue_creation, s_test_event_loop_kqueue_creation)
+
+static int s_test_event_loop_dispatch_queue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_DISPATCH_QUEUE
+// TODO: Dispatch queue support is not yet implemented. Uncomment the following line once the dispatch queue is ready.
+//    s_eventloop_test_enable_dispatch_queue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_DISPATCH_QUEUE, s_eventloop_test_enable_dispatch_queue);
+}
+
+AWS_TEST_CASE(event_loop_dispatch_queue_creation, s_test_event_loop_dispatch_queue_creation)
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1041,7 +1114,10 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     size_t cpu_count = aws_system_info_processor_count();
     size_t el_count = aws_event_loop_group_get_loop_count(event_loop_group);
@@ -1074,10 +1150,16 @@ static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_alloca
     size_t cpus_for_group = aws_get_cpu_count_for_group(0);
     size_t el_count = 1;
 
-    /* pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more threads
-     * than hw cpus available */
-    struct aws_event_loop_group *event_loop_group =
-        aws_event_loop_group_new_default_pinned_to_cpu_group(allocator, UINT16_MAX, 0, NULL);
+    uint16_t cpu_group = 0;
+    struct aws_event_loop_group_options elg_options = {
+        /*
+         * pass UINT16_MAX here to check the boundary conditions on numa cpu detection. It should never create more
+         * threads than hw cpus available
+         */
+        .loop_count = UINT16_MAX,
+        .cpu_group = &cpu_group,
+    };
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     el_count = aws_event_loop_group_get_loop_count(event_loop_group);
 
@@ -1154,8 +1236,12 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
     async_shutdown_options.shutdown_callback_user_data = &task_args;
     async_shutdown_options.shutdown_callback_fn = s_async_shutdown_complete_callback;
 
-    struct aws_event_loop_group *event_loop_group =
-        aws_event_loop_group_new_default(allocator, 0, &async_shutdown_options);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+        .shutdown_options = &async_shutdown_options,
+    };
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
 

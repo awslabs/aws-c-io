@@ -5,25 +5,30 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/encoding.h>
 #include <aws/common/mutex.h>
-
+#include <aws/common/string.h>
+#include <aws/common/task_scheduler.h>
+#include <aws/common/thread.h>
 #include <aws/io/channel.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
-#include <aws/common/encoding.h>
-#include <aws/common/string.h>
-#include <aws/common/task_scheduler.h>
-#include <aws/common/thread.h>
+#include <s2n.h>
+#ifdef AWS_S2N_INSOURCE_PATH
+#    include <api/unstable/cleanup.h>
+#else
+#    include <s2n/unstable/cleanup.h>
+#endif
 
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
-#include <s2n.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -249,7 +254,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 void aws_tls_clean_up_static_state(void) {
     /* only clean up s2n if we were the ones that initialized it */
     if (!s_s2n_initialized_externally) {
-        s2n_cleanup();
+        s2n_cleanup_final();
     }
 }
 
@@ -264,6 +269,10 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
             /* PQ Crypto no-ops on android for now */
 #ifndef ANDROID
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
+            return true;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
+            return true;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
             return true;
 #endif
 
@@ -1247,7 +1256,7 @@ static struct aws_event_loop_local_object s_tl_cleanup_object = {
 static void s_aws_cleanup_s2n_thread_local_state(void *user_data) {
     (void)user_data;
 
-    s2n_cleanup();
+    s2n_cleanup_thread();
 }
 
 /* s2n allocates thread-local data structures. We need to clean these up when the event loop's thread exits. */
@@ -1528,8 +1537,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             /* No-Op, if the user configured a minimum_tls_version then a version-specific Cipher Preference was set
              */
             break;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
+            /* The specific PQ policy used here may change over time. */
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
+            break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSv1_0_2021_05:
             security_policy = "PQ-TLS-1-0-2021-05-26";
+            break;
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
             break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);

@@ -3,17 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/event_loop.h>
-
 #include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/private/tracing.h>
-
+#include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
+#include <aws/io/private/tracing.h>
 
 #include <sys/epoll.h>
 
@@ -113,7 +112,7 @@ enum {
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
 
 /* Setup edge triggered epoll with a scheduler. */
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_with_epoll(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_PRECONDITION(options);

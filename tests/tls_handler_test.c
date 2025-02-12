@@ -10,6 +10,7 @@
 #    include <aws/io/file_utils.h>
 #    include <aws/io/host_resolver.h>
 #    include <aws/io/logging.h>
+#    include <aws/io/private/event_loop_impl.h>
 #    include <aws/io/socket.h>
 #    include <aws/io/tls_channel_handler.h>
 
@@ -177,7 +178,10 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    tester->el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = tester->el_group,
@@ -532,7 +536,11 @@ static int s_tls_channel_server_client_tester_init(struct aws_allocator *allocat
     AWS_ZERO_STRUCT(s_server_client_tester);
     ASSERT_SUCCESS(aws_mutex_init(&s_server_client_tester.server_mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_server_client_tester.server_condition_variable));
-    s_server_client_tester.client_el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    s_server_client_tester.client_el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     ASSERT_SUCCESS(s_tls_rw_args_init(
         &s_server_client_tester.server_rw_args,
@@ -2168,7 +2176,7 @@ static struct aws_event_loop *s_default_new_event_loop(
     void *user_data) {
 
     (void)user_data;
-    return aws_event_loop_new_default_with_options(allocator, options);
+    return aws_event_loop_new(allocator, options);
 }
 
 static int s_statistic_test_clock_fn(uint64_t *timestamp) {
@@ -2190,8 +2198,11 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    tester->el_group =
-        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+        .clock_override = s_statistic_test_clock_fn,
+    };
+    tester->el_group = aws_event_loop_group_new_internal(allocator, &elg_options, s_default_new_event_loop, NULL);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = tester->el_group,
@@ -2788,5 +2799,41 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
 }
 
 AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
+
+static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    aws_io_library_init(allocator);
+
+    struct aws_byte_buf cert_buf;
+    struct aws_byte_buf key_buf;
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "unittests.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "unittests.p8"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+
+    aws_tls_ctx_release(tls_context);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_pkcs8_import, s_test_pkcs8_import)
 
 #endif /* BYO_CRYPTO */

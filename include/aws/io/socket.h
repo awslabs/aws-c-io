@@ -30,11 +30,30 @@ enum aws_socket_type {
     AWS_SOCKET_DGRAM,
 };
 
+/**
+ * Socket Implementation type. Decides which socket implementation is used. If set to
+ * `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, it will automatically use the platform’s default.
+ *
+ * PLATFORM DEFAULT SOCKET IMPLEMENTATION TYPE
+ * Linux       | AWS_SOCKET_IMPL_POSIX
+ * Windows     | AWS_SOCKET_IMPL_WINSOCK
+ * BSD Variants| AWS_SOCKET_IMPL_POSIX
+ * MacOS       | AWS_SOCKET_IMPL_POSIX
+ * iOS         | AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK
+ */
+enum aws_socket_impl_type {
+    AWS_SOCKET_IMPL_PLATFORM_DEFAULT = 0,
+    AWS_SOCKET_IMPL_POSIX,
+    AWS_SOCKET_IMPL_WINSOCK,
+    AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK,
+};
+
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
 
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
+    enum aws_socket_impl_type impl_type;
     uint32_t connect_timeout_ms;
     /* Keepalive properties are TCP only.
      * Set keepalive true to periodically transmit messages for detecting a disconnected peer.
@@ -52,8 +71,9 @@ struct aws_socket_options {
      * This property is used to bind the socket to a particular network interface by name, such as eth0 and ens32.
      * If this is empty, the socket will not be bound to any interface and will use OS defaults. If the provided name
      * is invalid, `aws_socket_init()` will error out with AWS_IO_SOCKET_INVALID_OPTIONS. This option is only
-     * supported on Linux, macOS, and platforms that have either SO_BINDTODEVICE or IP_BOUND_IF. It is not supported on
-     * Windows. `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised on unsupported platforms.
+     * supported on Linux, macOS(bsd socket), and platforms that have either SO_BINDTODEVICE or IP_BOUND_IF. It is not
+     * supported on Windows and Apple Network Framework. `AWS_ERROR_PLATFORM_NOT_SUPPORTED` will be raised on
+     * unsupported platforms.
      */
     char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
 };
@@ -78,7 +98,8 @@ typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int 
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations.
+ * performing IO operations. The user must call `aws_socket_clean_up()` and "aws_mem_release()" when they're done with
+ * the new_socket, to free it.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -94,6 +115,9 @@ typedef void(aws_socket_on_accept_result_fn)(
 /**
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
+ *
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before a callback is triggered.
+ * by the system I/O handler,
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
@@ -115,6 +139,7 @@ struct aws_socket_endpoint {
 };
 
 struct aws_socket {
+    struct aws_socket_vtable *vtable;
     struct aws_allocator *allocator;
     struct aws_socket_endpoint local_endpoint;
     struct aws_socket_endpoint remote_endpoint;
@@ -133,17 +158,6 @@ struct aws_socket {
 
 struct aws_byte_buf;
 struct aws_byte_cursor;
-
-/* These are hacks for working around headers and functions we need for IO work but aren't directly includable or
-   linkable. these are purposely not exported. These functions only get called internally. The awkward aws_ prefixes are
-   just in case someone includes this header somewhere they were able to get these definitions included. */
-#ifdef _WIN32
-typedef void (*aws_ms_fn_ptr)(void);
-
-void aws_check_and_init_winsock(void);
-aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
-aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
-#endif
 
 AWS_EXTERN_C_BEGIN
 
@@ -176,6 +190,7 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
+ *
  */
 AWS_IO_API int aws_socket_connect(
     struct aws_socket *socket,
@@ -207,6 +222,7 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
  * connections or errors will arrive via the `on_accept_result` callback.
  *
  * aws_socket_bind() and aws_socket_listen() must be called before calling this function.
+ *
  */
 AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,
@@ -260,7 +276,7 @@ AWS_IO_API int aws_socket_assign_to_event_loop(struct aws_socket *socket, struct
 AWS_IO_API struct aws_event_loop *aws_socket_get_event_loop(struct aws_socket *socket);
 
 /**
- * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be recieved
+ * Subscribes on_readable to notifications when the socket goes readable (edge-triggered). Errors will also be received
  * in the callback.
  *
  * Note! This function is technically not thread safe, but we do not enforce which thread you call from.
@@ -336,6 +352,11 @@ AWS_IO_API int aws_socket_validate_port_for_bind(uint32_t port, enum aws_socket_
  * For use in internal tests only.
  */
 AWS_IO_API void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint);
+
+/**
+ * Validates whether the network interface name is valid. On Windows, it will always return false since we don't support
+ * network_interface_name on Windows */
+AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL

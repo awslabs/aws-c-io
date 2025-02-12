@@ -12,6 +12,7 @@
 
 #include <aws/io/event_loop.h>
 #include <aws/io/host_resolver.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/socket.h>
 
 #ifdef _MSC_VER
@@ -388,6 +389,54 @@ static int s_test_socket_ex(
     return 0;
 }
 
+static int s_test_socket_creation(struct aws_allocator *alloc, enum aws_socket_impl_type type, int expected_result) {
+    struct aws_socket socket;
+
+    struct aws_socket_options options = {
+        .type = AWS_SOCKET_STREAM,
+        .domain = AWS_SOCKET_IPV4,
+        .keep_alive_interval_sec = 0,
+        .keep_alive_timeout_sec = 0,
+        .connect_timeout_ms = 0,
+        .keepalive = 0,
+        .impl_type = type,
+    };
+
+    int err = aws_socket_init(&socket, alloc, &options);
+    if (err == AWS_OP_SUCCESS) {
+        aws_socket_clean_up(&socket);
+        ASSERT_INT_EQUALS(err, expected_result);
+    } else { // socket init failed, validate the last error
+        ASSERT_INT_EQUALS(aws_last_error(), expected_result);
+    }
+    return AWS_OP_SUCCESS;
+}
+
+static int s_socket_test_posix_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+static int s_socket_test_winsock_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+
+static int s_test_socket_posix_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+    s_socket_test_posix_expected_result = AWS_OP_SUCCESS;
+#endif
+    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_POSIX, s_socket_test_posix_expected_result);
+}
+
+AWS_TEST_CASE(socket_posix_creation, s_test_socket_posix_creation)
+
+static int s_test_socket_winsock_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    s_socket_test_winsock_expected_result = AWS_OP_SUCCESS;
+#endif
+    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_WINSOCK, s_socket_test_winsock_expected_result);
+}
+
+AWS_TEST_CASE(socket_winsock_creation, s_test_socket_winsock_creation)
+
 static int s_test_socket(
     struct aws_allocator *allocator,
     struct aws_socket_options *options,
@@ -495,6 +544,20 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_socket_with_bind_to_invalid_interface, s_test_socket_with_bind_to_invalid_interface)
+
+static int s_test_is_network_interface_name_valid(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    ASSERT_FALSE(aws_is_network_interface_name_valid("invalid_name"));
+#if defined(AWS_OS_LINUX)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo"));
+#elif !defined(AWS_OS_WINDOWS)
+    ASSERT_TRUE(aws_is_network_interface_name_valid("lo0"));
+#endif
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_is_network_interface_name_valid, s_test_is_network_interface_name_valid)
 
 #if defined(USE_VSOCK)
 static int s_test_vsock_loopback_socket_communication(struct aws_allocator *allocator, void *ctx) {
@@ -610,7 +673,10 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
 
@@ -690,7 +756,10 @@ static int s_test_connect_timeout_cancelation(struct aws_allocator *allocator, v
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
 
@@ -1133,7 +1202,10 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
 
     ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
