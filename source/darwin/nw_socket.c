@@ -632,8 +632,9 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
         }
 
         aws_mutex_lock(&nw_socket->synced_data.lock);
-        aws_mutex_lock(&nw_socket->synced_state.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
+
+        aws_mutex_lock(&nw_socket->synced_state.lock);
 
         if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
             nw_socket->synced_state.state &= ~CONNECTED_READ;
@@ -1819,10 +1820,8 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
               /* For protocols such as TCP, `is_complete` will be marked when the entire stream has be closed in the
                * reading direction. For protocols such as UDP, this will be marked when the end of a datagram has
                * been reached. */
-              if (!is_complete) {
-                  // schedule next read to get future I/O event
-                  s_schedule_next_read(nw_socket);
-              } else {
+              if (is_complete) {
+
                   aws_mutex_lock(&nw_socket->synced_data.lock);
                   struct aws_socket *base_socket = nw_socket->synced_data.base_socket;
 
@@ -1837,9 +1836,12 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                           (void *)nw_socket->nw_connection);
                       aws_raise_error(AWS_IO_SOCKET_CLOSED);
                       error = AWS_IO_SOCKET_CLOSED;
+                      aws_mutex_unlock(&nw_socket->synced_data.lock);
                   }
-                  aws_mutex_unlock(&nw_socket->synced_data.lock);
               }
+
+              // schedule next read to get future I/O event
+              s_schedule_next_read(nw_socket);
 
               AWS_LOGF_TRACE(
                   AWS_LS_IO_SOCKET,
@@ -1910,6 +1912,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
 
     /* if empty, schedule a read and return WOULD_BLOCK */
     if (aws_linked_list_empty(&nw_socket->read_queue)) {
+
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: read queue is empty, scheduling another read",
@@ -1972,7 +1975,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             (int)*amount_read);
     }
 
-    /* keep replacing buffers */
+    /* keep reading buffers */
     s_schedule_next_read(nw_socket);
     return AWS_OP_SUCCESS;
 }
