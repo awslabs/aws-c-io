@@ -389,6 +389,54 @@ static int s_test_socket_ex(
     return 0;
 }
 
+static int s_test_socket_creation(struct aws_allocator *alloc, enum aws_socket_impl_type type, int expected_result) {
+    struct aws_socket socket;
+
+    struct aws_socket_options options = {
+        .type = AWS_SOCKET_STREAM,
+        .domain = AWS_SOCKET_IPV4,
+        .keep_alive_interval_sec = 0,
+        .keep_alive_timeout_sec = 0,
+        .connect_timeout_ms = 0,
+        .keepalive = 0,
+        .impl_type = type,
+    };
+
+    int err = aws_socket_init(&socket, alloc, &options);
+    if (err == AWS_OP_SUCCESS) {
+        aws_socket_clean_up(&socket);
+        ASSERT_INT_EQUALS(err, expected_result);
+    } else { // socket init failed, validate the last error
+        ASSERT_INT_EQUALS(aws_last_error(), expected_result);
+    }
+    return AWS_OP_SUCCESS;
+}
+
+static int s_socket_test_posix_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+static int s_socket_test_winsock_expected_result = AWS_ERROR_PLATFORM_NOT_SUPPORTED;
+
+static int s_test_socket_posix_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+    s_socket_test_posix_expected_result = AWS_OP_SUCCESS;
+#endif
+    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_POSIX, s_socket_test_posix_expected_result);
+}
+
+AWS_TEST_CASE(socket_posix_creation, s_test_socket_posix_creation)
+
+static int s_test_socket_winsock_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    s_socket_test_winsock_expected_result = AWS_OP_SUCCESS;
+#endif
+    return s_test_socket_creation(allocator, AWS_SOCKET_IMPL_WINSOCK, s_socket_test_winsock_expected_result);
+}
+
+AWS_TEST_CASE(socket_winsock_creation, s_test_socket_winsock_creation)
+
 static int s_test_socket(
     struct aws_allocator *allocator,
     struct aws_socket_options *options,
