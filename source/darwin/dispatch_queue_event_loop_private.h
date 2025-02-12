@@ -60,7 +60,7 @@ struct aws_dispatch_loop {
          */
         bool is_executing;
         aws_thread_id_t current_thread_id;
-        
+
         enum aws_dispatch_loop_execution_state execution_state;
 
         struct aws_linked_list cross_thread_tasks;

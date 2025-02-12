@@ -82,13 +82,6 @@ static int s_socket_common_tester_init(struct aws_allocator *allocator, struct s
     return AWS_OP_SUCCESS;
 }
 
-static void s_sleep_for_dispatch_queue(void) {
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
-    aws_thread_current_sleep(2000000000);
-#endif
-}
-
 static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
@@ -96,8 +89,6 @@ static int s_socket_common_tester_clean_up(struct socket_common_tester *tester) 
     aws_mutex_clean_up(&tester->mutex);
 
     aws_io_library_clean_up();
-
-    s_sleep_for_dispatch_queue();
 
     return AWS_OP_SUCCESS;
 }

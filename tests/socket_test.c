@@ -32,13 +32,6 @@ struct local_listener_args {
     bool shutdown_complete;
 };
 
-static void s_sleep_for_dispatch_queue(void) {
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    // DEBUG WIP: SLEEP TO MAKE SURE THE EVENT LOOP IS DESTROYED
-    aws_thread_current_sleep(2000000000);
-#endif
-}
-
 static void s_local_listener_shutdown_complete(void *user_data) {
     struct local_listener_args *listener_args = (struct local_listener_args *)user_data;
 
@@ -513,8 +506,6 @@ static int s_test_socket_ex(
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
 
-    s_sleep_for_dispatch_queue();
-
     return 0;
 }
 
@@ -686,7 +677,6 @@ static int s_test_socket_udp_dispatch_queue(
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
 
-    s_sleep_for_dispatch_queue();
     return 0;
 }
 
@@ -1061,8 +1051,6 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
 
     aws_io_library_clean_up();
 
-    s_sleep_for_dispatch_queue();
-
     return 0;
 }
 
@@ -1164,7 +1152,6 @@ static int s_test_connect_timeout_cancellation(struct aws_allocator *allocator, 
     ASSERT_SUCCESS(aws_mutex_unlock(outgoing_args.mutex));
 
     aws_io_library_clean_up();
-    s_sleep_for_dispatch_queue();
 
     return 0;
 }
@@ -1243,8 +1230,6 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
 
-    s_sleep_for_dispatch_queue();
-
     return 0;
 }
 
@@ -1320,7 +1305,6 @@ cleanup:
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
 
-    s_sleep_for_dispatch_queue();
     return result;
 }
 AWS_TEST_CASE(outgoing_tcp_sock_error, s_test_outgoing_tcp_sock_error)
@@ -1370,8 +1354,6 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 
         aws_event_loop_group_release(el_group);
         aws_io_library_clean_up();
-
-        s_sleep_for_dispatch_queue();
     }
     return 0;
 }
@@ -1415,7 +1397,6 @@ static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *alloc
     aws_socket_clean_up(&incoming);
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
-    s_sleep_for_dispatch_queue();
     return 0;
 }
 
@@ -1671,8 +1652,6 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
     aws_socket_clean_up(&socket);
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
-
-    s_sleep_for_dispatch_queue();
 
     return 0;
 }
@@ -1946,8 +1925,6 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
 
-    s_sleep_for_dispatch_queue();
-
     return 0;
 }
 AWS_TEST_CASE(cleanup_in_accept_doesnt_explode, s_cleanup_in_accept_doesnt_explode)
@@ -2120,8 +2097,6 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
 
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
-
-    s_sleep_for_dispatch_queue();
 
     return 0;
 }
@@ -2377,7 +2352,6 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     aws_event_loop_group_release(el_group);
     aws_io_library_clean_up();
 
-    s_sleep_for_dispatch_queue();
     return 0;
 }
 AWS_TEST_CASE(sock_write_cb_is_async, s_sock_write_cb_is_async)
