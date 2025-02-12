@@ -247,17 +247,21 @@ void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
 /**
  * @internal - Don't use outside of testing.
  *
- * Invokes the destroy() fn for the event loop implementation.
+ * Destroys an event loop implementation.
  * If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
- * If you do not want this function to block, call aws_event_loop_stop() manually first.
  * If the event loop is shared by multiple threads then destroy must be called by exactly one thread. All other threads
  * must ensure their API calls to the event loop happen-before the call to destroy.
+ *
+ * Internally, this calls aws_event_loop_start_destroy() followed by aws_event_loop_complete_destroy()
  */
 AWS_IO_API
 void aws_event_loop_destroy(struct aws_event_loop *event_loop);
 
 /**
  * @internal
+ *
+ * Signals an event loop to begin its destruction process.  If an event loop's implementation of this API does anything,
+ * it must be quick and non-blocking.  Most event loop implementations have an empty implementation for this function.
  */
 AWS_IO_API
 void aws_event_loop_start_destroy(struct aws_event_loop *event_loop);
@@ -265,6 +269,8 @@ void aws_event_loop_start_destroy(struct aws_event_loop *event_loop);
 /**
  * @internal
  *
+ * Waits for an event loop to complete its destruction process.  aws_event_loop_start_destroy() must have been called
+ * previously for this function to not deadlock.
  */
 AWS_IO_API
 void aws_event_loop_complete_destroy(struct aws_event_loop *event_loop);
