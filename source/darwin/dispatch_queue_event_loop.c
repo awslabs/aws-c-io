@@ -305,7 +305,6 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
         AWS_LS_IO_EVENT_LOOP, "id=%p: Apple dispatch queue created with id: %s", (void *)loop, dispatch_queue_id);
 
     /* The dispatch queue is suspended at this point. */
-    // dispatch_loop->synced_data.suspended = true;
     dispatch_loop->synced_data.is_executing = false;
 
     if (aws_task_scheduler_init(&dispatch_loop->scheduler, alloc)) {
@@ -397,10 +396,9 @@ static void s_start_destroy(struct aws_event_loop *event_loop) {
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     s_lock_synced_data(dispatch_loop);
-    AWS_FATAL_ASSERT(
-        dispatch_loop->synced_data.execution_state == AWS_DLES_RUNNING ||
-        dispatch_loop->synced_data.execution_state == AWS_DLES_SUSPENDED);
-    if (dispatch_loop->synced_data.execution_state == AWS_DLES_SUSPENDED) {
+    enum aws_dispatch_queue_execution_state execution_state = dispatch_loop->synced_data.execution_state;
+    AWS_FATAL_ASSERT(execution_state == AWS_DLES_RUNNING || execution_state == AWS_DLES_SUSPENDED);
+    if (execution_state == AWS_DLES_SUSPENDED) {
         dispatch_resume(dispatch_loop->dispatch_queue);
     }
     dispatch_loop->synced_data.execution_state = AWS_DLES_SHUTTING_DOWN;
