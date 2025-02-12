@@ -194,8 +194,6 @@ static void s_scheduled_iteration_entry_destroy(struct scheduled_iteration_entry
 static void s_dispatch_event_loop_final_destroy(struct aws_event_loop *event_loop) {
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
 
-    // The scheduler should be cleaned up and zeroed out in s_dispatch_queue_destroy_task.
-    // Double-check here in case the destroy function is not called or event loop initialization failed.
     if (aws_task_scheduler_is_valid(&dispatch_loop->scheduler)) {
         aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
     }
@@ -354,7 +352,7 @@ clean_up:
     return NULL;
 }
 
-static void s_dispatch_queue_destroy_task(void *context) {
+static void s_dispatch_queue_purge_cross_thread_tasks(void *context) {
     struct aws_dispatch_loop *dispatch_loop = context;
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: Releasing Dispatch Queue.", (void *)dispatch_loop->base_loop);
 
@@ -367,35 +365,29 @@ static void s_dispatch_queue_destroy_task(void *context) {
     /* Cancel all tasks currently scheduled in the task scheduler. */
     aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
 
-    /*
-     * Swap tasks from cross_thread_tasks into local_cross_thread_tasks to cancel them as well as the tasks already
-     * in the scheduler.
-     */
     struct aws_linked_list local_cross_thread_tasks;
     aws_linked_list_init(&local_cross_thread_tasks);
 
-    s_lock_synced_data(dispatch_loop);
-populate_local_cross_thread_tasks:
-    aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
-    s_unlock_synced_data(dispatch_loop);
+    bool done = false;
+    while (!done) {
+        /* Swap tasks from cross_thread_tasks into local_cross_thread_tasks to cancel them. */
+        s_lock_synced_data(dispatch_loop);
+        aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
+        s_unlock_synced_data(dispatch_loop);
 
-    /* Cancel all tasks that were in cross_thread_tasks */
-    while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
-        struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
-        task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+        if (aws_linked_list_empty(&local_cross_thread_tasks)) {
+            done = true;
+        }
+
+        /* Cancel all tasks that were in cross_thread_tasks */
+        while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
+            struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
+            struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+            task->fn(task, task->arg, AWS_TASK_STATUS_CANCELED);
+        }
     }
 
     s_lock_synced_data(dispatch_loop);
-
-    /*
-     * Check if more cross thread tasks have been added since cancelling existing tasks. If there were, we must run
-     * them with AWS_TASK_STATUS_CANCELED as well before moving on with cleanup and destruction.
-     */
-    if (!aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks)) {
-        goto populate_local_cross_thread_tasks;
-    }
-
     dispatch_loop->synced_data.is_executing = false;
     s_unlock_synced_data(dispatch_loop);
 }
@@ -430,23 +422,6 @@ static void s_complete_destroy(struct aws_event_loop *event_loop) {
     AWS_FATAL_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
     /*
-     * `dispatch_async_and_wait_f()` schedules a block to execute in FIFO order on Apple's dispatch queue and waits
-     * for it to complete before moving on.
-     *
-     * Any block that is currently running on the dispatch queue will be completed before
-     * `s_dispatch_queue_destroy_task()` block is executed.
-     *
-     * `s_dispatch_queue_destroy_task()` will cancel outstanding tasks that have already been scheduled to the task
-     * scheduler and then iterate through cross thread tasks.
-     *
-     * It is possible that there are scheduled_iterations that are be queued to run s_run_iteration()
-     * AFTER s_dispatch_queue_destroy_task() has executed. Any iteration blocks scheduled to run in the future will
-     * keep Apple's dispatch queue alive until the blocks complete.  Because the dispatch loop is in the SHUTTING_DOWN
-     * state, these iterations will not do anything.
-     */
-    dispatch_async_and_wait_f(dispatch_loop->dispatch_queue, dispatch_loop, s_dispatch_queue_destroy_task);
-
-    /*
      * This is the release of the initial ref count of 1 that the event loop was created with.
      */
     s_dispatch_loop_release(dispatch_loop);
@@ -458,6 +433,11 @@ static void s_complete_destroy(struct aws_event_loop *event_loop) {
         s_wait_for_terminated_state,
         dispatch_loop);
     s_unlock_synced_data(dispatch_loop);
+
+    /*
+     * There are no more references to the dispatch loop anywhere.  Purge any remaining cross thread tasks.
+     */
+    s_dispatch_queue_purge_cross_thread_tasks(dispatch_loop);
 
     /*
      * We know that all scheduling entries have cleaned up.  We can destroy ourselves now.  Upon return, the caller
