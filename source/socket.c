@@ -137,7 +137,7 @@ bool aws_socket_is_open(struct aws_socket *socket) {
  * Return the default socket implementation type. If the return value is `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, the
  * function failed to retrieve the default type value.
  */
-static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
+enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
 // override default socket
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
