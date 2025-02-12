@@ -1266,18 +1266,6 @@ static int s_socket_connect_fn(
         nw_socket->timeout_args,
         "NWSocketConnectionTimeoutTask");
 
-    /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
-     * was disconnected etc .... */
-    nw_connection_set_state_changed_handler(
-        socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
-          s_schedule_connection_state_changed_fn(socket, nw_socket, nw_socket->nw_connection, state, error);
-        });
-    // released when the connection state changed to nw_connection_state_cancelled
-    nw_socket_acquire_internal_ref(nw_socket);
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: nw_socket_acquire_internal_ref: socket_connect", (void *)nw_socket);
-    nw_connection_start(socket->io_handle.data.handle);
-    nw_retain(socket->io_handle.data.handle);
-
     /* schedule a task to run at the connect timeout interval, if this task runs before the connect
      * happens, we consider that a timeout. */
 
@@ -1304,6 +1292,18 @@ static int s_socket_connect_fn(
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p: nw_socket_acquire_internal_ref: s_handle_socket_timeout", (void *)nw_socket);
     aws_event_loop_schedule_task_future(event_loop, &nw_socket->timeout_args->task, timeout);
+
+    /* set a handler for socket state changes. This is where we find out if the connection timed out, was successful,
+     * was disconnected etc .... */
+    nw_connection_set_state_changed_handler(
+        socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
+          s_schedule_connection_state_changed_fn(socket, nw_socket, nw_socket->nw_connection, state, error);
+        });
+    // released when the connection state changed to nw_connection_state_cancelled
+    nw_socket_acquire_internal_ref(nw_socket);
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: nw_socket_acquire_internal_ref: socket_connect", (void *)nw_socket);
+    nw_connection_start(socket->io_handle.data.handle);
+    nw_retain(socket->io_handle.data.handle);
 
     return AWS_OP_SUCCESS;
 }
