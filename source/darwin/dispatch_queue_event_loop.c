@@ -396,7 +396,7 @@ static void s_start_destroy(struct aws_event_loop *event_loop) {
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     s_lock_synced_data(dispatch_loop);
-    enum aws_dispatch_queue_execution_state execution_state = dispatch_loop->synced_data.execution_state;
+    enum aws_dispatch_loop_execution_state execution_state = dispatch_loop->synced_data.execution_state;
     AWS_FATAL_ASSERT(execution_state == AWS_DLES_RUNNING || execution_state == AWS_DLES_SUSPENDED);
     if (execution_state == AWS_DLES_SUSPENDED) {
         dispatch_resume(dispatch_loop->dispatch_queue);
