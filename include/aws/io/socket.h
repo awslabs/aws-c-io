@@ -412,6 +412,10 @@ AWS_IO_API void aws_socket_endpoint_init_local_address_for_test(struct aws_socke
  * network_interface_name on Windows */
 AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
 
+/**
+ * Get default impl type based on the */
+AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
+
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
 

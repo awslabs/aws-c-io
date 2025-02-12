@@ -1943,6 +1943,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
             server_connection_args,
             s_on_listener_connection_established,
             server_connection_args)) {
+        s_server_connection_args_acquire(server_connection_args);
         goto cleanup_listener;
     }
 
