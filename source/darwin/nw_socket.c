@@ -633,8 +633,11 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
 
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
-        if (socket && readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
-            aws_socket_close(socket);
+        if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
+            nw_socket->synced_state.state &= ~CONNECTED_READ;
+            if (socket) {
+                socket->state &= ~CONNECTED_READ;
+            }
         }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
 

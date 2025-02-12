@@ -9,8 +9,6 @@
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/statistics.h>
 
-#include <aws/io/private/socket_impl.h>
-
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
@@ -19,6 +17,8 @@
 
 #include "statistics_handler_test.h"
 #include <read_write_test_handler.h>
+
+#include "../include/aws/io/private/socket_impl.h"
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 4996) /* allow strncpy() */
