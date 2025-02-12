@@ -35,6 +35,8 @@ int aws_socket_init_apple_nw_socket(
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
 
+enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
+
 struct aws_socket_vtable {
     void (*socket_cleanup_fn)(struct aws_socket *socket);
     int (*socket_connect_fn)(

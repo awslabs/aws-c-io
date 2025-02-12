@@ -9,6 +9,8 @@
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/statistics.h>
 
+#include <aws/io/private/socket_impl.h>
+
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/condition_variable.h>
@@ -396,17 +398,20 @@ static int s_local_server_tester_init(
         .setup_callback = s_socket_handler_test_server_listener_setup_callback,
         .user_data = args,
     };
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    tester->listener = aws_server_bootstrap_new_socket_listener_async(&bootstrap_options);
-    ASSERT_SUCCESS(aws_mutex_lock(args->mutex));
-    /* wait for listener to connected */
-    ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(args->condition_variable, args->mutex, s_listener_connected_predicate, args));
-    ASSERT_TRUE(args->error_code == AWS_OP_SUCCESS);
-    ASSERT_SUCCESS(aws_mutex_unlock(args->mutex));
-#else
-    tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
-#endif
+
+    if (tester->socket_options.impl_type == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK ||
+        (tester->socket_options.impl_type == AWS_SOCKET_IMPL_PLATFORM_DEFAULT &&
+         aws_socket_get_default_impl_type() == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK)) {
+        tester->listener = aws_server_bootstrap_new_socket_listener_async(&bootstrap_options);
+        ASSERT_SUCCESS(aws_mutex_lock(args->mutex));
+        /* wait for listener to connected */
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            args->condition_variable, args->mutex, s_listener_connected_predicate, args));
+        ASSERT_TRUE(args->error_code == AWS_OP_SUCCESS);
+        ASSERT_SUCCESS(aws_mutex_unlock(args->mutex));
+    } else {
+        tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
+    }
     ASSERT_NOT_NULL(tester->listener);
 
     /* find out which port the socket is bound to */
