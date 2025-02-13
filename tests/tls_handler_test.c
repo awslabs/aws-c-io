@@ -25,6 +25,7 @@
 #    include <statistics_handler_test.h>
 
 #    include <aws/io/private/pki_utils.h>
+#    include <aws/io/private/tls_channel_handler_private.h>
 
 /* badssl.com has occasional lags, make this timeout longer so we have a
  * higher chance of actually testing something. */
@@ -1443,6 +1444,140 @@ static int s_verify_good_host(
     return AWS_OP_SUCCESS;
 }
 
+static int s_verify_good_host_mqtt_connect(
+    struct aws_allocator *allocator,
+    const struct aws_string *host_name,
+    uint32_t port,
+    void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
+
+    struct aws_byte_buf cert_buf = {0};
+    struct aws_byte_buf key_buf = {0};
+    struct aws_byte_buf ca_buf = {0};
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "tls13_device.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "tls13_device.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "tls13_device_root_ca.pem.crt"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
+
+    aws_io_library_init(allocator);
+
+    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
+
+    uint8_t outgoing_received_message[128] = {0};
+
+    struct tls_test_rw_args outgoing_rw_args;
+    ASSERT_SUCCESS(s_tls_rw_args_init(
+        &outgoing_rw_args,
+        &c_tester,
+        aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message))));
+
+    struct tls_test_args outgoing_args = {
+        .mutex = &c_tester.mutex,
+        .allocator = allocator,
+        .condition_variable = &c_tester.condition_variable,
+        .error_invoked = 0,
+        .rw_handler = NULL,
+        .server = false,
+        .tls_levels_negotiated = 0,
+        .desired_tls_levels = 1,
+        .shutdown_finished = false,
+    };
+
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_ZERO_STRUCT(tls_options);
+
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+    aws_tls_ctx_options_set_verify_peer(&tls_options, false);
+    aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
+
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+
+    if (override_tls_options_fn) {
+        (*override_tls_options_fn)(&tls_options);
+    }
+
+    struct aws_tls_connection_options tls_client_conn_options;
+    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, tls_context);
+    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
+
+    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
+
+    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
+    aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "x-amzn-mqtt-ca");
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 10000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+
+    struct aws_client_bootstrap_options bootstrap_options = {
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
+    ASSERT_NOT_NULL(client_bootstrap);
+
+    struct aws_socket_channel_bootstrap_options channel_options;
+    AWS_ZERO_STRUCT(channel_options);
+    channel_options.bootstrap = client_bootstrap;
+    channel_options.host_name = aws_string_c_str(host_name);
+    channel_options.port = port;
+    channel_options.socket_options = &options;
+    channel_options.tls_options = &tls_client_conn_options;
+    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
+    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
+    channel_options.user_data = &outgoing_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
+
+    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
+     * done messed up. */
+    aws_tls_connection_options_clean_up(&tls_client_conn_options);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_setup_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    ASSERT_FALSE(outgoing_args.error_invoked);
+    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("x-amzn-mqtt-ca");
+    /* check ALPN and SNI was properly negotiated */
+    if (aws_tls_is_alpn_available() && tls_options.verify_peer) {
+        ASSERT_BIN_ARRAYS_EQUALS(
+            expected_protocol.buffer,
+            expected_protocol.len,
+            outgoing_args.negotiated_protocol.buffer,
+            outgoing_args.negotiated_protocol.len);
+    }
+
+    ASSERT_BIN_ARRAYS_EQUALS(
+        host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    /* cleanups */
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
+    aws_byte_buf_clean_up(&ca_buf);
+    aws_tls_ctx_release(tls_context);
+    aws_tls_ctx_options_clean_up(&tls_options);
+    aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+
+    return AWS_OP_SUCCESS;
+}
+
 static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     return s_verify_good_host(allocator, s_amazon_host_name, 443, NULL);
@@ -1465,8 +1600,36 @@ static int s_tls_client_channel_negotiation_success_ecc384_fn(struct aws_allocat
     (void)ctx;
     return s_verify_good_host(allocator, s_badssl_ecc384_host_name, 443, NULL);
 }
-
 AWS_TEST_CASE(tls_client_channel_negotiation_success_ecc384, s_tls_client_channel_negotiation_success_ecc384_fn)
+
+#    ifdef _WIN32
+
+static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    // Force using SCHANNEL_CREDS for testing
+    aws_windows_force_schannel_creds(true);
+    s_verify_good_host(allocator, s_badssl_ecc384_host_name, 443, NULL);
+    aws_windows_force_schannel_creds(false); // reset
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_ecc384_deprecated,
+    s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
+#    endif
+
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
+static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_mtls_tls1_3,
+    s_tls_client_channel_negotiation_success_mtls_tls1_3_fn)
 
 AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 

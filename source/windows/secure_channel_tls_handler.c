@@ -15,13 +15,19 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/logging.h>
 #include <aws/io/private/pki_utils.h>
+#include <aws/io/private/tls_channel_handler_private.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
+/* To use the SCH_CREDENTIALS structure, define SCHANNEL_USE_BLACKLISTS  */
+#define SCHANNEL_USE_BLACKLISTS
 #include <Windows.h>
+
+#include <SubAuth.h>
 
 #include <schannel.h>
 #include <security.h>
+#include <sspi.h>
 
 #include <errno.h>
 #include <inttypes.h>
@@ -39,8 +45,11 @@
 #define READ_OUT_SIZE (16 * KB_1)
 #define READ_IN_SIZE READ_OUT_SIZE
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
+#define WINDOWS_BUILD_1809 1809
 
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
+
+static bool s_use_schannel_creds = false;
 
 void aws_tls_init_static_state(struct aws_allocator *alloc) {
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using SecureChannel (SSPI).");
@@ -49,9 +58,16 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
 void aws_tls_clean_up_static_state(void) {}
 
+struct common_credential_params {
+    DWORD dwFlags;
+    PCCERT_CONTEXT *paCred;
+    DWORD cCreds;
+};
+
 struct secure_channel_ctx {
     struct aws_tls_ctx ctx;
     struct aws_string *alpn_list;
+    struct common_credential_params schannel_creds;
     SCHANNEL_CRED credentials;
     PCCERT_CONTEXT pcerts;
     HCERTSTORE cert_store;
@@ -60,6 +76,8 @@ struct secure_channel_ctx {
     HCRYPTKEY private_key;
     bool verify_peer;
     bool should_free_pcerts;
+    enum aws_tls_versions minimum_tls_version;
+    bool disable_tls13;
 };
 
 struct secure_channel_handler {
@@ -122,6 +140,49 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     }
 
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
+}
+
+/* Checks whether current system is running Windows 10 version `build_number` or later. This check is used
+   to determin availability of TLS 1.3. This will continue to be a valid check in Windows 11 and later as the
+   build number continues to increment upwards. e.g. Windows 11 starts at version 21H2 (build 22_000) */
+static bool s_is_windows_equal_or_above_version(DWORD build_number) {
+    ULONGLONG dwlConditionMask = 0;
+    BYTE op = VER_GREATER_EQUAL;
+    OSVERSIONINFOEX osvi;
+
+    NTSTATUS status = STATUS_DLL_NOT_FOUND;
+
+    ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+    osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
+    osvi.dwBuildNumber = build_number;
+
+    dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_BUILDNUMBER, op);
+    typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
+        OSVERSIONINFOEX * lpVersionInformation, ULONG TypeMask, ULONGLONG ConditionMask);
+
+    pRtlGetVersionInfo f;
+    f = (pRtlGetVersionInfo)GetProcAddress(GetModuleHandle("ntdll"), "RtlVerifyVersionInfo");
+
+    if (f) {
+        status = f(&osvi, VER_BUILDNUMBER, dwlConditionMask);
+    } else {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_TLS,
+            "Could not load ntdll: Falling back to earlier windows version before build %d",
+            build_number);
+        status = STATUS_DLL_NOT_FOUND;
+    }
+    if (status == STATUS_SUCCESS) {
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Checking Windows Version: running windows build %u or later", build_number);
+        return true;
+    } else if (status != STATUS_DLL_NOT_FOUND) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "Checking Windows Version: Running earlier windows 10 version before build %u",
+            build_number);
+        return false;
+    }
+    return false;
 }
 
 bool aws_tls_is_alpn_available(void) {
@@ -731,19 +792,27 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: ALPN is configured. Checking for negotiated protocol", handler);
 
-            if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
-                aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
-                memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
-                memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
-                sc_handler->protocol.len = alpn_result.ProtocolIdSize;
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS, "id=%p: negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+            if (status == SEC_E_OK) {
+                if (alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
+                    aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
+                    memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
+                    memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
+                    sc_handler->protocol.len = alpn_result.ProtocolIdSize;
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_TLS, "id=%p: negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+                } else {
+                    /* this is not an error */
+                    AWS_LOGF_INFO(
+                        AWS_LS_IO_TLS, "id=%p: ALPN - no protocol was negotiated during TLS handshake", handler);
+                }
             } else {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
                     "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
                     handler,
                     (int)status);
+                aws_error = s_determine_sspi_error(status);
+                goto cleanup;
             }
         }
 #endif
@@ -949,7 +1018,6 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         &output_buffers_desc,
         &sc_handler->ctx_ret_flags,
         &sc_handler->sspi_timestamp);
-
     if (status != SEC_E_INCOMPLETE_MESSAGE && status != SEC_I_CONTINUE_NEEDED && status != SEC_E_OK) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS, "id=%p: Error during negotiation. SECURITY_STATUS is %d", (void *)handler, (int)status);
@@ -1019,21 +1087,30 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Retrieving negotiated protocol.", handler);
             SecPkgContext_ApplicationProtocol alpn_result;
-            status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
+            SECURITY_STATUS alpn_status =
+                QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
 
-            if (status == SEC_E_OK && alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
-                aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
-                memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
-                memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
-                sc_handler->protocol.len = alpn_result.ProtocolIdSize;
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_TLS, "id=%p: Negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+            if (alpn_status == SEC_E_OK) {
+                if (alpn_result.ProtoNegoStatus == SecApplicationProtocolNegotiationStatus_Success) {
+                    aws_byte_buf_init(&sc_handler->protocol, handler->alloc, alpn_result.ProtocolIdSize + 1);
+                    memset(sc_handler->protocol.buffer, 0, alpn_result.ProtocolIdSize + 1);
+                    memcpy(sc_handler->protocol.buffer, alpn_result.ProtocolId, alpn_result.ProtocolIdSize);
+                    sc_handler->protocol.len = alpn_result.ProtocolIdSize;
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_TLS, "id=%p: Negotiated protocol %s", handler, (char *)sc_handler->protocol.buffer);
+                } else {
+                    /* this is not an error */
+                    AWS_LOGF_INFO(
+                        AWS_LS_IO_TLS, "id=%p: ALPN - no negotiated protocol was returned by remote endpoint", handler);
+                }
             } else {
                 AWS_LOGF_WARN(
                     AWS_LS_IO_TLS,
                     "id=%p: Error retrieving negotiated protocol. SECURITY_STATUS is %d",
                     handler,
-                    (int)status);
+                    (int)alpn_status);
+                aws_error = s_determine_sspi_error(alpn_status);
+                goto cleanup;
             }
         }
 #endif
@@ -1091,7 +1168,7 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
         if (status == SEC_E_OK) {
             error = AWS_OP_SUCCESS;
             /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process.
-               If SECBUFFER_DATA is the type for the fourth buffer we need to keep track of it so we can shift
+               If SECBUFFER_EXTRA is the type for the fourth buffer we need to keep track of it so we can shift
                everything before doing another decrypt operation.
                We don't care what's in the third buffer for TLS usage.*/
             if (input_buffers[1].BufferType == SECBUFFER_DATA) {
@@ -1103,9 +1180,8 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                     aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
                 int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
                 AWS_FATAL_ASSERT(!append_failed);
-
                 /* if we have extra we have to move the pointer and do another Decrypt operation. */
-                if (input_buffers[3].BufferType == SECBUFFER_EXTRA) {
+                if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0) {
                     sc_handler->read_extra = input_buffers[3].cbBuffer;
                     AWS_LOGF_TRACE(
                         AWS_LS_IO_TLS,
@@ -1121,6 +1197,123 @@ static int s_do_application_data_decrypt(struct aws_channel_handler *handler) {
                         "id=%p: Decrypt ended exactly on the end of the record, resetting buffer.",
                         (void *)handler);
                 }
+            }
+        }
+        /* With TLS1.3 on SChannel a call to DecryptMessage can return SEC_I_RENEGOTIATE, at this point a client must
+         * call again InitializeSecurityContext with the data received from DecryptMessage until SEC_E_OK is received */
+        else if (status == SEC_I_RENEGOTIATE) {
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Renegotiation received", (void *)handler);
+
+            /* if SECBUFFER_DATA is the buffer type of the second buffer, we have decrypted data to process. */
+            if (input_buffers[1].BufferType == SECBUFFER_DATA) {
+                size_t decrypted_length = input_buffers[1].cbBuffer;
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS, "id=%p: Decrypted message with length %zu.", (void *)handler, decrypted_length);
+
+                struct aws_byte_cursor to_append =
+                    aws_byte_cursor_from_array(input_buffers[1].pvBuffer, decrypted_length);
+                int append_failed = aws_byte_buf_append(&sc_handler->buffered_read_out_data_buf, &to_append);
+                AWS_FATAL_ASSERT(!append_failed);
+            }
+
+            /*
+             * The following diagram visualizes a case, when DecryptMessage returns SEC_I_RENEGOTIATE while processing
+             * extra data (i.e. we're at the second or later iteration of the loop). This case is not necessarily
+             * possible, but it helps with understanding the logic of processing received data.
+             *
+             * At the second+ iteration, algorithm percepts sc_handler->buffered_read_in_data_buf like this:
+             * +-----------------------+----------------+-----------------+
+             * |        offset         | decrypted data | SECBUFFER_EXTRA |
+             * +-----------------------+----------------+-----------------+
+             * | data was decrypted on |                                  |
+             * | previous iterations   |        current iteration         |
+             *
+             *  ----------------------------------------------------------   sc_handler->buffered_read_in_data_buf,
+             *                                                                 a whole chunk of data read from a socket
+             *  -----------------------                                      part of buffer that was decrypted on the
+             *                                                                 previous step(s)
+             *                          ----------------------------------   SECBUFFER_EXTRA from the previous step,
+             *                                                                 with length read_len
+             *
+             *  We need to pass only the last segment, SECBUFFER_EXTRA, to InitializeSecurityContextA.
+             */
+            size_t extra_data_offset = offset;
+            if (input_buffers[3].BufferType == SECBUFFER_EXTRA && input_buffers[3].cbBuffer > 0 &&
+                input_buffers[3].cbBuffer < read_len) {
+                extra_data_offset = offset + read_len - input_buffers[3].cbBuffer;
+            }
+
+            SecBuffer input_buffers2[] = {
+                [0] =
+                    {
+                        .pvBuffer = sc_handler->buffered_read_in_data_buf.buffer + extra_data_offset,
+                        .cbBuffer = (unsigned long)(sc_handler->buffered_read_in_data_buf.len - extra_data_offset),
+                        .BufferType = SECBUFFER_TOKEN,
+                    },
+                [1] =
+                    {
+                        .pvBuffer = NULL,
+                        .cbBuffer = 0,
+                        .BufferType = SECBUFFER_EMPTY,
+                    },
+            };
+
+            SecBufferDesc input_bufs_desc = {
+                .ulVersion = SECBUFFER_VERSION,
+                .cBuffers = 2,
+                .pBuffers = input_buffers2,
+            };
+
+            SecBuffer output_buffers[3];
+            AWS_ZERO_ARRAY(output_buffers);
+            output_buffers[0].BufferType = SECBUFFER_TOKEN;
+            output_buffers[1].BufferType = SECBUFFER_ALERT;
+            output_buffers[2].BufferType = SECBUFFER_EMPTY;
+
+            SecBufferDesc output_buffers_desc = {
+                .ulVersion = SECBUFFER_VERSION,
+                .cBuffers = 3,
+                .pBuffers = output_buffers,
+            };
+            char server_name_cstr[256];
+            AWS_ZERO_ARRAY(server_name_cstr);
+            AWS_FATAL_ASSERT(sc_handler->server_name.len < sizeof(server_name_cstr));
+            memcpy(server_name_cstr, sc_handler->server_name.buffer, sc_handler->server_name.len);
+
+            status = InitializeSecurityContextA(
+                &sc_handler->creds,
+                &sc_handler->sec_handle,
+                (SEC_CHAR *)server_name_cstr,
+                sc_handler->ctx_req,
+                0,
+                0,
+                &input_bufs_desc,
+                0,
+                NULL,
+                &output_buffers_desc,
+                &sc_handler->ctx_ret_flags,
+                NULL);
+            if (status == SEC_E_OK) {
+                error = AWS_OP_SUCCESS;
+                /* If renegotiating InitializeSecurityContextA returns SECBUFFER_EXTRA data, we should process it as
+                 * usual, i.e. pass to DecryptMessage on the next iteration. */
+                if (input_buffers2[1].BufferType == SECBUFFER_EXTRA) {
+                    sc_handler->read_extra = input_buffers2[1].cbBuffer;
+                }
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Successfully renegotiated; got %zu bytes of extra data to decrypt",
+                    (void *)handler,
+                    sc_handler->read_extra);
+
+            } else {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "id=%p: Error InitializeSecurityContext after renegotiation. status %d",
+                    (void *)handler,
+                    (int)status);
+                error = AWS_OP_ERR;
+                break;
             }
         }
         /* SEC_E_INCOMPLETE_MESSAGE means the message we tried to decrypt isn't a full record and we need to
@@ -1782,50 +1975,14 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .gather_statistics = s_gather_statistics,
 };
 
-static struct aws_channel_handler *s_tls_handler_new(
+static struct aws_channel_handler *s_tls_handler_new_common(
     struct aws_allocator *alloc,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
-    bool is_client_mode) {
-    AWS_ASSERT(options->ctx);
-
-    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
-    if (!sc_handler) {
-        return NULL;
-    }
-
-    sc_handler->handler.alloc = alloc;
-    sc_handler->handler.impl = sc_handler;
-    sc_handler->handler.vtable = &s_handler_vtable;
-    sc_handler->handler.slot = slot;
-
-    aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
+    bool is_client_mode,
+    struct secure_channel_handler *sc_handler) {
 
     struct secure_channel_ctx *sc_ctx = options->ctx->impl;
-
-    unsigned long credential_use = SECPKG_CRED_INBOUND;
-    if (is_client_mode) {
-        credential_use = SECPKG_CRED_OUTBOUND;
-    }
-
-    SECURITY_STATUS status = AcquireCredentialsHandleA(
-        NULL,
-        UNISP_NAME,
-        credential_use,
-        NULL,
-        &sc_ctx->credentials,
-        NULL,
-        NULL,
-        &sc_handler->creds,
-        &sc_handler->sspi_timestamp);
-
-    if (status != SEC_E_OK) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
-        int aws_error = s_determine_sspi_error(status);
-        aws_raise_error(aws_error);
-        goto on_error;
-    }
-
     sc_handler->advertise_alpn_message = options->advertise_alpn_message;
     sc_handler->on_data_read = options->on_data_read;
     sc_handler->on_error = options->on_error;
@@ -1843,6 +2000,10 @@ static struct aws_channel_handler *s_tls_handler_new(
             goto on_error;
         }
     }
+    sc_handler->handler.alloc = alloc;
+    sc_handler->handler.impl = sc_handler;
+    sc_handler->handler.vtable = &s_handler_vtable;
+    sc_handler->handler.slot = slot;
 
     if (options->server_name) {
         AWS_LOGF_DEBUG(
@@ -1881,6 +2042,252 @@ on_error:
 
     return NULL;
 }
+
+static DWORD s_get_disabled_protocols(
+    enum aws_tls_versions minimum_tls_version,
+    bool is_client_mode,
+    bool disable_tls13) {
+    DWORD bit_disabled_protocols = 0;
+    if (is_client_mode) {
+        switch (minimum_tls_version) {
+            case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_2_CLIENT)
+                bit_disabled_protocols |= SP_PROT_TLS1_2_CLIENT;
+#endif
+            case AWS_IO_TLSv1_2:
+                bit_disabled_protocols |= SP_PROT_TLS1_1_CLIENT;
+            case AWS_IO_TLSv1_1:
+                bit_disabled_protocols |= SP_PROT_TLS1_0_CLIENT;
+            case AWS_IO_TLSv1:
+                bit_disabled_protocols |= SP_PROT_SSL3_CLIENT;
+            case AWS_IO_SSLv3:
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                bit_disabled_protocols = 0;
+                break;
+        }
+#if defined(SP_PROT_TLS1_3_CLIENT)
+        if (disable_tls13) {
+            bit_disabled_protocols |= SP_PROT_TLS1_3_CLIENT;
+        }
+#endif
+    } else {
+        switch (minimum_tls_version) {
+            case AWS_IO_TLSv1_3:
+#if defined(SP_PROT_TLS1_2_SERVER)
+                bit_disabled_protocols |= SP_PROT_TLS1_2_SERVER;
+#endif
+            case AWS_IO_TLSv1_2:
+                bit_disabled_protocols |= SP_PROT_TLS1_1_SERVER;
+            case AWS_IO_TLSv1_1:
+                bit_disabled_protocols |= SP_PROT_TLS1_0_SERVER;
+            case AWS_IO_TLSv1:
+                bit_disabled_protocols |= SP_PROT_SSL3_SERVER;
+            case AWS_IO_SSLv3:
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                bit_disabled_protocols = 0;
+                break;
+        }
+#if defined(SP_PROT_TLS1_3_SERVER)
+        if (!disable_tls13) {
+            bit_disabled_protocols |= SP_PROT_TLS1_3_SERVER;
+        }
+#endif
+    }
+    return bit_disabled_protocols;
+}
+
+static DWORD s_get_enabled_protocols(enum aws_tls_versions minimum_tls_version, bool is_client_mode) {
+    DWORD bit_enabled_protocols = 0;
+    if (is_client_mode) {
+        switch (minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                bit_enabled_protocols |= SP_PROT_SSL3_CLIENT;
+            case AWS_IO_TLSv1:
+                bit_enabled_protocols |= SP_PROT_TLS1_0_CLIENT;
+            case AWS_IO_TLSv1_1:
+                bit_enabled_protocols |= SP_PROT_TLS1_1_CLIENT;
+            case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_CLIENT)
+                bit_enabled_protocols |= SP_PROT_TLS1_2_CLIENT;
+#endif
+            case AWS_IO_TLSv1_3:
+                /* This function is used for SCHANNEL_CRED only, which doesn't support TLS 1.3. */
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                bit_enabled_protocols = 0;
+                break;
+        }
+    } else {
+        switch (minimum_tls_version) {
+            case AWS_IO_SSLv3:
+                bit_enabled_protocols |= SP_PROT_SSL3_SERVER;
+            case AWS_IO_TLSv1:
+                bit_enabled_protocols |= SP_PROT_TLS1_0_SERVER;
+            case AWS_IO_TLSv1_1:
+                bit_enabled_protocols |= SP_PROT_TLS1_1_SERVER;
+            case AWS_IO_TLSv1_2:
+#if defined(SP_PROT_TLS1_2_SERVER)
+                bit_enabled_protocols |= SP_PROT_TLS1_2_SERVER;
+#endif
+            case AWS_IO_TLSv1_3:
+                /* This function is used for SCHANNEL_CRED only, which doesn't support TLS 1.3. */
+                break;
+            case AWS_IO_TLS_VER_SYS_DEFAULTS:
+                bit_enabled_protocols = 0;
+                break;
+        }
+    }
+    return bit_enabled_protocols;
+}
+
+static struct aws_channel_handler *s_tls_handler_sch_credentials_new(
+
+    struct aws_allocator *alloc,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    bool is_client_mode) {
+
+    AWS_ASSERT(options->ctx);
+
+    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
+    if (!sc_handler) {
+        return NULL;
+    }
+    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
+
+    SCH_CREDENTIALS credentials = {0};
+
+    ZeroMemory(&credentials, sizeof(SCH_CREDENTIALS));
+
+    TLS_PARAMETERS tls_params = {0};
+    tls_params.grbitDisabledProtocols =
+        s_get_disabled_protocols(sc_ctx->minimum_tls_version, is_client_mode, sc_ctx->disable_tls13);
+
+    credentials.pTlsParameters = &tls_params;
+    credentials.cTlsParameters = 1;
+    credentials.dwSessionLifespan = 0; /* default 10 hours */
+    credentials.dwVersion = SCH_CREDENTIALS_VERSION;
+    credentials.dwCredFormat = 0;
+    credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
+    credentials.paCred = sc_ctx->schannel_creds.paCred;
+    credentials.cCreds = sc_ctx->schannel_creds.cCreds;
+
+    aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
+
+    unsigned long credential_use = SECPKG_CRED_INBOUND;
+    if (is_client_mode) {
+        credential_use = SECPKG_CRED_OUTBOUND;
+    }
+
+    SECURITY_STATUS status = AcquireCredentialsHandleA(
+        NULL,
+        UNISP_NAME,
+        credential_use,
+        NULL,
+        &credentials,
+        NULL,
+        NULL,
+        &sc_handler->creds,
+        &sc_handler->sspi_timestamp);
+
+    if (status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        goto on_error;
+    }
+
+    return s_tls_handler_new_common(alloc, options, slot, is_client_mode, sc_handler);
+
+on_error:
+
+    s_secure_channel_handler_destroy(alloc, sc_handler);
+
+    return NULL;
+}
+
+static struct aws_channel_handler *s_tls_handler_schannel_cred_new(
+    struct aws_allocator *alloc,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    bool is_client_mode) {
+    AWS_ASSERT(options->ctx);
+
+    struct secure_channel_handler *sc_handler = aws_mem_calloc(alloc, 1, sizeof(struct secure_channel_handler));
+    if (!sc_handler) {
+        return NULL;
+    }
+
+    struct secure_channel_ctx *sc_ctx = options->ctx->impl;
+
+    /* Windows doesn't support TLS 1.3 with deprecated SCHANNEL_CRED. */
+    if (sc_ctx->minimum_tls_version == AWS_IO_TLSv1_3) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Minimum TLS version is set to 1.3, but SCHANNEL_CRED can't support it");
+        return NULL;
+    }
+
+    SCHANNEL_CRED credentials = {0};
+    credentials.dwVersion = SCHANNEL_CRED_VERSION;
+    credentials.dwCredFormat = 0;
+    credentials.dwFlags = sc_ctx->schannel_creds.dwFlags;
+    credentials.paCred = sc_ctx->schannel_creds.paCred;
+    credentials.cCreds = sc_ctx->schannel_creds.cCreds;
+    sc_ctx->disable_tls13 = true;
+    credentials.grbitEnabledProtocols = s_get_enabled_protocols(sc_ctx->minimum_tls_version, is_client_mode);
+
+    aws_tls_channel_handler_shared_init(&sc_handler->shared_state, &sc_handler->handler, options);
+
+    unsigned long credential_use = SECPKG_CRED_INBOUND;
+    if (is_client_mode) {
+        credential_use = SECPKG_CRED_OUTBOUND;
+    }
+
+    SECURITY_STATUS status = AcquireCredentialsHandleA(
+        NULL,
+        UNISP_NAME,
+        credential_use,
+        NULL,
+        &credentials,
+        NULL,
+        NULL,
+        &sc_handler->creds,
+        &sc_handler->sspi_timestamp);
+
+    if (status != SEC_E_OK) {
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        int aws_error = s_determine_sspi_error(status);
+        aws_raise_error(aws_error);
+        goto on_error;
+    }
+
+    return s_tls_handler_new_common(alloc, options, slot, is_client_mode, sc_handler);
+
+on_error:
+
+    s_secure_channel_handler_destroy(alloc, sc_handler);
+
+    return NULL;
+}
+
+void aws_windows_force_schannel_creds(bool use_schannel_creds) {
+    s_use_schannel_creds = use_schannel_creds;
+}
+
+static struct aws_channel_handler *s_tls_handler_new(
+    struct aws_allocator *alloc,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot,
+    bool is_client_mode) {
+
+    /* check if run on Windows 10 build 1809, (build 17_763) */
+    if (s_is_windows_equal_or_above_version(WINDOWS_BUILD_1809) && !s_use_schannel_creds) {
+        return s_tls_handler_sch_credentials_new(alloc, options, slot, is_client_mode);
+    }
+    return s_tls_handler_schannel_cred_new(alloc, options, slot, is_client_mode);
+}
+
 struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
@@ -1942,6 +2349,10 @@ struct aws_tls_ctx *s_ctx_new(
     const struct aws_tls_ctx_options *options,
     bool is_client_mode) {
 
+    DWORD dw_flags = 0;
+    PCCERT_CONTEXT *pa_cred = NULL;
+    DWORD creds = 0;
+
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
@@ -1968,58 +2379,13 @@ struct aws_tls_ctx *s_ctx_new(
     }
 
     secure_channel_ctx->verify_peer = options->verify_peer;
-    secure_channel_ctx->credentials.dwVersion = SCHANNEL_CRED_VERSION;
     secure_channel_ctx->should_free_pcerts = true;
-
-    secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-
-    if (is_client_mode) {
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_CLIENT;
-            case AWS_IO_TLSv1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_CLIENT;
-            case AWS_IO_TLSv1_1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_CLIENT;
-            case AWS_IO_TLSv1_2:
-#if defined(SP_PROT_TLS1_2_CLIENT)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_CLIENT;
-#endif
-            case AWS_IO_TLSv1_3:
-#if defined(SP_PROT_TLS1_3_CLIENT)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_CLIENT;
-#endif
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-                break;
-        }
-    } else {
-        switch (options->minimum_tls_version) {
-            case AWS_IO_SSLv3:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_SSL3_SERVER;
-            case AWS_IO_TLSv1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_0_SERVER;
-            case AWS_IO_TLSv1_1:
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_1_SERVER;
-            case AWS_IO_TLSv1_2:
-#if defined(SP_PROT_TLS1_2_SERVER)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_2_SERVER;
-#endif
-            case AWS_IO_TLSv1_3:
-#if defined(SP_PROT_TLS1_3_SERVER)
-                secure_channel_ctx->credentials.grbitEnabledProtocols |= SP_PROT_TLS1_3_SERVER;
-#endif
-                break;
-            case AWS_IO_TLS_VER_SYS_DEFAULTS:
-                secure_channel_ctx->credentials.grbitEnabledProtocols = 0;
-                break;
-        }
-    }
+    secure_channel_ctx->disable_tls13 = false;
+    secure_channel_ctx->minimum_tls_version = options->minimum_tls_version;
 
     if (options->verify_peer && aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: loading custom CA file.");
-        secure_channel_ctx->credentials.dwFlags = SCH_CRED_MANUAL_CRED_VALIDATION;
+        dw_flags |= SCH_CRED_MANUAL_CRED_VALIDATION;
 
         struct aws_byte_cursor ca_blob_cur = aws_byte_cursor_from_buf(&options->ca_file);
         int error = aws_import_trusted_certificates(alloc, &ca_blob_cur, &secure_channel_ctx->custom_trust_store);
@@ -2029,7 +2395,7 @@ struct aws_tls_ctx *s_ctx_new(
             goto clean_up;
         }
     } else if (is_client_mode) {
-        secure_channel_ctx->credentials.dwFlags = SCH_CRED_AUTO_CRED_VALIDATION;
+        dw_flags |= SCH_CRED_AUTO_CRED_VALIDATION;
     }
 
     if (is_client_mode && !options->verify_peer) {
@@ -2037,17 +2403,16 @@ struct aws_tls_ctx *s_ctx_new(
             AWS_LS_IO_TLS,
             "static: x.509 validation has been disabled. "
             "If this is not running in a test environment, this is likely a security vulnerability.");
-
-        secure_channel_ctx->credentials.dwFlags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
-        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK |
-                                                   SCH_CRED_IGNORE_REVOCATION_OFFLINE | SCH_CRED_NO_SERVERNAME_CHECK |
-                                                   SCH_CRED_MANUAL_CRED_VALIDATION;
+        dw_flags &= ~(SCH_CRED_AUTO_CRED_VALIDATION);
+        dw_flags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK | SCH_CRED_IGNORE_REVOCATION_OFFLINE |
+                    SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
     } else if (is_client_mode) {
-        secure_channel_ctx->credentials.dwFlags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
+        dw_flags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
     }
 
     /* if someone wants to use broken algorithms like rc4/md5/des they'll need to ask for a special control */
-    secure_channel_ctx->credentials.dwFlags |= SCH_USE_STRONG_CRYPTO;
+    dw_flags |= SCH_USE_STRONG_CRYPTO;
+    dw_flags |= SCH_CRED_NO_DEFAULT_CREDS;
 
     /* if using a system store. */
     if (options->system_certificate_path) {
@@ -2058,9 +2423,8 @@ struct aws_tls_ctx *s_ctx_new(
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to load %s", options->system_certificate_path);
             goto clean_up;
         }
-
-        secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
-        secure_channel_ctx->credentials.cCreds = 1;
+        pa_cred = &secure_channel_ctx->pcerts;
+        creds = 1;
         /* if using traditional PEM armored PKCS#7 and ASN Encoding public/private key pairs */
     } else if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
 
@@ -2088,7 +2452,8 @@ struct aws_tls_ctx *s_ctx_new(
             &secure_channel_ctx->cert_store,
             &secure_channel_ctx->pcerts,
             &secure_channel_ctx->crypto_provider,
-            &secure_channel_ctx->private_key);
+            &secure_channel_ctx->private_key,
+            &secure_channel_ctx->disable_tls13);
 
         if (err) {
             AWS_LOGF_ERROR(
@@ -2096,10 +2461,19 @@ struct aws_tls_ctx *s_ctx_new(
             goto clean_up;
         }
 
-        secure_channel_ctx->credentials.paCred = &secure_channel_ctx->pcerts;
-        secure_channel_ctx->credentials.cCreds = 1;
+        if (secure_channel_ctx->disable_tls13 && options->minimum_tls_version == AWS_IO_TLSv1_3) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: minimum TLS version is set to 1.3, but it can't be supported");
+            goto clean_up;
+        }
+
+        pa_cred = &secure_channel_ctx->pcerts;
+        creds = 1;
         secure_channel_ctx->should_free_pcerts = false;
     }
+
+    secure_channel_ctx->schannel_creds.dwFlags = dw_flags;
+    secure_channel_ctx->schannel_creds.paCred = pa_cred;
+    secure_channel_ctx->schannel_creds.cCreds = creds;
 
     return &secure_channel_ctx->ctx;
 
