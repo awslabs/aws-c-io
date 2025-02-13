@@ -631,7 +631,7 @@ static bool s_should_schedule_iteration(
  * aws_dispatch_loop->sycned_data
  */
 static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop, uint64_t timestamp) {
-    if (dispatch_loop->synced_data.execution_state == AWS_DLES_SUSPENDED || dispatch_loop->synced_data.is_executing) {
+    if (dispatch_loop->synced_data.execution_state != AWS_DLES_RUNNING) {
         return;
     }
 
