@@ -100,6 +100,7 @@ struct nw_socket_scheduled_task_args {
     struct aws_allocator *allocator;
     struct nw_socket *nw_socket;
     dispatch_data_t data;
+    bool is_complete;
 };
 
 struct nw_socket_written_args {
@@ -636,7 +637,7 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
 
         aws_mutex_lock(&nw_socket->synced_state.lock);
 
-        if (readable_args->error_code == AWS_IO_SOCKET_CLOSED) {
+        if (readable_args->is_complete) {
             nw_socket->synced_state.state &= ~CONNECTED_READ;
             if (socket) {
                 socket->state &= ~CONNECTED_READ;
@@ -666,7 +667,11 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     aws_mem_release(readable_args->allocator, readable_args);
 }
 
-static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code, dispatch_data_t data) {
+static void s_schedule_on_readable(
+    struct nw_socket *nw_socket,
+    int error_code,
+    dispatch_data_t data,
+    bool is_complete) {
 
     aws_mutex_lock(&nw_socket->synced_data.lock);
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
@@ -676,6 +681,7 @@ static void s_schedule_on_readable(struct nw_socket *nw_socket, int error_code, 
         struct nw_socket_scheduled_task_args *args =
             aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
 
+        args->is_complete = is_complete;
         args->nw_socket = nw_socket;
         args->allocator = nw_socket->allocator;
         args->error_code = error_code;
@@ -877,7 +883,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
             aws_mutex_lock(&nw_socket->synced_data.lock);
         } else if (socket && socket->readable_fn) {
             aws_mutex_unlock(&nw_socket->synced_data.lock);
-            s_schedule_on_readable(nw_socket, nw_socket->last_error, NULL);
+            s_schedule_on_readable(nw_socket, nw_socket->last_error, NULL, false);
             aws_mutex_lock(&nw_socket->synced_data.lock);
         }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
@@ -1838,10 +1844,10 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                       error = AWS_IO_SOCKET_CLOSED;
                   }
                   aws_mutex_unlock(&nw_socket->synced_data.lock);
+              } else {
+                  // schedule next read to get future I/O event
+                  s_schedule_next_read(nw_socket);
               }
-
-              // schedule next read to get future I/O event
-              s_schedule_next_read(nw_socket);
 
               AWS_LOGF_TRACE(
                   AWS_LS_IO_SOCKET,
@@ -1850,7 +1856,7 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                   (void *)nw_socket->nw_connection,
                   data ? (int)dispatch_data_get_size(data) : 0);
 
-              s_schedule_on_readable(nw_socket, error, data);
+              s_schedule_on_readable(nw_socket, error, data, is_complete);
 
           } else {
               int error_code = s_determine_socket_error(nw_error_get_error_code(error));
@@ -1863,7 +1869,7 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                   (void *)nw_socket->nw_connection,
                   error_code);
               // the data might still be partially available on an error
-              s_schedule_on_readable(nw_socket, error_code, data);
+              s_schedule_on_readable(nw_socket, error_code, data, is_complete);
           }
 
           AWS_LOGF_DEBUG(
