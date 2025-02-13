@@ -630,6 +630,11 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
             node->received_data = readable_args->data;
             aws_linked_list_push_back(&nw_socket->read_queue, &node->node);
             data_processed = true;
+            AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: read data is not emtpy, push data to read_queue",
+            (void *)nw_socket,
+            (void *)nw_socket->nw_connection);
         }
 
         aws_mutex_lock(&nw_socket->synced_data.lock);
@@ -642,6 +647,11 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
             if (socket) {
                 socket->state &= ~CONNECTED_READ;
             }
+            AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: socket is complete, flip read flag",
+            (void *)nw_socket,
+            (void *)nw_socket->nw_connection);
         }
         aws_mutex_unlock(&nw_socket->synced_state.lock);
 
@@ -1844,10 +1854,10 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                       error = AWS_IO_SOCKET_CLOSED;
                   }
                   aws_mutex_unlock(&nw_socket->synced_data.lock);
-              } else {
-                  // schedule next read to get future I/O event
-                  s_schedule_next_read(nw_socket);
               }
+
+              // schedule next read to get future I/O event
+              s_schedule_next_read(nw_socket);
 
               AWS_LOGF_TRACE(
                   AWS_LS_IO_SOCKET,
@@ -1924,17 +1934,14 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             "id=%p handle=%p: read queue is empty, scheduling another read",
             (void *)socket,
             socket->io_handle.data.handle);
-        s_lock_socket_state(nw_socket);
         if (!(nw_socket->synced_state.state & CONNECTED_READ)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket is not connected to read.",
                 (void *)socket,
                 socket->io_handle.data.handle);
-            s_unlock_socket_state(nw_socket);
             return aws_raise_error(AWS_IO_SOCKET_CLOSED);
         }
-        s_unlock_socket_state(nw_socket);
         if (!nw_socket->read_queued) {
             s_schedule_next_read(nw_socket);
             nw_socket->read_queued = true;
@@ -1996,17 +2003,14 @@ static int s_socket_write_fn(
     }
 
     struct nw_socket *nw_socket = socket->impl;
-    s_lock_socket_state(nw_socket);
     if (!(nw_socket->synced_state.state & CONNECTED_WRITE)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: cannot write to because it is not connected",
             (void *)socket,
             socket->io_handle.data.handle);
-        s_unlock_socket_state(nw_socket);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
-    s_unlock_socket_state(nw_socket);
 
     AWS_ASSERT(written_fn);
 
