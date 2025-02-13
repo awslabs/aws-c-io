@@ -1773,9 +1773,9 @@ static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aw
     return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
 }
 
-/* sockets need to emulate edge-triggering. When we find that we've read all of our buffers or we preemptively know
- * we're going to want more notifications, we schedule a read. That read, upon occuring gets queued into an internal
- * buffer to then be vended upon a call to aws_socket_read() */
+/* s_schedule_next_read() is called when we find that we've read all of our buffers or we preemptively know we're going
+ * to want more notifications. That read data gets queued into an internal read buffer to then be vended upon a call to
+ * aws_socket_read() */
 static void s_schedule_next_read(struct nw_socket *nw_socket) {
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
     if (!socket) {
@@ -1836,8 +1836,8 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
                           (void *)nw_socket->nw_connection);
                       aws_raise_error(AWS_IO_SOCKET_CLOSED);
                       error = AWS_IO_SOCKET_CLOSED;
-                      aws_mutex_unlock(&nw_socket->synced_data.lock);
                   }
+                  aws_mutex_unlock(&nw_socket->synced_data.lock);
               }
 
               // schedule next read to get future I/O event
