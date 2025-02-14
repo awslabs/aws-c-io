@@ -354,6 +354,7 @@ static int s_socket_shutdown(
             if (aws_socket_close(socket_handler->socket)) {
                 return AWS_OP_ERR;
             }
+            return AWS_OP_SUCCESS;
         }
 
         return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resource_immediately);
