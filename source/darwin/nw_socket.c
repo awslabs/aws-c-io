@@ -1725,6 +1725,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 
     // TODO DEBUG: if written count is not 0, the close will happen when write finished....
     if (nw_socket->synced_state.state < CLOSING) {
+        s_unlock_socket_state(nw_socket);
 
         //     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p handle=%p: closing", (void *)socket,
         //     socket->io_handle.data.handle);
@@ -1755,10 +1756,12 @@ static int s_socket_close_fn(struct aws_socket *socket) {
         //         (void *)nw_socket,
         //         aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
         //     nw_socket_release_internal_ref(nw_socket);
+        s_set_socket_state(nw_socket, socket, CLOSING);
         aws_ref_count_release(&nw_socket->write_ref_count);
+    } else {
+        s_unlock_socket_state(nw_socket);
+        s_set_socket_state(nw_socket, socket, CLOSING);
     }
-    s_unlock_socket_state(nw_socket);
-    s_set_socket_state(nw_socket, socket, CLOSING);
 
     return AWS_OP_SUCCESS;
 }
