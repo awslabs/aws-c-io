@@ -479,7 +479,7 @@ static void s_socket_impl_destroy(void *sock_ptr) {
 
 static void s_socket_socket_canceled(void *socket_ptr) {
     struct nw_socket *nw_socket = socket_ptr;
-    if (nw_socket->synced_state.state == CLOSING) {
+    if (nw_socket->synced_state.state >= CLOSING) {
 
         AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: written finished closing", (void *)nw_socket);
 
@@ -1756,11 +1756,11 @@ static int s_socket_close_fn(struct aws_socket *socket) {
         //         (void *)nw_socket,
         //         aws_atomic_load_int(&nw_socket->internal_ref_count.ref_count));
         //     nw_socket_release_internal_ref(nw_socket);
-        s_set_socket_state(nw_socket, socket, CLOSING);
+        s_set_socket_state(nw_socket, socket, CLOSING | CONNECTED_READ);
         aws_ref_count_release(&nw_socket->write_ref_count);
     } else {
         s_unlock_socket_state(nw_socket);
-        s_set_socket_state(nw_socket, socket, CLOSING);
+        s_set_socket_state(nw_socket, socket, CLOSING | CONNECTED_READ);
     }
 
     return AWS_OP_SUCCESS;
