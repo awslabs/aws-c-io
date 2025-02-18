@@ -2413,7 +2413,8 @@ static int s_socket_set_options(struct aws_socket *socket, const struct aws_sock
     if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_NAME_MAX, &network_interface_length)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: network_interface_name max length must be %d length and NULL terminated",
+            "id=%p fd=%d: network_interface_name max length must be less or equal than %d bytes including NULL "
+            "terminated",
             (void *)socket,
             socket->io_handle.data.fd,
             AWS_NETWORK_INTERFACE_NAME_MAX);

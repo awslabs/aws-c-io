@@ -848,6 +848,17 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
     .gather_statistics = s_gather_statistics,
 };
 
+struct secure_transport_ctx {
+    struct aws_tls_ctx ctx;
+    CFAllocatorRef wrapped_allocator;
+    CFArrayRef certs;
+    SecIdentityRef secitem_identity;
+    CFArrayRef ca_cert;
+    enum aws_tls_versions minimum_version;
+    struct aws_string *alpn_list;
+    bool verify_peer;
+};
+
 static struct aws_channel_handler *s_tls_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
