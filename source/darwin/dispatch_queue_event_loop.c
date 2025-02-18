@@ -639,8 +639,8 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
      * Apple dispatch queue uses automatic reference counting (ARC). If an iteration is scheduled to run in the future,
      * the dispatch queue will persist until it is executed. Scheduling a block far into the future will keep the
      * dispatch queue alive unnecessarily long, which blocks event loop group shutdown from completion.
-     * To mitigate this, we ensure an iteration is scheduled no longer than 1 second in the
-     * future.
+     * To mitigate this, we ensure an iteration is scheduled no longer than
+     * AWS_DISPATCH_QUEUE_MAX_FUTURE_SERVICE_INTERVAL second in the future.
      */
     uint64_t now_ns = 0;
     aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
