@@ -642,17 +642,6 @@ static inline int s_convert_pton_error(int pton_code, int errno_value) {
     return s_determine_socket_error(errno_value);
 }
 
-struct socket_address {
-    union sock_addr_types {
-        struct sockaddr_in addr_in;
-        struct sockaddr_in6 addr_in6;
-        struct sockaddr_un un_addr;
-#ifdef USE_VSOCK
-        struct sockaddr_vm vm_addr;
-#endif
-    } sock_addr_types;
-};
-
 #ifdef USE_VSOCK
 /** Convert a string to a VSOCK CID. Respects the calling convetion of inet_pton:
  * 0 on error, 1 on success. */
@@ -1153,6 +1142,14 @@ static int s_socket_start_accept(
     AWS_ASSERT(options.on_accept_result);
     AWS_ASSERT(accept_loop);
 
+    if (options.on_accept_start_result || options.on_accept_start_user_data) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: the posix socket does not support on_accept_start_result callback. Ignore the options.",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
+    }
+
     if (socket->event_loop) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
@@ -1333,7 +1330,8 @@ static int s_socket_set_options(struct aws_socket *socket, const struct aws_sock
     if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_NAME_MAX, &network_interface_length)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: network_interface_name max length must be less or equal than %d bytes including NULL terminated",
+            "id=%p fd=%d: network_interface_name max length must be less or equal than %d bytes including NULL "
+            "terminated",
             (void *)socket,
             socket->io_handle.data.fd,
             AWS_NETWORK_INTERFACE_NAME_MAX);

@@ -7,6 +7,7 @@
 #include <aws/io/socket.h>
 
 #include <aws/common/clock.h>
+#include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/uuid.h>
 #include <aws/io/logging.h>
@@ -17,8 +18,6 @@
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
-
-#include "./dispatch_queue_event_loop_private.h"
 
 static int s_determine_socket_error(int error) {
     switch (error) {
@@ -65,9 +64,15 @@ static inline int s_convert_pton_error(int pton_code) {
     return s_determine_socket_error(errno);
 }
 
-/* other than CONNECTED_READ | CONNECTED_WRITE
- * a socket is only in one of these states at a time. */
+/*
+ * A socket is only in one of these states at a time, except for CONNECTED_READ | CONNECTED_WRITE.
+ * The state can only go increasing, except for the following two cases:
+ *   1. LISTENING and STOPPED. They can switch between each other.
+ *   2. CONNECT_WRITE and CONNECT_READ: you are allow to flip the flags for these two state, while not going
+ *      backwards to `CONNECTING` and `INIT` state.
+ */
 enum aws_nw_socket_state {
+    INVALID = 0x000,
     INIT = 0x001,
     CONNECTING = 0x002,
     CONNECTED_READ = 0x004,
@@ -209,21 +214,13 @@ struct nw_socket {
     } synced_data;
 
     /* The aws_nw_socket_state. aws_socket also has a field `state` which should be represent the same parameter,
-    however, as
-     * it is possible that the aws_socket object is released while nw_socket is still alive, we will use
-     * nw_socket->state instead of socket->state to verify the socket_state. */
+     * however, as it is possible that the aws_socket object is released while nw_socket is still alive, we will use
+     * nw_socket->state instead of socket->state to verify the socket_state.
+     */
     struct {
-        int state;
+        enum aws_nw_socket_state state;
         struct aws_mutex lock;
     } synced_state;
-};
-
-struct socket_address {
-    union sock_addr_types {
-        struct sockaddr_in addr_in;
-        struct sockaddr_in6 addr_in6;
-        struct sockaddr_un un_addr;
-    } sock_addr_types;
 };
 
 static size_t KB_16 = 16 * 1024;
@@ -286,15 +283,37 @@ static void s_release_event_loop(struct nw_socket *nw_socket) {
     nw_socket->event_loop = NULL;
 }
 
-static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *socket, int state) {
+static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *socket, enum aws_nw_socket_state state) {
     s_lock_socket_state(nw_socket);
-    // The state can only go increasing, except for LISTENING and STOPPED. They can switch between each other.
-    if (nw_socket->synced_state.state < state || (state == LISTENING && nw_socket->synced_state.state == STOPPED)) {
-        nw_socket->synced_state.state = state;
-        if (socket) {
-            socket->state = state;
-        }
+
+    enum aws_nw_socket_state result_state = nw_socket->synced_state.state;
+
+    // clip the read/write bits
+    enum aws_nw_socket_state read_write_bits = state & (CONNECTED_WRITE | CONNECTED_READ);
+    result_state = result_state & ~CONNECTED_WRITE & ~CONNECTED_READ;
+
+    // If the caller would like simply flip the read/write bits, set the state to invalid, as we dont have further
+    // information there.
+    if (~CONNECTED_WRITE == (int)state || ~CONNECTED_READ == (int)state) {
+        state = INVALID;
     }
+
+    // The state can only go increasing, except for the following two cases
+    //  1. LISTENING and STOPPED. They can switch between each other.
+    //  2. CONNECT_WRITE and CONNECT_READ: you are allow to flip the flags for these two state, while not going
+    //  backwards to `CONNECTING` and `INIT` state.
+    if (result_state < state || (state == LISTENING && result_state == STOPPED)) {
+        result_state = state;
+    }
+
+    // Set CONNECTED_WRITE and CONNECTED_READ
+    result_state = result_state | read_write_bits;
+
+    nw_socket->synced_state.state = result_state;
+    if (socket) {
+        socket->state = result_state;
+    }
+
     s_unlock_socket_state(nw_socket);
 }
 
@@ -509,6 +528,8 @@ static void s_socket_impl_destroy(void *sock_ptr) {
 
 static void s_nw_socket_canceled(void *socket_ptr) {
     struct nw_socket *nw_socket = socket_ptr;
+
+    s_lock_socket_state(nw_socket);
     if (nw_socket->synced_state.state >= CLOSING) {
 
         AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: written finished closing", (void *)nw_socket);
@@ -696,20 +717,14 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
         s_lock_socket_synced_data(nw_socket);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
 
-        s_lock_socket_state(nw_socket);
-
         if (readable_args->is_complete) {
-            nw_socket->synced_state.state &= ~CONNECTED_READ;
-            if (socket) {
-                socket->state &= ~CONNECTED_READ;
-            }
+            s_set_socket_state(nw_socket, socket, ~CONNECTED_READ);
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket is complete, flip read flag",
                 (void *)nw_socket,
                 (void *)nw_socket->os_handle.nw_connection);
         }
-        s_unlock_socket_state(nw_socket);
         s_unlock_socket_synced_data(nw_socket);
 
         if (nw_socket->on_readable) {
@@ -1162,24 +1177,15 @@ static int s_socket_connect_fn(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    if (socket->options.type != AWS_SOCKET_DGRAM) {
-        AWS_FATAL_ASSERT(on_connection_result);
-        s_lock_socket_state(nw_socket);
-        if (nw_socket->synced_state.state != INIT) {
-            s_unlock_socket_state(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-        }
+    // Apple Network Framework uses a connection based abstraction on top of the UDP layer. We should always do an
+    // "connect" action after aws_socket_init() regardless it's a UDP socket or a TCP socket.
+    AWS_FATAL_ASSERT(on_connection_result);
+    s_lock_socket_state(nw_socket);
+    if (nw_socket->synced_state.state != INIT) {
         s_unlock_socket_state(nw_socket);
-    } else { /* UDP socket */
-        // Apple Network Framework uses a connection based abstraction on top of the UDP layer. We should always do an
-        // "connect" action here.
-        s_lock_socket_state(nw_socket);
-        if (nw_socket->synced_state.state != CONNECTED_READ && nw_socket->synced_state.state != INIT) {
-            s_unlock_socket_state(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-        }
-        s_unlock_socket_state(nw_socket);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
+    s_unlock_socket_state(nw_socket);
 
     /* fill in posix sock addr, and then let Network framework sort it out. */
     size_t address_strlen;
@@ -1638,6 +1644,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 
     struct nw_socket *nw_socket = socket->impl;
     s_lock_socket_state(nw_socket);
+
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: closing state %d",
@@ -1646,14 +1653,14 @@ static int s_socket_close_fn(struct aws_socket *socket) {
         socket->state);
 
     if (nw_socket->synced_state.state < CLOSING) {
+        s_unlock_socket_state(nw_socket);
         // We would like to keep CONNECTED_READ so that we could continue processing any received data until the we got
         // the system callback indicates that the system connection has been closed in the receiving direction.
-        nw_socket->synced_state.state = CLOSING | CONNECTED_READ;
-        socket->state = CLOSING | CONNECTED_READ;
+        s_set_socket_state(nw_socket, nw_socket->synced_data.base_socket, CLOSING | CONNECTED_READ);
         s_socket_release_write_ref(nw_socket);
+    } else {
+        s_unlock_socket_state(nw_socket);
     }
-
-    s_unlock_socket_state(nw_socket);
     return AWS_OP_SUCCESS;
 }
 

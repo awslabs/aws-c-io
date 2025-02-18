@@ -511,7 +511,7 @@ static int s_test_socket_ex(
     return 0;
 }
 
-static int s_test_socket_udp_dispatch_queue(
+static int s_test_socket_udp_apple_network_framework(
     struct aws_allocator *allocator,
     struct aws_socket_options *options,
     struct aws_socket_endpoint *endpoint) {
@@ -738,7 +738,7 @@ static int s_test_socket(
     struct aws_socket_endpoint *endpoint) {
 
     if (aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE && options->type == AWS_SOCKET_DGRAM)
-        return s_test_socket_udp_dispatch_queue(allocator, options, endpoint);
+        return s_test_socket_udp_apple_network_framework(allocator, options, endpoint);
     else
         return s_test_socket_ex(allocator, options, NULL, endpoint);
 }

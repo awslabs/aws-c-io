@@ -20,6 +20,17 @@ aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
 #endif
 
+struct socket_address {
+    union sock_addr_types {
+        struct sockaddr_in addr_in;
+        struct sockaddr_in6 addr_in6;
+        struct sockaddr_un un_addr;
+#ifdef USE_VSOCK
+        struct sockaddr_vm vm_addr;
+#endif
+    } sock_addr_types;
+};
+
 int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,

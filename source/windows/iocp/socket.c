@@ -70,8 +70,7 @@ struct winsock_vtable {
     int (*start_accept)(
         struct aws_socket *socket,
         struct aws_event_loop *accept_loop,
-        aws_socket_on_accept_result_fn *on_accept_result,
-        void *user_data);
+        struct aws_socket_listener_options options);
     int (*stop_accept)(struct aws_socket *socket);
     int (*bind)(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
     int (*listen)(struct aws_socket *socket, int backlog_size);
@@ -116,19 +115,16 @@ static int s_local_connect(
 static int s_tcp_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_local_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_stream_stop_accept(struct aws_socket *socket);
 static int s_dgram_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_dgram_stop_accept(struct aws_socket *socket);
 
 static int s_tcp_listen(struct aws_socket *socket, int backlog_size);
@@ -157,8 +153,7 @@ static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_socket_stop_accept(struct aws_socket *socket);
 static int s_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options);
 static int s_socket_close(struct aws_socket *socket);
@@ -621,10 +616,16 @@ static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
 static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
+    if (options.on_accept_start_result || options.on_accept_start_user_data) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: the iocp socket does not support on_accept_start_result callback. Ignore the options.",
+            (void *)socket,
+            (void *)socket->io_handle.data.handle);
+    }
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->winsock_vtable->start_accept(socket, accept_loop, on_accept_result, user_data);
+    return socket_impl->winsock_vtable->start_accept(socket, accept_loop, options);
 }
 
 static int s_socket_stop_accept(struct aws_socket *socket) {
@@ -2051,10 +2052,9 @@ static void s_tcp_accept_event(
 static int s_tcp_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     AWS_ASSERT(accept_loop);
-    AWS_ASSERT(on_accept_result);
+    AWS_ASSERT(options.on_accept_result);
 
     if (AWS_UNLIKELY(socket->state != LISTENING)) {
         AWS_LOGF_ERROR(
@@ -2088,8 +2088,8 @@ static int s_tcp_start_accept(
         socket_impl->read_io_data->socket = socket;
     }
 
-    socket->accept_result_fn = on_accept_result;
-    socket->connect_accept_user_data = user_data;
+    socket->accept_result_fn = options.on_accept_result;
+    socket->connect_accept_user_data = options.on_accept_result_user_data;
     socket_impl->stop_accept = false;
 
     struct aws_event_loop *el_to_use = !socket->event_loop ? accept_loop : NULL;
@@ -2212,8 +2212,7 @@ static void s_named_pipe_is_ridiculous_task(struct aws_task *task, void *args, e
 static int s_local_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     AWS_ASSERT(accept_loop);
     AWS_ASSERT(on_accept_result);
 
@@ -2303,8 +2302,7 @@ static int s_local_start_accept(
 static int s_dgram_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     (void)socket;
     (void)accept_loop;
     (void)on_accept_result;
