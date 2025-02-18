@@ -29,7 +29,6 @@ file(GLOB AWS_IO_TESTING_HEADERS
         "include/aws/testing/*.h"
         )
 
-
 file(GLOB AWS_IO_PRIV_HEADERS
         "include/aws/io/private/*.h"
         )
@@ -202,6 +201,10 @@ endif()
 
 if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
+endif()
+
+if (AWS_USE_APPLE_DISPATCH_QUEUE)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
