@@ -499,19 +499,9 @@ error:
     /* the channel shutdown callback will clean the channel up */
 }
 
-struct socket_shutdown_release_client_connection_args {
-    struct aws_allocator *allocator;
-    struct client_connection_args *connection_args;
-};
-
 static void s_socket_shutdown_complete_release_client_connection_fn(void *user_data) {
-    struct socket_shutdown_release_client_connection_args *shutdown_args = user_data;
-    struct client_connection_args *connection_args = shutdown_args->connection_args;
-    struct aws_allocator *allocator = shutdown_args->allocator;
-
+    struct client_connection_args *connection_args = user_data;
     s_client_connection_args_release(connection_args);
-
-    aws_mem_release(allocator, shutdown_args);
 }
 
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
@@ -532,12 +522,8 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
     /* note it's not safe to reference the bootstrap after the callback. */
     aws_channel_destroy(channel);
 
-    struct socket_shutdown_release_client_connection_args *close_args = aws_mem_calloc(
-        connection_args->bootstrap->allocator, 1, sizeof(struct socket_shutdown_release_client_connection_args));
-    close_args->allocator = connection_args->bootstrap->allocator;
-    close_args->connection_args = connection_args;
     aws_socket_set_cleanup_complete_callback(
-        socket, s_socket_shutdown_complete_release_client_connection_fn, close_args);
+        socket, s_socket_shutdown_complete_release_client_connection_fn, connection_args);
 
     aws_socket_clean_up(socket);
 
@@ -1072,13 +1058,8 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         if (aws_socket_connect(
                 outgoing_socket, &endpoint, connect_loop, s_on_client_connection_established, client_connection_args)) {
 
-            struct socket_shutdown_release_client_connection_args *close_args =
-                aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct socket_shutdown_release_client_connection_args));
-            close_args->allocator = bootstrap->allocator;
-            close_args->connection_args = client_connection_args;
-
             aws_socket_set_cleanup_complete_callback(
-                outgoing_socket, s_socket_shutdown_complete_release_client_connection_fn, close_args);
+                outgoing_socket, s_socket_shutdown_complete_release_client_connection_fn, client_connection_args);
 
             aws_socket_clean_up(outgoing_socket);
             aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
@@ -1943,7 +1924,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
             server_connection_args,
             s_on_listener_connection_established,
             server_connection_args)) {
-        s_server_connection_args_acquire(server_connection_args);
+        s_server_connection_args_release(server_connection_args);
         goto cleanup_listener;
     }
 
