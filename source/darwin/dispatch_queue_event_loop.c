@@ -28,15 +28,6 @@
 
 static void s_start_destroy(struct aws_event_loop *event_loop);
 static void s_complete_destroy(struct aws_event_loop *event_loop);
-// Maximum amount of time we schedule event loop service tasks out into the future.  This bounds the maximum
-// amount of time we have to wait for those scheduled tasks to resolve during shutdown, which in turn bounds
-// how long shutdown can take.
-//
-// Start with a second for now.
-#define AWS_DISPATCH_QUEUE_MAX_FUTURE_SERVICE_INTERVAL (AWS_TIMESTAMP_NANOS)
-
-static void s_start_destroy(struct aws_event_loop *event_loop);
-static void s_complete_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
@@ -664,16 +655,6 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
     struct scheduled_iteration_entry *entry = s_scheduled_iteration_entry_new(dispatch_loop, clamped_timestamp);
     aws_priority_queue_push_ref(
         &dispatch_loop->synced_data.scheduled_iterations, (void *)&entry, &entry->priority_queue_node);
-    delta = aws_min_u64(delta, AWS_DISPATCH_QUEUE_MAX_FUTURE_SERVICE_INTERVAL);
-    uint64_t clamped_timestamp = now_ns + delta;
-
-    if (!s_should_schedule_iteration(&dispatch_loop->synced_data.scheduled_iterations, clamped_timestamp)) {
-        return;
-    }
-
-    struct scheduled_iteration_entry *entry = s_scheduled_iteration_entry_new(dispatch_loop, clamped_timestamp);
-    aws_priority_queue_push_ref(
-        &dispatch_loop->synced_data.scheduled_iterations, (void *)&entry, &entry->priority_queue_node);
 
     if (delta == 0) {
         /*
@@ -685,12 +666,6 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
             AWS_LS_IO_EVENT_LOOP, "id=%p: Scheduling run iteration on event loop.", (void *)dispatch_loop->base_loop);
     } else {
         /*
-         * If the timestamp is set to execute sometime in the future, we clamp the time based on a maximum delta,
-         * convert the time to the format dispatch queue expects, and then schedule `s_run_iteration()` to run in the
-         * future using `dispatch_after_f()`. `dispatch_after_f()` does not immediately place the block onto the
-         * dispatch queue but instead obtains a refcount of Apple's dispatch queue and then schedules onto it at the
-         * requested time. Any blocks scheduled using `dispatch_async_f()` or `dispatch_after_f()` with a closer
-         * dispatch time will be placed on the dispatch queue and execute in order.
          * If the timestamp is set to execute sometime in the future, we clamp the time based on a maximum delta,
          * convert the time to the format dispatch queue expects, and then schedule `s_run_iteration()` to run in the
          * future using `dispatch_after_f()`. `dispatch_after_f()` does not immediately place the block onto the
