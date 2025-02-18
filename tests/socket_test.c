@@ -362,7 +362,9 @@ static int s_test_socket_ex(
     // for setup a server socket
     if (options->type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-        ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
+        struct aws_socket_listener_options options = {
+            .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
+        ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, options));
     }
 
     struct local_outgoing_args outgoing_args = {
@@ -546,7 +548,9 @@ static int s_test_socket_udp_dispatch_queue(
     ASSERT_STR_EQUALS(endpoint->address, bound_endpoint.address);
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
+    struct aws_socket_listener_options listener_options = {
+        .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
+    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, listener_options));
 
     struct local_outgoing_args outgoing_args = {
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
@@ -1501,8 +1505,11 @@ static int s_test_bind_on_zero_port(
     if (aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
 
         ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
-        ASSERT_SUCCESS(aws_socket_start_accept(
-            &incoming, event_loop, s_local_listener_incoming_destroy_listener_bind, &listener_args));
+        struct aws_socket_listener_options listener_options = {
+            .on_accept_result = s_local_listener_incoming_destroy_listener_bind,
+            .on_accept_result_user_data = &listener_args};
+
+        ASSERT_SUCCESS(aws_socket_start_accept(&incoming, event_loop, listener_options));
 
         // Apple Dispatch Queue requires a listener to be ready before it can get the assigned port. We wait until the
         // port is back.
@@ -1844,8 +1851,10 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_socket_set_cleanup_complete_callback(&listener, s_local_listener_shutdown_complete, &listener_args);
 #endif
-    ASSERT_SUCCESS(
-        aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming_destroy_listener, &listener_args));
+    struct aws_socket_listener_options listener_options = {
+        .on_accept_result = s_local_listener_incoming_destroy_listener, .on_accept_result_user_data = &listener_args};
+
+    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, listener_options));
 
     struct local_outgoing_args outgoing_args = {
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
@@ -1997,7 +2006,9 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
 
     ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
+    struct aws_socket_listener_options listener_options = {
+        .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
+    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, listener_options));
 
     struct local_outgoing_args outgoing_args = {
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};
@@ -2292,7 +2303,9 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
 
     ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
+    struct aws_socket_listener_options listener_options = {
+        .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
+    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, listener_options));
 
     struct local_outgoing_args outgoing_args = {
         .mutex = &mutex, .condition_variable = &condition_variable, .connect_invoked = false, .error_invoked = false};

@@ -169,8 +169,8 @@ struct nw_socket {
     void *on_readable_user_data;
     aws_socket_on_connection_result_fn *on_connection_result_fn;
     void *connect_result_user_data;
-    aws_socket_on_listen_result_fn *on_listen_result_fn;
-    void *listen_result_user_data;
+    aws_socket_on_accept_started_fn *on_accept_started_fn;
+    void *listen_accept_started_user_data;
     aws_socket_on_shutdown_complete_fn *on_socket_close_complete_fn;
     void *close_user_data;
     aws_socket_on_shutdown_complete_fn *on_socket_cleanup_complete_fn;
@@ -372,15 +372,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept_fn(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
-static int s_socket_start_accept_async_fn(
-    struct aws_socket *socket,
-    struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *on_accept_user_data,
-    aws_socket_on_listen_result_fn *on_listen_result,
-    void *on_listen_user_data);
+    struct aws_socket_listener_options options);
 static int s_socket_stop_accept_fn(struct aws_socket *socket);
 static int s_socket_close_fn(struct aws_socket *socket);
 static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_direction dir);
@@ -407,7 +399,6 @@ static struct aws_socket_vtable s_vtable = {
     .socket_bind_fn = s_socket_bind_fn,
     .socket_listen_fn = s_socket_listen_fn,
     .socket_start_accept_fn = s_socket_start_accept_fn,
-    .socket_start_accept_async_fn = s_socket_start_accept_async_fn,
     .socket_stop_accept_fn = s_socket_stop_accept_fn,
     .socket_close_fn = s_socket_close_fn,
     .socket_shutdown_dir_fn = s_socket_shutdown_dir_fn,
@@ -658,7 +649,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
             (void *)nw_socket->os_handle.nw_connection);
 
         int error_code = AWS_IO_SOCKET_TIMEOUT;
-        
+
         // Must set timeout_args to NULL to avoid double cancel. Clean up the timeout task
         aws_mem_release(nw_socket->allocator, nw_socket->timeout_args);
         nw_socket->timeout_args = NULL;
@@ -1481,11 +1472,11 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
 
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *aws_socket = nw_socket->synced_data.base_socket;
-        if (nw_socket->on_listen_result_fn) {
-            nw_socket->on_listen_result_fn(
+        if (nw_socket->on_accept_started_fn) {
+            nw_socket->on_accept_started_fn(
                 aws_socket,
                 s_determine_socket_error(listener_state_changed_args->error),
-                nw_socket->listen_result_user_data);
+                nw_socket->listen_accept_started_user_data);
         }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
 
@@ -1499,8 +1490,8 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
             if (nw_socket->mode == NWSM_LISTENER) {
                 aws_socket->local_endpoint.port = nw_listener_get_port(nw_socket->os_handle.nw_listener);
             }
-            if (nw_socket->on_listen_result_fn) {
-                nw_socket->on_listen_result_fn(aws_socket, AWS_OP_SUCCESS, nw_socket->listen_result_user_data);
+            if (nw_socket->on_accept_started_fn) {
+                nw_socket->on_accept_started_fn(aws_socket, AWS_OP_SUCCESS, nw_socket->listen_accept_started_user_data);
             }
         }
         aws_mutex_unlock(&nw_socket->synced_data.lock);
@@ -1551,25 +1542,21 @@ static void s_schedule_listener_state_changed_fn(
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 }
 
+// static int s_socket_start_accept_fn(
+//     struct aws_socket *socket,
+//     struct aws_event_loop *accept_loop,
+//     struct aws_socket_listener_option options) {
+//     AWS_FATAL_ASSERT(options.on_accept_result);
+//     AWS_FATAL_ASSERT(accept_loop);
+
+//     return s_socket_start_accept_async_fn(socket, accept_loop, on_accept_result, user_data, NULL, NULL);
+// }
+
 static int s_socket_start_accept_fn(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
-    AWS_FATAL_ASSERT(on_accept_result);
-    AWS_FATAL_ASSERT(accept_loop);
-
-    return s_socket_start_accept_async_fn(socket, accept_loop, on_accept_result, user_data, NULL, NULL);
-}
-
-static int s_socket_start_accept_async_fn(
-    struct aws_socket *socket,
-    struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data,
-    aws_socket_on_listen_result_fn *on_listen_result,
-    void *on_listen_user_data) {
-    AWS_FATAL_ASSERT(on_accept_result);
+    struct aws_socket_listener_options options) {
+    AWS_FATAL_ASSERT(options.on_accept_result);
     AWS_FATAL_ASSERT(accept_loop);
 
     if (socket->event_loop) {
@@ -1596,11 +1583,11 @@ static int s_socket_start_accept_async_fn(
     s_unlock_socket_state(nw_socket);
 
     aws_event_loop_connect_handle_to_io_completion_port(accept_loop, &socket->io_handle);
-    socket->accept_result_fn = on_accept_result;
-    socket->connect_accept_user_data = user_data;
+    socket->accept_result_fn = options.on_accept_result;
+    socket->connect_accept_user_data = options.on_accept_result_user_data;
 
-    nw_socket->on_listen_result_fn = on_listen_result;
-    nw_socket->listen_result_user_data = on_listen_user_data;
+    nw_socket->on_accept_started_fn = options.on_accept_start_result;
+    nw_socket->listen_accept_started_user_data = options.on_accept_start_user_data;
 
     s_set_event_loop(socket, accept_loop);
 
@@ -1610,7 +1597,7 @@ static int s_socket_start_accept_async_fn(
         });
 
     nw_listener_set_new_connection_handler(socket->io_handle.data.handle, ^(nw_connection_t connection) {
-      s_schedule_on_listener_success(nw_socket, AWS_OP_SUCCESS, connection, user_data);
+      s_schedule_on_listener_success(nw_socket, AWS_OP_SUCCESS, connection, socket->connect_accept_user_data);
     });
     // this ref should be released in nw_listener_set_state_changed_handler where get state ==
     // nw_listener_state_cancelled

@@ -1743,11 +1743,14 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
         goto cleanup_listener;
     }
 
-    if (aws_socket_start_accept(
-            &server_connection_args->listener,
-            connection_loop,
-            s_on_server_connection_result,
-            server_connection_args)) {
+    struct aws_socket_listener_options options = {
+        .on_accept_result = s_on_server_connection_result,
+        .on_accept_result_user_data = server_connection_args,
+        .on_accept_start_result = NULL,
+        .on_accept_start_user_data = NULL,
+    };
+
+    if (aws_socket_start_accept(&server_connection_args->listener, connection_loop, options)) {
         goto cleanup_listener;
     }
 
@@ -1917,13 +1920,14 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
     // Acquire for listener establish callbacks, should be released in `s_on_listener_connection_established`
     s_server_connection_args_acquire(server_connection_args);
 
-    if (aws_socket_start_accept_async(
-            &server_connection_args->listener,
-            connection_loop,
-            s_on_server_connection_result,
-            server_connection_args,
-            s_on_listener_connection_established,
-            server_connection_args)) {
+    struct aws_socket_listener_options options = {
+        .on_accept_result = s_on_server_connection_result,
+        .on_accept_result_user_data = server_connection_args,
+        .on_accept_start_result = s_on_listener_connection_established,
+        .on_accept_start_user_data = server_connection_args,
+    };
+
+    if (aws_socket_start_accept(&server_connection_args->listener, connection_loop, options)) {
         s_server_connection_args_release(server_connection_args);
         goto cleanup_listener;
     }

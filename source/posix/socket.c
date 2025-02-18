@@ -207,8 +207,7 @@ static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_socket_stop_accept(struct aws_socket *socket);
 static int s_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options);
 static int s_socket_close(struct aws_socket *socket);
@@ -1150,9 +1149,8 @@ static void s_socket_accept_event(
 static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
-    AWS_ASSERT(on_accept_result);
+    struct aws_socket_listener_options options) {
+    AWS_ASSERT(options.on_accept_result);
     AWS_ASSERT(accept_loop);
 
     if (socket->event_loop) {
@@ -1174,8 +1172,8 @@ static int s_socket_start_accept(
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    socket->accept_result_fn = on_accept_result;
-    socket->connect_accept_user_data = user_data;
+    socket->accept_result_fn = options.on_accept_result;
+    socket->connect_accept_user_data = options.on_accept_result_user_data;
     socket->event_loop = accept_loop;
     struct posix_socket *socket_impl = socket->impl;
     socket_impl->continue_accept = true;
