@@ -187,11 +187,19 @@ static void s_event_loop_group_thread_exit(void *user_data) {
 }
 
 static void s_aws_event_loop_group_shutdown_sync(struct aws_event_loop_group *el_group) {
+    size_t loop_count = aws_array_list_length(&el_group->event_loops);
+    for (size_t i = 0; i < loop_count; ++i) {
+        struct aws_event_loop *loop = NULL;
+        aws_array_list_get_at(&el_group->event_loops, &loop, i);
+
+        aws_event_loop_start_destroy(loop);
+    }
+
     while (aws_array_list_length(&el_group->event_loops) > 0) {
         struct aws_event_loop *loop = NULL;
 
         if (!aws_array_list_back(&el_group->event_loops, &loop)) {
-            aws_event_loop_destroy(loop);
+            aws_event_loop_complete_destroy(loop);
         }
 
         aws_array_list_pop_back(&el_group->event_loops);
@@ -495,10 +503,34 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
         return;
     }
 
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->start_destroy);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->complete_destroy);
     AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
-    event_loop->vtable->destroy(event_loop);
+    event_loop->vtable->start_destroy(event_loop);
+    event_loop->vtable->complete_destroy(event_loop);
+}
+
+void aws_event_loop_start_destroy(struct aws_event_loop *event_loop) {
+    if (!event_loop) {
+        return;
+    }
+
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->start_destroy);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+
+    event_loop->vtable->start_destroy(event_loop);
+}
+
+void aws_event_loop_complete_destroy(struct aws_event_loop *event_loop) {
+    if (!event_loop) {
+        return;
+    }
+
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->complete_destroy);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+
+    event_loop->vtable->complete_destroy(event_loop);
 }
 
 int aws_event_loop_fetch_local_object(
