@@ -96,7 +96,8 @@ enum {
     MAX_COMPLETION_PACKETS_PER_LOOP = 100,
 };
 
-static void s_destroy(struct aws_event_loop *event_loop);
+static void s_start_destroy(struct aws_event_loop *event_loop);
+static void s_complete_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
@@ -156,7 +157,8 @@ struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *
 }
 
 struct aws_event_loop_vtable s_iocp_vtable = {
-    .destroy = s_destroy,
+    .start_destroy = s_start_destroy,
+    .complete_destroy = s_complete_destroy,
     .run = s_run,
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
@@ -306,8 +308,12 @@ clean_up:
     return NULL;
 }
 
+static void s_start_destroy(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+}
+
 /* Should not be called from event-thread */
-static void s_destroy(struct aws_event_loop *event_loop) {
+static void s_complete_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event-loop", (void *)event_loop);
 
     struct iocp_loop *impl = event_loop->impl_data;
