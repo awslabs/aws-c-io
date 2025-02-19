@@ -18,8 +18,7 @@ typedef void (*aws_ms_fn_ptr)(void);
 void aws_check_and_init_winsock(void);
 aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
-#endif
-
+#else // NOT ON WINDOWS
 struct socket_address {
     union sock_addr_types {
         struct sockaddr_in addr_in;
@@ -30,6 +29,7 @@ struct socket_address {
 #endif
     } sock_addr_types;
 };
+#endif
 
 int aws_socket_init_posix(
     struct aws_socket *socket,
