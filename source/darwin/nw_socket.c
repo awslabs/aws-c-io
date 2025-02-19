@@ -574,9 +574,17 @@ static void s_schedule_socket_canceled(void *socket_ptr) {
         args->allocator = nw_socket->allocator;
         args->nw_socket = nw_socket;
 
-        aws_task_init(&args->task, s_process_socket_cancel_task, args, "SocketCanceledTask");
+        /* The socket cancel should happened on the event loop if possible. The event loop will not set
+         * in the case where the socket is never connected/ listener is never started accept.
+         */
+        if (s_validate_event_loop(nw_socket->event_loop)) {
 
-        aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
+            aws_task_init(&args->task, s_process_socket_cancel_task, args, "SocketCanceledTask");
+
+            aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
+        } else {
+            s_process_socket_cancel_task(&args->task, args, AWS_TASK_STATUS_RUN_READY);
+        }
     }
     s_unlock_socket_state(nw_socket);
 }
@@ -615,18 +623,7 @@ int aws_socket_init_apple_nw_socket(
     AWS_ZERO_STRUCT(*socket);
 
     // Network Interface is not supported with Apple Network Framework yet
-    size_t network_interface_length = 0;
-    if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_NAME_MAX, &network_interface_length)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: network_interface_name max length must be less or equal than %d bytes including NULL "
-            "terminated",
-            (void *)socket,
-            socket->io_handle.data.fd,
-            AWS_NETWORK_INTERFACE_NAME_MAX);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-    }
-    if (network_interface_length != 0) {
+    if (options->network_interface_name[0] != 0) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: network_interface_name is not supported on this platform.",
@@ -684,7 +681,7 @@ static void s_handle_socket_timeout(struct aws_task *task, void *args, aws_task_
     s_lock_socket_synced_data(nw_socket);
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
     if (!nw_socket->connection_setup && socket) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: timed out, shutting down.",
             (void *)socket,
@@ -728,7 +725,7 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
             node->received_data = readable_args->data;
             aws_linked_list_push_back(&nw_socket->read_queue, &node->node);
             data_processed = true;
-            AWS_LOGF_ERROR(
+            AWS_LOGF_TRACE(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: read data is not emtpy, push data to read_queue",
                 (void *)nw_socket,
@@ -740,7 +737,7 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
 
         if (readable_args->is_complete) {
             s_set_socket_state(nw_socket, socket, ~CONNECTED_READ);
-            AWS_LOGF_ERROR(
+            AWS_LOGF_TRACE(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket is complete, flip read flag",
                 (void *)nw_socket,
@@ -820,12 +817,11 @@ static void s_schedule_on_connection_result(struct nw_socket *nw_socket, int err
         struct nw_socket_scheduled_task_args *args =
             aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_scheduled_task_args));
 
-        args->nw_socket = nw_socket;
+        args->nw_socket = s_socket_acquire_internal_ref(nw_socket);
         args->allocator = socket->allocator;
         args->error_code = error_code;
 
         aws_task_init(&args->task, s_process_connection_result_task, args, "connectionSuccessTask");
-        s_socket_acquire_internal_ref(nw_socket);
         aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
     }
 
@@ -938,14 +934,13 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
         /* any error, including if closed remotely in error */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket connection get error code: %d",
+            "id=%p handle=%p: socket connection get apple error code: %d",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             connection_args->error);
 
         int error_code = s_determine_socket_error(connection_args->error);
         nw_socket->last_error = error_code;
-        aws_raise_error(error_code);
         aws_mutex_lock(&nw_socket->synced_data.lock);
         struct aws_socket *socket = nw_socket->synced_data.base_socket;
         s_set_socket_state(nw_socket, socket, ERROR);

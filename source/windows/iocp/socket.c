@@ -2305,7 +2305,7 @@ static int s_dgram_start_accept(
     struct aws_socket_listener_options options) {
     (void)socket;
     (void)accept_loop;
-    (void)options
+    (void)options;
     return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
 }
 
