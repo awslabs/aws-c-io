@@ -2253,8 +2253,8 @@ static int s_local_start_accept(
         socket_impl->read_io_data->socket = socket;
     }
 
-    socket->accept_result_fn = on_accept_result;
-    socket->connect_accept_user_data = user_data;
+    socket->accept_result_fn = options.on_accept_result;
+    socket->connect_accept_user_data = options.on_accept_result_user_data;
     socket_impl->stop_accept = false;
     aws_overlapped_init(&socket_impl->read_io_data->signal, s_incoming_pipe_connection_event, socket);
     socket_impl->read_io_data->in_use = true;
@@ -2305,8 +2305,7 @@ static int s_dgram_start_accept(
     struct aws_socket_listener_options options) {
     (void)socket;
     (void)accept_loop;
-    (void)on_accept_result;
-    (void)user_data;
+    (void)options
     return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
 }
 

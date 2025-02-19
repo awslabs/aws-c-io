@@ -536,49 +536,49 @@ static void s_process_socket_cancel_task(struct aws_task *task, void *arg, enum 
     struct nw_socket_cancel_task_args *args = arg;
     struct nw_socket *nw_socket = args->nw_socket;
 
-    s_lock_socket_state(nw_socket);
-    if (nw_socket->synced_state.state >= CLOSING) {
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: written finished closing", (void *)nw_socket);
 
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: written finished closing", (void *)nw_socket);
-
-        if ((nw_socket->mode == NWSM_CONNECTION && nw_socket->os_handle.nw_connection != NULL) ||
-            (nw_socket->mode == NWSM_LISTENER && nw_socket->os_handle.nw_listener != NULL)) {
-            // The timeout_args only setup for connected client connections.
-            if (nw_socket->mode == NWSM_CONNECTION && nw_socket->timeout_args && !nw_socket->connection_setup) {
-                // if the connection setup is not set, the timeout task has not yet triggered, cancel it.
-                aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
-            }
-
-            if (nw_socket->mode == NWSM_LISTENER) {
-                nw_listener_cancel(nw_socket->os_handle.nw_listener);
-                nw_release(nw_socket->os_handle.nw_listener);
-                nw_socket->os_handle.nw_listener = NULL;
-            } else if (nw_socket->mode == NWSM_CONNECTION) {
-                nw_connection_cancel(nw_socket->os_handle.nw_connection);
-                nw_release(nw_socket->os_handle.nw_connection);
-                nw_socket->os_handle.nw_connection = NULL;
-            }
+    if ((nw_socket->mode == NWSM_CONNECTION && nw_socket->os_handle.nw_connection != NULL) ||
+        (nw_socket->mode == NWSM_LISTENER && nw_socket->os_handle.nw_listener != NULL)) {
+        // The timeout_args only setup for connected client connections.
+        if (nw_socket->mode == NWSM_CONNECTION && nw_socket->timeout_args && !nw_socket->connection_setup) {
+            // if the connection setup is not set, the timeout task has not yet triggered, cancel it.
+            aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
         }
 
-        s_socket_release_internal_ref(nw_socket);
+        if (nw_socket->mode == NWSM_LISTENER) {
+            nw_listener_cancel(nw_socket->os_handle.nw_listener);
+            nw_release(nw_socket->os_handle.nw_listener);
+            nw_socket->os_handle.nw_listener = NULL;
+        } else if (nw_socket->mode == NWSM_CONNECTION) {
+            nw_connection_cancel(nw_socket->os_handle.nw_connection);
+            nw_release(nw_socket->os_handle.nw_connection);
+            nw_socket->os_handle.nw_connection = NULL;
+        }
     }
-    s_unlock_socket_state(nw_socket);
 
-    aws_mem_release(nw_socket->allocator, args);
+    s_socket_release_internal_ref(nw_socket);
+    aws_mem_release(args->allocator, args);
 }
 
 // Cancel the socket and close the connection. The cancel should happened on the event loop.
 static void s_schedule_socket_canceled(void *socket_ptr) {
     struct nw_socket *nw_socket = socket_ptr;
-    struct nw_socket_cancel_task_args *args =
-        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_cancel_task_args));
 
-    args->allocator = nw_socket->allocator;
-    args->nw_socket = nw_socket;
+    s_lock_socket_state(nw_socket);
+    if (nw_socket->synced_state.state >= CLOSING) {
 
-    aws_task_init(&args->task, s_process_socket_cancel_task, args, "SocketCanceledTask");
+        struct nw_socket_cancel_task_args *args =
+            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_cancel_task_args));
 
-    aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
+        args->allocator = nw_socket->allocator;
+        args->nw_socket = nw_socket;
+
+        aws_task_init(&args->task, s_process_socket_cancel_task, args, "SocketCanceledTask");
+
+        aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
+    }
+    s_unlock_socket_state(nw_socket);
 }
 
 static void s_socket_internal_destroy(void *sock_ptr) {
@@ -1123,7 +1123,7 @@ static void s_schedule_on_listener_success(
 }
 
 static void s_process_write_task(struct aws_task *task, void *args, enum aws_task_status status) {
-(void)task;
+    (void)task;
     struct nw_socket_written_args *task_args = args;
     struct aws_allocator *allocator = task_args->allocator;
     struct nw_socket *nw_socket = task_args->nw_socket;
