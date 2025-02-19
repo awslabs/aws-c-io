@@ -601,6 +601,11 @@ static void s_socket_internal_destroy(void *sock_ptr) {
         args->user_data = nw_socket->close_user_data;
         args->allocator = nw_socket->allocator;
         args->nw_socket = nw_socket;
+        // At this point the internal ref count has been dropped to 0, and we are about to release the external ref
+        // count.
+        // However, we would still keep the external ref count alive until the s_close_complete_callback callback is
+        // invoked. Acquire another external ref count to keep the socket alive. It will be released in
+        // s_close_complete_callback.
         aws_ref_count_acquire(&nw_socket->external_ref_count);
         aws_task_init(&args->task, s_close_complete_callback, args, "SocketShutdownCompleteTask");
 
@@ -849,7 +854,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
     nw_connection_state_t state = connection_args->state;
 
     if (state == nw_connection_state_cancelled) {
-        AWS_LOGF_DEBUG(
+        AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Apple network framework socket connection state changed to "
             "nw_connection_state_cancelled. ",
@@ -863,7 +868,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
         s_socket_release_internal_ref(nw_socket);
 
     } else if (state == nw_connection_state_ready) { /* we're connected! */
-        AWS_LOGF_DEBUG(
+        AWS_LOGF_INFO(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: Apple network framework socket connection state changed to nw_connection_state_ready. ",
             (void *)nw_socket,
@@ -934,7 +939,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
         /* any error, including if closed remotely in error */
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket connection get apple error code: %d",
+            "id=%p handle=%p: socket connection get apple os error code: %d",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             connection_args->error);
@@ -1075,7 +1080,7 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
                 } else // The connection is not sent to user, clean it up. The nw_connection should be released in
                        // socket clean up.
                 {
-                    aws_socket_clean_up(new_socket);
+                    AWS_FATAL_ASSERT("The listener accept_result_fn should not be NULL.");
                 }
             }
             aws_mutex_unlock(&listener_nw_socket->synced_data.lock);
@@ -1143,24 +1148,24 @@ static void s_schedule_write_fn(
     size_t bytes_written,
     void *user_data,
     aws_socket_on_write_completed_fn *written_fn) {
+    AWS_FATAL_ASSERT(s_validate_event_loop(nw_socket->event_loop));
+
     aws_mutex_lock(&nw_socket->synced_data.lock);
-    if (s_validate_event_loop(nw_socket->event_loop)) {
 
-        struct nw_socket_written_args *args =
-            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
+    struct nw_socket_written_args *args =
+        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
 
-        args->nw_socket = nw_socket;
-        args->allocator = nw_socket->allocator;
-        args->error_code = error_code;
-        args->written_fn = written_fn;
-        args->user_data = user_data;
-        args->bytes_written = bytes_written;
-        s_socket_acquire_internal_ref(nw_socket);
+    args->nw_socket = nw_socket;
+    args->allocator = nw_socket->allocator;
+    args->error_code = error_code;
+    args->written_fn = written_fn;
+    args->user_data = user_data;
+    args->bytes_written = bytes_written;
+    s_socket_acquire_internal_ref(nw_socket);
 
-        aws_task_init(&args->task, s_process_write_task, args, "writtenTask");
+    aws_task_init(&args->task, s_process_write_task, args, "writtenTask");
 
-        aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
-    }
+    aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
 
     aws_mutex_unlock(&nw_socket->synced_data.lock);
 }

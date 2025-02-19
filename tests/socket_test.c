@@ -362,9 +362,9 @@ static int s_test_socket_ex(
     // for setup a server socket
     if (options->type == AWS_SOCKET_STREAM || aws_event_loop_get_default_type() == AWS_EVENT_LOOP_DISPATCH_QUEUE) {
         ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-        struct aws_socket_listener_options options = {
+        struct aws_socket_listener_options listener_options = {
             .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
-        ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, options));
+        ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, listener_options));
     }
 
     struct local_outgoing_args outgoing_args = {
@@ -2416,7 +2416,9 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
 
     ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
 
-    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, s_local_listener_incoming, &listener_args));
+    struct aws_socket_listener_options listener_options = {
+        .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
+    ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, listener_options));
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
