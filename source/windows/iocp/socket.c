@@ -2214,7 +2214,7 @@ static int s_local_start_accept(
     struct aws_event_loop *accept_loop,
     struct aws_socket_listener_options options) {
     AWS_ASSERT(accept_loop);
-    AWS_ASSERT(on_accept_result);
+    AWS_ASSERT(options.on_accept_result);
 
     if (AWS_UNLIKELY(socket->state != LISTENING)) {
         AWS_LOGF_ERROR(
