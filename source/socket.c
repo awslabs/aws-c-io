@@ -37,10 +37,9 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
 int aws_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_start_accept_fn);
-    return socket->vtable->socket_start_accept_fn(socket, accept_loop, on_accept_result, user_data);
+    return socket->vtable->socket_start_accept_fn(socket, accept_loop, options);
 }
 
 int aws_socket_stop_accept(struct aws_socket *socket) {
@@ -51,6 +50,22 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
 int aws_socket_close(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_close_fn);
     return socket->vtable->socket_close_fn(socket);
+}
+
+int aws_socket_set_close_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_close_callback);
+    return socket->vtable->socket_set_close_callback(socket, fn, user_data);
+}
+
+int aws_socket_set_cleanup_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_cleanup_callback);
+    return socket->vtable->socket_set_cleanup_callback(socket, fn, user_data);
 }
 
 int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {
@@ -109,7 +124,7 @@ bool aws_socket_is_open(struct aws_socket *socket) {
  * Return the default socket implementation type. If the return value is `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, the
  * function failed to retrieve the default type value.
  */
-static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
+enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
 // override default socket
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
@@ -153,8 +168,6 @@ int aws_socket_init(struct aws_socket *socket, struct aws_allocator *alloc, cons
         case AWS_SOCKET_IMPL_WINSOCK:
             return aws_socket_init_winsock(socket, alloc, options);
         case AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK:
-            // Apple Network Framework is not implemented yet. We should not use it yet.
-            AWS_ASSERT(false && "Invalid socket implementation on platform.");
             return aws_socket_init_apple_nw_socket(socket, alloc, options);
         default:
             AWS_ASSERT(false && "Invalid socket implementation on platform.");
@@ -248,6 +261,7 @@ int aws_socket_init_winsock(
 }
 #endif
 
+#ifndef AWS_ENABLE_DISPATCH_QUEUE
 int aws_socket_init_apple_nw_socket(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -258,3 +272,4 @@ int aws_socket_init_apple_nw_socket(
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Apple Network Framework is not supported on the platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
+#endif
