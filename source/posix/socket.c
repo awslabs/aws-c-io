@@ -201,8 +201,13 @@ static int s_socket_connect(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn retrieve_tls_options,
     void *user_data);
-static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data);
 static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
     struct aws_socket *socket,
@@ -227,6 +232,8 @@ static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
 static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket);
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket);
 
 struct aws_socket_vtable s_posix_socket_vtable = {
     .socket_cleanup_fn = s_socket_clean_up,
@@ -244,6 +251,8 @@ struct aws_socket_vtable s_posix_socket_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
+    .socket_get_protocol_fn = s_socket_get_protocol_fn,
+    .socket_get_server_name_fn = s_socket_get_server_name_fn,
     .socket_set_close_callback = s_set_close_callback,
     .socket_set_cleanup_callback = s_set_cleanup_callback,
 };
@@ -315,7 +324,7 @@ static int s_socket_init(
 
     return AWS_OP_SUCCESS;
 }
-
+#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
 int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -323,6 +332,7 @@ int aws_socket_init_posix(
     AWS_ASSERT(options);
     return s_socket_init(socket, alloc, options, -1);
 }
+#endif // AWS_ENABLE_KQUEUE || AWS_ENABLE_EPOLL
 
 static void s_socket_clean_up(struct aws_socket *socket) {
     if (!socket->impl) {
@@ -681,7 +691,9 @@ static int s_socket_connect(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data) {
+    (void)retrieve_tls_options;
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
 
@@ -861,7 +873,13 @@ err_clean_up:
     return AWS_OP_ERR;
 }
 
-static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
+static int s_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data) {
+    (void)user_data;
+    (void)retrieve_tls_options;
     if (socket->state != INIT) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
@@ -2071,6 +2089,24 @@ static int s_socket_get_error(struct aws_socket *socket) {
 
 static bool s_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.fd >= 0;
+}
+
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket) {
+    struct aws_byte_buf empty;
+    AWS_ZERO_STRUCT(empty);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p socket_get_protocol_fn should only be called on a socket using secitem.",
+        (void *)socket);
+    return empty;
+}
+
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket) {
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p socket_get_server_name_fn should only be called on a socket using secitem.",
+        (void *)socket);
+    return NULL;
 }
 
 bool aws_is_network_interface_name_valid(const char *interface_name) {

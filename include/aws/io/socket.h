@@ -85,6 +85,7 @@ struct aws_socket_options {
 
 struct aws_socket;
 struct aws_event_loop;
+struct tls_connection_context;
 
 /**
  * Called in client mode when an outgoing connection has succeeded or an error has occurred.
@@ -94,6 +95,16 @@ struct aws_event_loop;
  * If an error occurred error_code will be non-zero.
  */
 typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int error_code, void *user_data);
+
+struct aws_tls_connection_options;
+
+/**
+ * Called to retrieve TLS related options during socket creation/initialization and socket listener binding.
+ * Typically the TLS handshake occurs after a socket connection is established but Apple Network Framework requires
+ * the setup of TLS related parameters at creation of the connection as its internal framework
+ * handles both the socket connection and the TLS handshake.
+ */
+typedef void(aws_socket_retrieve_tls_options_fn)(struct tls_connection_context *context, void *user_data);
 
 /**
  * Called by a listening socket when a listener accept has successfully initialized or an error has occurred.
@@ -222,6 +233,7 @@ AWS_IO_API int aws_socket_connect(
     const struct aws_socket_endpoint *remote_endpoint,
     struct aws_event_loop *event_loop,
     aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data);
 
 /**
@@ -229,7 +241,11 @@ AWS_IO_API int aws_socket_connect(
  * connection oriented modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()` before using the
  * socket. local_endpoint is copied.
  */
-AWS_IO_API int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+AWS_IO_API int aws_socket_bind(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data);
 
 /**
  * Get the local address which the socket is bound to.
