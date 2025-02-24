@@ -811,7 +811,7 @@ static void s_schedule_on_readable(
         args->allocator = nw_socket->allocator;
         args->error_code = error_code;
 
-        if (data) {
+        if (dispatch_data_get_size(data) > 0) {
             dispatch_retain(data);
             args->data = data;
         }
