@@ -596,12 +596,13 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         connection_args->failed_count++;
     }
 
+    struct aws_allocator *allocator = connection_args->bootstrap->allocator;
+
     if (error_code || connection_args->connection_chosen) {
         if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
             struct aws_host_address host_address;
             host_address.host = connection_args->host_name;
-            host_address.address =
-                aws_string_new_from_c_str(connection_args->bootstrap->allocator, socket->remote_endpoint.address);
+            host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
             host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
                                            ? AWS_ADDRESS_RECORD_TYPE_AAAA
                                            : AWS_ADDRESS_RECORD_TYPE_A;
@@ -625,8 +626,8 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             (void *)socket);
 
         struct socket_shutdown_setup_channel_args *close_args =
-            aws_mem_calloc(connection_args->bootstrap->allocator, 1, sizeof(struct socket_shutdown_setup_channel_args));
-        close_args->allocator = connection_args->bootstrap->allocator;
+            aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_setup_channel_args));
+        close_args->allocator = allocator;
         close_args->connection_args = connection_args;
         close_args->error_code = error_code;
 
@@ -635,7 +636,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 
         aws_socket_close(socket);
         aws_socket_clean_up(socket);
-        aws_mem_release(connection_args->bootstrap->allocator, socket);
+        aws_mem_release(allocator, socket);
 
         return;
     }
@@ -1396,12 +1397,13 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
         close_args->allocator = allocator;
         close_args->channel_data = channel_data;
         close_args->error_code = aws_last_error();
+        struct aws_socket *socket = channel_data->socket;
 
         aws_socket_set_cleanup_complete_callback(
             channel_data->socket, socket_shutdown_server_channel_setup_complete_fn, close_args);
 
         aws_socket_clean_up(channel_data->socket);
-        aws_mem_release(allocator, (void *)channel_data->socket);
+        aws_mem_release(socket->allocator, socket);
         return;
     }
 
