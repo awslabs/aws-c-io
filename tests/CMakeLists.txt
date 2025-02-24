@@ -70,7 +70,6 @@ add_net_test_case(test_socket_with_bind_to_interface)
 add_net_test_case(test_socket_with_bind_to_invalid_interface)
 add_net_test_case(test_is_network_interface_name_valid)
 add_net_test_case(connect_timeout)
-add_net_test_case(connect_timeout_cancelation)
 
 
 if(USE_VSOCK)
@@ -83,7 +82,7 @@ add_test_case(incoming_tcp_sock_errors)
 add_net_test_case(bind_on_zero_port_tcp_ipv4)
 add_net_test_case(bind_on_zero_port_udp_ipv4)
 add_test_case(incoming_udp_sock_errors)
-add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
+
 add_test_case(cleanup_in_accept_doesnt_explode)
 add_test_case(cleanup_in_write_cb_doesnt_explode)
 add_test_case(sock_write_cb_is_async)
@@ -97,6 +96,10 @@ add_test_case(wrong_thread_read_write_fails)
 # Apple Network Framework would not validate the binding endpoint until we start the
 # listen. The test does not apply here.
 add_test_case(incoming_duplicate_tcp_bind_errors)
+# nw_socket does not allow clean up event loop before socket shutdown, thus the following tests triggered 
+# by event loop shutdown would not apply to Apple Network Framework
+add_net_test_case(connect_timeout_cancelation)
+add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 endif()
 
 
