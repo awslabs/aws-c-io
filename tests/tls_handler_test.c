@@ -196,13 +196,14 @@ static int s_tls_common_tester_clean_up(struct tls_common_tester *tester) {
     aws_host_resolver_release(tester->resolver);
     aws_event_loop_group_release(tester->el_group);
 
+#    ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+    aws_thread_current_sleep(2000000000);
+#    endif
+
     aws_io_library_clean_up();
 
     aws_condition_variable_clean_up(&tester->condition_variable);
     aws_mutex_clean_up(&tester->mutex);
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(1000000000);
-
     return AWS_OP_SUCCESS;
 }
 
@@ -902,9 +903,6 @@ static int s_tls_channel_shutdown_with_cache_test_helper(struct aws_allocator *a
     /*no shutdown on the client necessary here (it should have been triggered by shutting down the other side). just
      * wait for the event to fire. */
     ASSERT_SUCCESS(s_tls_channel_server_client_tester_cleanup());
-
-    // wait for socket ref count drop and released
-    aws_thread_current_sleep(3000000000);
 
     return AWS_OP_SUCCESS;
 }

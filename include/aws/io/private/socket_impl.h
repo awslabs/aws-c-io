@@ -18,6 +18,17 @@ typedef void (*aws_ms_fn_ptr)(void);
 void aws_check_and_init_winsock(void);
 aws_ms_fn_ptr aws_winsock_get_connectex_fn(void);
 aws_ms_fn_ptr aws_winsock_get_acceptex_fn(void);
+#else // NOT ON WINDOWS
+struct socket_address {
+    union sock_addr_types {
+        struct sockaddr_in addr_in;
+        struct sockaddr_in6 addr_in6;
+        struct sockaddr_un un_addr;
+#    ifdef USE_VSOCK
+        struct sockaddr_vm vm_addr;
+#    endif
+    } sock_addr_types;
+};
 #endif
 
 int aws_socket_init_posix(
@@ -56,8 +67,7 @@ struct aws_socket_vtable {
     int (*socket_start_accept_fn)(
         struct aws_socket *socket,
         struct aws_event_loop *accept_loop,
-        aws_socket_on_accept_result_fn *on_accept_result,
-        void *user_data);
+        struct aws_socket_listener_options options);
     int (*socket_stop_accept_fn)(struct aws_socket *socket);
     int (*socket_close_fn)(struct aws_socket *socket);
     int (*socket_shutdown_dir_fn)(struct aws_socket *socket, enum aws_channel_direction dir);
@@ -75,6 +85,11 @@ struct aws_socket_vtable {
         void *user_data);
     int (*socket_get_error_fn)(struct aws_socket *socket);
     bool (*socket_is_open_fn)(struct aws_socket *socket);
+    int (*socket_set_close_callback)(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+    int (*socket_set_cleanup_callback)(
+        struct aws_socket *socket,
+        aws_socket_on_shutdown_complete_fn fn,
+        void *user_data);
     struct aws_byte_buf (*socket_get_protocol_fn)(const struct aws_socket *socket);
     struct aws_string *(*socket_get_server_name_fn)(const struct aws_socket *socket);
 };

@@ -6,7 +6,6 @@
  */
 
 #include <aws/io/channel.h>
-#include <aws/io/event_loop.h>
 #include <aws/io/io.h>
 
 AWS_PUSH_SANE_WARNING_LEVEL
@@ -51,6 +50,8 @@ enum aws_socket_impl_type {
 
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
 
+typedef void(aws_socket_on_shutdown_complete_fn)(void *user_data);
+
 struct aws_socket_options {
     enum aws_socket_type type;
     enum aws_socket_domain domain;
@@ -65,6 +66,9 @@ struct aws_socket_options {
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
+
+    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
+    void *shutdown_user_data;
 
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API
@@ -103,6 +107,15 @@ struct aws_tls_connection_options;
 typedef void(aws_socket_retrieve_tls_options_fn)(struct tls_connection_context *context, void *user_data);
 
 /**
+ * Called by a listening socket when a listener accept has successfully initialized or an error has occurred.
+ * If the listener was successful error_code will be AWS_ERROR_SUCCESS and the socket has already been assigned
+ * to the event loop specified in aws_socket_start_accept().
+ *
+ * If an error occurred error_code will be non-zero.
+ */
+typedef void(aws_socket_on_accept_started_fn)(struct aws_socket *socket, int error_code, void *user_data);
+
+/**
  * Called by a listening socket when either an incoming connection has been received or an error occurred.
  *
  * In the normal use-case, this function will be called multiple times over the lifetime of a single listening socket.
@@ -110,7 +123,8 @@ typedef void(aws_socket_retrieve_tls_options_fn)(struct tls_connection_context *
  * A user may want to call aws_socket_set_options() on the new socket if different options are desired.
  *
  * new_socket is not yet assigned to an event-loop. The user should call aws_socket_assign_to_event_loop() before
- * performing IO operations. The user must call `aws_socket_release()` when they're done with the socket, to free it.
+ * performing IO operations. The user must call `aws_socket_clean_up()` and "aws_mem_release()" when they're done with
+ * the new_socket, to free it.
  *
  * When error_code is AWS_ERROR_SUCCESS, new_socket is the recently accepted connection.
  * If error_code is non-zero, an error occurred and you should aws_socket_close() the socket.
@@ -127,14 +141,15 @@ typedef void(aws_socket_on_accept_result_fn)(
  * Callback for when the data passed to a call to aws_socket_write() has either completed or failed.
  * On success, error_code will be AWS_ERROR_SUCCESS.
  *
- * `socket` may be NULL in the callback if the socket is released and cleaned up before a callback is triggered.
- * by the system I/O handler,
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before the callback is triggered.
  */
 typedef void(
     aws_socket_on_write_completed_fn)(struct aws_socket *socket, int error_code, size_t bytes_written, void *user_data);
 /**
  * Callback for when socket is either readable (edge-triggered) or when an error has occurred. If the socket is
  * readable, error_code will be AWS_ERROR_SUCCESS.
+ *
+ * `socket` may be NULL in the callback if the socket is released and cleaned up before the callback is triggered.
  */
 typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
@@ -148,8 +163,6 @@ struct aws_socket_endpoint {
     char address[AWS_ADDRESS_MAX_LEN];
     uint32_t port;
 };
-
-struct aws_socket;
 
 struct aws_socket {
     struct aws_socket_vtable *vtable;
@@ -169,8 +182,18 @@ struct aws_socket {
     void *impl;
 };
 
-// struct aws_byte_buf;
-// struct aws_byte_cursor;
+struct aws_socket_listener_options {
+    aws_socket_on_accept_result_fn *on_accept_result;
+    void *on_accept_result_user_data;
+
+    // This callback is invoked when the listener starts accepting incoming connections.
+    // It is only triggered in asynchronous listener APIs while using nw_socket.
+    aws_socket_on_accept_started_fn *on_accept_start_result;
+    void *on_accept_start_user_data;
+};
+
+struct aws_byte_buf;
+struct aws_byte_cursor;
 
 AWS_EXTERN_C_BEGIN
 
@@ -198,10 +221,6 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  *
  * In TCP, LOCAL and VSOCK this function will not block. If the return value is successful, then you must wait on the
  * `on_connection_result()` callback to be invoked before using the socket.
- *
- * The function will failed with error if the endpoint is invalid, except for Apple Network Framework. In Apple network
- * framework, as connect is an async api, we would not know if the local endpoint is valid until we have the connection
- * state returned in callback. The error will returned in `on_connection_result` callback
  *
  * If an event_loop is provided for UDP sockets, a notification will be sent on
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
@@ -249,8 +268,7 @@ AWS_IO_API int aws_socket_listen(struct aws_socket *socket, int backlog_size);
 AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 
 /**
  * TCP, LOCAL and VSOCK only. The listening socket will stop accepting new connections.
@@ -262,11 +280,32 @@ AWS_IO_API int aws_socket_start_accept(
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
 /**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_close() finished. The callback
+ * will be called from the socket event loop.
+ */
+AWS_IO_API int aws_socket_set_close_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
+
+/**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_cleanup() finished. And
+ * it is only safe to release the socket afterwards. The callback will be called from the socket event loop.
+ */
+AWS_IO_API int aws_socket_set_cleanup_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
+
+/**
  * Calls `close()` on the socket and unregisters all io operations from the event loop. This function must be called
  * from the event-loop's thread unless this is a listening socket. If it's a listening socket it can be called from any
  * non-event-loop thread or the event-loop the socket is currently assigned to. If called from outside the event-loop,
  * this function will block waiting on the socket to close. If this is called from an event-loop thread other than
  * the one it's assigned to, it presents the possibility of a deadlock, so don't do it.
+ *
+ * If you are using Apple Network Framework, you should always call this function from an event-loop thread regardless
+ * it is a server or client socket.
  */
 AWS_IO_API int aws_socket_close(struct aws_socket *socket);
 
@@ -379,6 +418,12 @@ AWS_IO_API void aws_socket_endpoint_init_local_address_for_test(struct aws_socke
  * Validates whether the network interface name is valid. On Windows, it will always return false since we don't support
  * network_interface_name on Windows */
 AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
+
+/**
+ * Get default impl type based on the platform.
+ * For user in internal tests only
+ */
+AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL

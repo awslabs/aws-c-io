@@ -40,13 +40,12 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
     return socket->vtable->socket_listen_fn(socket, backlog_size);
 }
 
-int aws_socket_start_accept(
+AWS_IO_API int aws_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_start_accept_fn);
-    return socket->vtable->socket_start_accept_fn(socket, accept_loop, on_accept_result, user_data);
+    return socket->vtable->socket_start_accept_fn(socket, accept_loop, options);
 }
 
 int aws_socket_stop_accept(struct aws_socket *socket) {
@@ -57,6 +56,22 @@ int aws_socket_stop_accept(struct aws_socket *socket) {
 int aws_socket_close(struct aws_socket *socket) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_close_fn);
     return socket->vtable->socket_close_fn(socket);
+}
+
+int aws_socket_set_close_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_close_callback);
+    return socket->vtable->socket_set_close_callback(socket, fn, user_data);
+}
+
+int aws_socket_set_cleanup_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data) {
+    AWS_PRECONDITION(socket->vtable && socket->vtable->socket_set_cleanup_callback);
+    return socket->vtable->socket_set_cleanup_callback(socket, fn, user_data);
 }
 
 int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {
@@ -115,27 +130,26 @@ bool aws_socket_is_open(struct aws_socket *socket) {
  * Return the default socket implementation type. If the return value is `AWS_SOCKET_IMPL_PLATFORM_DEFAULT`, the
  * function failed to retrieve the default type value.
  */
-static enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
-    enum aws_socket_impl_type type = AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
+enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
 // override default socket
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
-    type = AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
-#endif // AWS_USE_APPLE_NETWORK_FRAMEWORK
-    if (type != AWS_SOCKET_IMPL_PLATFORM_DEFAULT) {
-        return type;
-    }
+    return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
+#else // ! AWS_USE_APPLE_NETWORK_FRAMEWORK
 /**
  * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
  * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
  */
-#if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+#    if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
     return AWS_SOCKET_IMPL_POSIX;
-#elif AWS_ENABLE_DISPATCH_QUEUE
+#    elif defined(AWS_ENABLE_DISPATCH_QUEUE)
     return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
-#elif AWS_ENABLE_IO_COMPLETION_PORTS
+#    elif defined(AWS_ENABLE_IO_COMPLETION_PORTS)
     return AWS_SOCKET_IMPL_WINSOCK;
-#else
+#    else
+    AWS_FATAL_ASSERT(
+        true && "Invalid default socket impl type. Please check make sure the library is compiled the correct ");
     return AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
+#    endif
 #endif
 }
 

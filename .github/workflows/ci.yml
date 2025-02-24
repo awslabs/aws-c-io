@@ -44,13 +44,13 @@ jobs:
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }}
 
   linux-byo-crypto:
-    runs-on: ubuntu-22.04 # latest
+    runs-on: ubuntu-24.04 # latest
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
-       # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+    # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
@@ -123,15 +123,15 @@ jobs:
       matrix:
         sanitizers: [",thread", ",address,undefined"]
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.CRT_CI_ROLE }}
-          aws-region: ${{ env.AWS_DEFAULT_REGION }}
-      # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-      - name: Build ${{ env.PACKAGE_NAME }}
-        run: |
-          aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-          ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-11 --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
+    - uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ env.CRT_CI_ROLE }}
+        aws-region: ${{ env.AWS_DEFAULT_REGION }}
+    # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+    - name: Build ${{ env.PACKAGE_NAME }}
+      run: |
+        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-11 --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
 
   linux-shared-libs:
     runs-on: ubuntu-24.04 # latest
@@ -140,7 +140,7 @@ jobs:
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
-        # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
+    # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
         aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
@@ -232,7 +232,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
+        eventloop: ["kqueue", "dispatch_queue"]
+        sanitizers: [",thread", ",address,undefined"]
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -242,20 +243,7 @@ jobs:
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=${{ matrix.eventloop }}
-  
-  macos-secitem:
-    runs-on: macos-14 # latest
-    steps:
-    - uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ env.CRT_CI_ROLE }}
-        aws-region: ${{ env.AWS_DEFAULT_REGION }}
-    - name: Build ${{ env.PACKAGE_NAME }} + consumers
-      run: |
-        python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
-        chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON --cmake-extra=-DAWS_USE_SECITEM=ON
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
 
   macos-x64:
     runs-on: macos-14-large # latest
@@ -275,7 +263,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        eventloop: ["-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON", "-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF"]
+        eventloop: ["kqueue", "dispatch_queue"]
+        sanitizers: [",thread", ",address,undefined"]
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -285,7 +274,7 @@ jobs:
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=${{ matrix.eventloop }} --config Debug
+        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}" --config Debug
 
   freebsd:
     runs-on: ubuntu-24.04  # latest

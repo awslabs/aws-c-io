@@ -42,6 +42,27 @@ static bool s_task_ran_predicate(void *args) {
     struct task_args *task_args = args;
     return task_args->invoked;
 }
+
+static bool s_validate_thread_id_equal(aws_thread_id_t thread_id, bool expected_result) {
+    // The dispatch queue will schedule tasks on thread pools, it is unpredictable which thread we run the task on,
+    // therefore we do not validate the thread id for dispatch queue.
+    if (aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE) {
+        return aws_thread_thread_id_equal(thread_id, aws_thread_current_thread_id());
+    }
+    return expected_result;
+}
+
+static void s_dispatch_queue_sleep(void) {
+    /*
+     * The dispatch queue can have a block waiting to execute up to one second in the future. This iteration block needs
+     * to run to clean up memory allocated to the paired scheduled iteration entry. We wait for two seconds to allow the
+     * Apple dispatch queue to run its delayed blocks and clean up for memory release purposes.
+     */
+#if defined(AWS_USE_APPLE_DISPATCH_QUEUE) || defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+    aws_thread_current_sleep(2000000000);
+#endif
+}
+
 /*
  * Test that a scheduled task from a non-event loop owned thread executes.
  */
@@ -78,11 +99,7 @@ static int s_test_event_loop_xthread_scheduled_tasks_execute(struct aws_allocato
     ASSERT_TRUE(task_args.invoked);
     aws_mutex_unlock(&task_args.mutex);
 
-    // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-    // therefore we do not validate the thread id for dispatch queue.
-    if (aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE) {
-        ASSERT_FALSE(aws_thread_thread_id_equal(task_args.thread_id, aws_thread_current_thread_id()));
-    }
+    ASSERT_FALSE(s_validate_thread_id_equal(task_args.thread_id, false));
 
     /* Test "now" tasks */
     task_args.invoked = false;
@@ -154,11 +171,9 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
         &task1_args.condition_variable, &task1_args.mutex, s_task_ran_predicate, &task1_args));
     ASSERT_TRUE(task1_args.invoked);
     ASSERT_TRUE(task1_args.was_in_thread);
-    // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-    // therefore we do not validate the thread id for dispatch queue.
-    if (aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE) {
-        ASSERT_FALSE(aws_thread_thread_id_equal(task1_args.thread_id, aws_thread_current_thread_id()));
-    }
+
+    ASSERT_FALSE(s_validate_thread_id_equal(task1_args.thread_id, false));
+
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_RUN_READY, task1_args.status);
     aws_mutex_unlock(&task1_args.mutex);
 
@@ -172,12 +187,10 @@ static int s_test_event_loop_canceled_tasks_run_in_el_thread(struct aws_allocato
     aws_mutex_unlock(&task2_args.mutex);
 
     ASSERT_TRUE(task2_args.was_in_thread);
-    // The dispatch queue will schedule tasks on thread pools, it is unpredicatable which thread we run the task on,
-    // therefore we do not validate the thread id for dispatch queue.
-    if (aws_event_loop_get_default_type() != AWS_EVENT_LOOP_DISPATCH_QUEUE) {
-        ASSERT_TRUE(aws_thread_thread_id_equal(task2_args.thread_id, aws_thread_current_thread_id()));
-    }
+    ASSERT_TRUE(s_validate_thread_id_equal(task2_args.thread_id, true));
     ASSERT_INT_EQUALS(AWS_TASK_STATUS_CANCELED, task2_args.status);
+
+    s_dispatch_queue_sleep();
 
     return AWS_OP_SUCCESS;
 }
@@ -1009,33 +1022,53 @@ static int s_test_event_loop_creation(
     return AWS_OP_SUCCESS;
 }
 
-/* Verify default event loop type */
-static int s_test_event_loop_all_types_creation(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    bool enable_kqueue = false;
-    bool enable_epoll = false;
-    bool enable_iocp = false;
-    bool enable_dispatch_queue = false;
-#ifdef AWS_ENABLE_KQUEUE
-    enable_kqueue = true;
-#endif
-#ifdef AWS_ENABLE_EPOLL
-    enable_epoll = true;
-#endif
-#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
-    enable_iocp = true;
-#endif
-#ifdef AWS_ENABLE_DISPATCH_QUEUE
-    enable_dispatch_queue = true;
-#endif
+static bool s_eventloop_test_enable_kqueue = false;
+static bool s_eventloop_test_enable_epoll = false;
+static bool s_eventloop_test_enable_iocp = false;
+static bool s_eventloop_test_enable_dispatch_queue = false;
 
-    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_EPOLL, enable_epoll) ||
-           s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_IOCP, enable_iocp) ||
-           s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_KQUEUE, enable_kqueue) ||
-           s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_DISPATCH_QUEUE, enable_dispatch_queue);
+static int s_test_event_loop_epoll_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_EPOLL
+    s_eventloop_test_enable_epoll = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_EPOLL, s_eventloop_test_enable_epoll);
 }
 
-AWS_TEST_CASE(event_loop_all_types_creation, s_test_event_loop_all_types_creation)
+AWS_TEST_CASE(event_loop_epoll_creation, s_test_event_loop_epoll_creation)
+
+static int s_test_event_loop_iocp_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_IO_COMPLETION_PORTS
+    s_eventloop_test_enable_iocp = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_IOCP, s_eventloop_test_enable_iocp);
+}
+
+AWS_TEST_CASE(event_loop_iocp_creation, s_test_event_loop_iocp_creation)
+
+static int s_test_event_loop_kqueue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+#ifdef AWS_ENABLE_KQUEUE
+    s_eventloop_test_enable_kqueue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_KQUEUE, s_eventloop_test_enable_kqueue);
+}
+
+AWS_TEST_CASE(event_loop_kqueue_creation, s_test_event_loop_kqueue_creation)
+
+static int s_test_event_loop_dispatch_queue_creation(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+#ifdef AWS_ENABLE_DISPATCH_QUEUE
+    s_eventloop_test_enable_dispatch_queue = true;
+#endif
+    return s_test_event_loop_creation(allocator, AWS_EVENT_LOOP_DISPATCH_QUEUE, s_eventloop_test_enable_dispatch_queue);
+}
+
+AWS_TEST_CASE(event_loop_dispatch_queue_creation, s_test_event_loop_dispatch_queue_creation)
 
 static int s_event_loop_test_stop_then_restart(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

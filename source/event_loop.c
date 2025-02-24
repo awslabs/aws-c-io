@@ -15,7 +15,9 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
-#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
+#if defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
+#elif defined(AWS_USE_APPLE_DISPATCH_QUEUE)
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
 #else
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
@@ -104,10 +106,8 @@ enum aws_event_loop_type aws_event_loop_get_default_type(void) {
 #elif defined(AWS_OS_WINDOWS)
     return AWS_EVENT_LOOP_IOCP;
 #else
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_EVENT_LOOP,
-        "Failed to get default event loop type. The library is not built correctly on the platform.");
-    return AWS_EVENT_LOOP_PLATFORM_DEFAULT;
+#    error                                                                                                             \
+        "Default event loop type required. Failed to get default event loop type. The library is not built correctly on the platform. "
 #endif
 }
 
@@ -115,30 +115,30 @@ static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) 
     switch (type) {
         case AWS_EVENT_LOOP_EPOLL:
 #ifndef AWS_ENABLE_EPOLL
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type EPOLL is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type EPOLL is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_EPOLL
             break;
         case AWS_EVENT_LOOP_IOCP:
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type IOCP is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type IOCP is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_IO_COMPLETION_PORTS
             break;
         case AWS_EVENT_LOOP_KQUEUE:
 #ifndef AWS_ENABLE_KQUEUE
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type KQUEUE is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type KQUEUE is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_KQUEUE
             break;
         case AWS_EVENT_LOOP_DISPATCH_QUEUE:
 #ifndef AWS_ENABLE_DISPATCH_QUEUE
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Event loop type Dispatch Queue is not supported on the platform.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type Dispatch Queue is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_DISPATCH_QUEUE
             break;
         default:
-            AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type.");
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type.");
             return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
             break;
     }
@@ -187,11 +187,19 @@ static void s_event_loop_group_thread_exit(void *user_data) {
 }
 
 static void s_aws_event_loop_group_shutdown_sync(struct aws_event_loop_group *el_group) {
+    size_t loop_count = aws_array_list_length(&el_group->event_loops);
+    for (size_t i = 0; i < loop_count; ++i) {
+        struct aws_event_loop *loop = NULL;
+        aws_array_list_get_at(&el_group->event_loops, &loop, i);
+
+        aws_event_loop_start_destroy(loop);
+    }
+
     while (aws_array_list_length(&el_group->event_loops) > 0) {
         struct aws_event_loop *loop = NULL;
 
         if (!aws_array_list_back(&el_group->event_loops, &loop)) {
-            aws_event_loop_destroy(loop);
+            aws_event_loop_complete_destroy(loop);
         }
 
         aws_array_list_pop_back(&el_group->event_loops);
@@ -288,6 +296,7 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
                 .clock = clock,
                 .thread_options = &thread_options,
                 .type = options->type,
+                .parent_elg = el_group,
             };
 
             if (pin_threads) {
@@ -494,10 +503,34 @@ void aws_event_loop_destroy(struct aws_event_loop *event_loop) {
         return;
     }
 
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->destroy);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->start_destroy);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->complete_destroy);
     AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
 
-    event_loop->vtable->destroy(event_loop);
+    event_loop->vtable->start_destroy(event_loop);
+    event_loop->vtable->complete_destroy(event_loop);
+}
+
+void aws_event_loop_start_destroy(struct aws_event_loop *event_loop) {
+    if (!event_loop) {
+        return;
+    }
+
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->start_destroy);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+
+    event_loop->vtable->start_destroy(event_loop);
+}
+
+void aws_event_loop_complete_destroy(struct aws_event_loop *event_loop) {
+    if (!event_loop) {
+        return;
+    }
+
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->complete_destroy);
+    AWS_ASSERT(!aws_event_loop_thread_is_callers_thread(event_loop));
+
+    event_loop->vtable->complete_destroy(event_loop);
 }
 
 int aws_event_loop_fetch_local_object(
@@ -573,8 +606,8 @@ int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 }
 
 void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_now);
     AWS_ASSERT(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_now);
     event_loop->vtable->schedule_task_now(event_loop, task);
 }
 
@@ -582,28 +615,23 @@ void aws_event_loop_schedule_task_future(
     struct aws_event_loop *event_loop,
     struct aws_task *task,
     uint64_t run_at_nanos) {
-
-    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_future);
     AWS_ASSERT(task);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->schedule_task_future);
     event_loop->vtable->schedule_task_future(event_loop, task, run_at_nanos);
 }
 
 void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
+    AWS_ASSERT(task);
     AWS_ASSERT(event_loop->vtable && event_loop->vtable->cancel_task);
     AWS_ASSERT(aws_event_loop_thread_is_callers_thread(event_loop));
-    AWS_ASSERT(task);
     event_loop->vtable->cancel_task(event_loop, task);
 }
 
 int aws_event_loop_connect_handle_to_io_completion_port(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle) {
-
-    if (event_loop->vtable && event_loop->vtable->connect_to_io_completion_port) {
-        return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
-    }
-
-    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->connect_to_io_completion_port);
+    return event_loop->vtable->connect_to_io_completion_port(event_loop, handle);
 }
 
 int aws_event_loop_subscribe_to_io_events(
@@ -612,11 +640,8 @@ int aws_event_loop_subscribe_to_io_events(
     int events,
     aws_event_loop_on_event_fn *on_event,
     void *user_data) {
-
-    if (event_loop->vtable && event_loop->vtable->subscribe_to_io_events) {
-        return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
-    }
-    return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+    AWS_ASSERT(event_loop->vtable && event_loop->vtable->subscribe_to_io_events);
+    return event_loop->vtable->subscribe_to_io_events(event_loop, handle, events, on_event, user_data);
 }
 
 int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
@@ -628,6 +653,11 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
     event_loop->vtable->free_io_event_resources(handle->additional_data);
+}
+
+void *get_base_event_loop_group(struct aws_event_loop *event_loop) {
+    AWS_ASSERT(event_loop && event_loop->vtable->get_base_event_loop_group);
+    return event_loop->vtable->get_base_event_loop_group(event_loop);
 }
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
