@@ -2010,7 +2010,8 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
     memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
     endpoint.port = bootstrap_options->port;
 
-    if (aws_socket_bind(&server_connection_args->listener, &endpoint)) {
+    if (aws_socket_bind(
+            &server_connection_args->listener, &endpoint, s_retrieve_server_tls_options, server_connection_args)) {
         goto cleanup_listener;
     }
 

@@ -246,7 +246,6 @@ static void s_dispatch_event_loop_on_zero_ref_count(void *user_data) {
     aws_condition_variable_notify_all(&dispatch_loop->synced_data.signal);
 }
 
-#if defined(AWS_ENABLE_DISPATCH_QUEUE)
 /* Setup a dispatch_queue with a scheduler. */
 struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     struct aws_allocator *alloc,

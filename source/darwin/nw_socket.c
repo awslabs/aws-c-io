@@ -12,11 +12,11 @@
 #include <aws/common/uuid.h>
 #include <aws/io/logging.h>
 
+#include "./dispatch_queue_event_loop_private.h" // private header
 #include <Network/Network.h>
 #include <aws/io/private/event_loop_impl.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 
-#include "aws_apple_network_framework.h"
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
@@ -290,107 +290,7 @@ struct nw_socket {
     } synced_state;
 };
 
-struct socket_address {
-    union sock_addr_types {
-        struct sockaddr_in addr_in;
-        struct sockaddr_in6 addr_in6;
-        struct sockaddr_un un_addr;
-    } sock_addr_types;
-};
-
 static size_t KB_16 = 16 * 1024;
-
-static void *s_socket_acquire_internal_ref(struct nw_socket *nw_socket) {
-    return aws_ref_count_acquire(&nw_socket->internal_ref_count);
-}
-
-static size_t s_socket_release_internal_ref(struct nw_socket *nw_socket) {
-    return aws_ref_count_release(&nw_socket->internal_ref_count);
-}
-
-static void *s_socket_acquire_write_ref(struct nw_socket *nw_socket) {
-    return aws_ref_count_acquire(&nw_socket->write_ref_count);
-}
-
-static size_t s_socket_release_write_ref(struct nw_socket *nw_socket) {
-    return aws_ref_count_release(&nw_socket->write_ref_count);
-}
-
-static int s_lock_socket_state(struct nw_socket *nw_socket) {
-    return aws_mutex_lock(&nw_socket->synced_state.lock);
-}
-
-static int s_unlock_socket_state(struct nw_socket *nw_socket) {
-    return aws_mutex_unlock(&nw_socket->synced_state.lock);
-}
-
-static int s_lock_socket_synced_data(struct nw_socket *nw_socket) {
-    return aws_mutex_lock(&nw_socket->synced_data.lock);
-}
-
-static int s_unlock_socket_synced_data(struct nw_socket *nw_socket) {
-    return aws_mutex_unlock(&nw_socket->synced_data.lock);
-}
-
-static bool s_validate_event_loop(struct aws_event_loop *event_loop) {
-    return event_loop && event_loop->vtable && event_loop->impl_data;
-}
-
-static void s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loop *event_loop) {
-    aws_socket->event_loop = event_loop;
-    struct nw_socket *nw_socket = aws_socket->impl;
-    // Never re-assign an event loop
-    AWS_FATAL_ASSERT(nw_socket->event_loop == NULL);
-    nw_socket->event_loop = event_loop;
-
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: s_set_event_loop: socket acquire event loop group.", (void *)nw_socket);
-    aws_event_loop_group_acquire(get_base_event_loop_group(event_loop));
-}
-
-static void s_release_event_loop(struct nw_socket *nw_socket) {
-    if (nw_socket->event_loop == NULL) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: s_release_event_loop: socket has not event loop.", (void *)nw_socket);
-        return;
-    }
-    aws_event_loop_group_release(get_base_event_loop_group(nw_socket->event_loop));
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET, "id=%p: s_release_event_loop: socket release event loop group.", (void *)nw_socket);
-    nw_socket->event_loop = NULL;
-}
-
-static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *socket, enum aws_nw_socket_state state) {
-    s_lock_socket_state(nw_socket);
-
-    enum aws_nw_socket_state result_state = nw_socket->synced_state.state;
-
-    // clip the read/write bits
-    enum aws_nw_socket_state read_write_bits = state & (CONNECTED_WRITE | CONNECTED_READ);
-    result_state = result_state & ~CONNECTED_WRITE & ~CONNECTED_READ;
-
-    // If the caller would like simply flip the read/write bits, set the state to invalid, as we dont have further
-    // information there.
-    if (~CONNECTED_WRITE == (int)state || ~CONNECTED_READ == (int)state) {
-        state = INVALID;
-    }
-
-    // The state can only go increasing, except for the following two cases
-    //  1. LISTENING and STOPPED. They can switch between each other.
-    //  2. CONNECT_WRITE and CONNECT_READ: you are allow to flip the flags for these two state, while not going
-    //  backwards to `CONNECTING` and `INIT` state.
-    if (result_state < state || (state == LISTENING && result_state == STOPPED)) {
-        result_state = state;
-    }
-
-    // Set CONNECTED_WRITE and CONNECTED_READ
-    result_state = result_state | read_write_bits;
-
-    nw_socket->synced_state.state = result_state;
-    if (socket) {
-        socket->state = result_state;
-    }
-
-    s_unlock_socket_state(nw_socket);
-}
 
 static void *s_socket_acquire_internal_ref(struct nw_socket *nw_socket) {
     return aws_ref_count_acquire(&nw_socket->internal_ref_count);
@@ -517,7 +417,8 @@ static void s_setup_tls_options(
     nw_protocol_options_t tls_options,
     const struct aws_socket_options *options,
     struct nw_socket *nw_socket,
-    struct secure_transport_ctx *transport_ctx) {
+    struct secure_transport_ctx *transport_ctx,
+    struct aws_event_loop *event_loop) {
     /* Obtain the security protocol options from the tls_options. Changes made directly
      * to the copy will impact the protocol options within the tls_options */
     sec_protocol_options_t sec_options = nw_tls_copy_sec_protocol_options(tls_options);
@@ -584,9 +485,7 @@ static void s_setup_tls_options(
         aws_array_list_clean_up(&alpn_list_array);
     }
 
-    aws_mutex_lock(&nw_socket->synced_data.lock);
-    struct dispatch_loop *dispatch_loop = nw_socket->synced_data.event_loop->impl_data;
-    aws_mutex_unlock(&nw_socket->synced_data.lock);
+    struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
 
     /* We handle the verification of the remote end here. */
     sec_protocol_options_set_verify_block(
@@ -718,7 +617,10 @@ static void s_setup_tls_options(
         dispatch_loop->dispatch_queue);
 }
 
-static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
+static int s_setup_socket_params(
+    struct nw_socket *nw_socket,
+    const struct aws_socket_options *options,
+    struct aws_event_loop *event_loop) {
 
     /* If we already have parameters set, release them before re-establishing new parameters */
     if (nw_socket->nw_parameters != NULL) {
@@ -757,7 +659,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                 nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     // TLS options block
                     ^(nw_protocol_options_t tls_options) {
-                      s_setup_tls_options(tls_options, options, nw_socket, transport_ctx);
+                      s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
                     },
                     // TCP options block
                     ^(nw_protocol_options_t tcp_options) {
@@ -778,7 +680,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                 nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                     // TLS options block
                     ^(nw_protocol_options_t tls_options) {
-                      s_setup_tls_options(tls_options, options, nw_socket, transport_ctx);
+                      s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
                     },
                     // TCP options block
                     ^(nw_protocol_options_t tcp_options) {
@@ -1086,6 +988,7 @@ static void s_socket_internal_destroy(void *sock_ptr) {
     s_release_event_loop(nw_socket);
     aws_ref_count_release(&nw_socket->external_ref_count);
 }
+
 int aws_socket_init_apple_nw_socket(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -1130,7 +1033,6 @@ int aws_socket_init_apple_nw_socket(
 
     return AWS_OP_SUCCESS;
 }
-#endif // AWS_ENABLE_DISPATCH_QUEUE
 
 static void s_client_set_dispatch_queue(struct aws_io_handle *handle, void *queue) {
     nw_connection_set_queue(handle->data.handle, queue);
@@ -1739,7 +1641,7 @@ static int s_socket_connect_fn(
     }
 
     s_set_event_loop(socket, event_loop);
-    if (s_setup_socket_params(nw_socket, &socket->options)) {
+    if (s_setup_socket_params(nw_socket, &socket->options, event_loop)) {
         goto clean_up;
     }
 
@@ -1935,6 +1837,8 @@ static int s_socket_bind_fn(
         (int)local_endpoint->port);
 
     if (nw_socket->nw_parameters == NULL) {
+        struct aws_event_loop *event_loop = NULL;
+
         if (retrieve_tls_options) {
             struct tls_connection_context tls_connection_context;
             AWS_ZERO_STRUCT(tls_connection_context);
@@ -1947,14 +1851,10 @@ static int s_socket_bind_fn(
                     (void *)socket);
                 return aws_last_error();
             }
-
-            if (tls_connection_context.event_loop) {
-                aws_mutex_lock(&nw_socket->synced_data.lock);
-                nw_socket->synced_data.event_loop = tls_connection_context.event_loop;
-                aws_mutex_unlock(&nw_socket->synced_data.lock);
-            }
+            event_loop = tls_connection_context.event_loop;
         }
-        s_setup_socket_params(nw_socket, &socket->options);
+
+        s_setup_socket_params(nw_socket, &socket->options, event_loop);
     }
 
     struct socket_address address;
