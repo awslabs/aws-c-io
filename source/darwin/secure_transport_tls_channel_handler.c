@@ -682,6 +682,8 @@ static int s_process_read_message(
                     handler, slot, &outgoing_read_message->message_data, secure_transport_handler->user_data);
             }
 
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes read :" PRInSTR, (void *)handler, AWS_BYTE_BUF_PRI(outgoing_read_message->message_data));
+
             if (slot->adj_right) {
                 if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
                     aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);
@@ -712,6 +714,7 @@ static int s_process_read_message(
                 /* continue the while loop */
                 continue;
             default:
+                AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: read message processed with OSStatus %d.", (void *)handler, status);
                 /* unexpected error happened */
                 aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
                 shutdown_error_code = AWS_IO_TLS_ERROR_READ_FAILURE;

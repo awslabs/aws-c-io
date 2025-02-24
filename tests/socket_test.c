@@ -403,8 +403,8 @@ static int s_test_socket_ex(
     }
 
     ASSERT_SUCCESS(aws_socket_assign_to_event_loop(server_sock, event_loop));
-    aws_socket_subscribe_to_readable_events(server_sock, s_on_readable, NULL);
-    aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
+    ASSERT_SUCCESS(aws_socket_subscribe_to_readable_events(server_sock, s_on_readable, NULL));
+    ASSERT_SUCCESS(aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL));
 
     io_args.socket = &outgoing;
 
@@ -564,8 +564,8 @@ static int s_test_socket_udp_apple_network_framework(
         &condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
-    aws_socket_subscribe_to_readable_events(&listener, s_on_readable, NULL);
-    aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL);
+    ASSERT_SUCCESS(aws_socket_subscribe_to_readable_events(&listener, s_on_readable, NULL));
+    ASSERT_SUCCESS(aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL));
 
     /* now test the read and write across the connection. */
     const char read_data[] = "I'm a little teapot";
