@@ -1755,15 +1755,15 @@ static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aw
 static void s_schedule_next_read(struct nw_socket *nw_socket) {
     s_lock_socket_synced_data(nw_socket);
 
-    // if (nw_socket->synced_data.read_scheduled) {
-    //     AWS_LOGF_ERROR(
-    //         AWS_LS_IO_SOCKET,
-    //         "id=%p handle=%p: there is already read queued, do not queue further read",
-    //         (void *)nw_socket,
-    //         (void *)nw_socket->os_handle.nw_connection);
-    //     s_unlock_socket_synced_data(nw_socket);
-    //     return;
-    // }
+    if (nw_socket->synced_data.read_scheduled) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: there is already read queued, do not queue further read",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection);
+        s_unlock_socket_synced_data(nw_socket);
+        return;
+    }
     struct aws_socket *socket = nw_socket->synced_data.base_socket;
 
     s_unlock_socket_synced_data(nw_socket);
