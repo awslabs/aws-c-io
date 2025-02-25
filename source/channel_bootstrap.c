@@ -634,25 +634,21 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             }
         }
 
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: releasing socket %p either because we already have a "
-            "successful connection or because it errored out.",
-            (void *)connection_args->bootstrap,
-            (void *)socket);
-
-        struct socket_shutdown_setup_channel_args *close_args =
-            aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_setup_channel_args));
-        close_args->allocator = allocator;
-        close_args->connection_args = connection_args;
-        close_args->error_code = error_code;
-
-        aws_socket_set_cleanup_complete_callback(
-            socket, s_socket_shutdown_complete_setup_connection_args_fn, close_args);
-
-        aws_socket_close(socket);
-        aws_socket_clean_up(socket);
-        aws_mem_release(allocator, socket);
+        if (error_code) {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: releasing socket %p due to error_code %d.",
+                (void *)connection_args->bootstrap,
+                (void *)socket,
+                error_code);
+        } else {
+            AWS_LOGF_TRACE(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: releasing socket %p either because we already have a "
+                "successful connection.",
+                (void *)connection_args->bootstrap,
+                (void *)socket);
+        }
 
 #if defined(AWS_USE_SECITEM)
         /* If Apple Network Framework Secitem is being used, it's possible at this point that
@@ -670,24 +666,18 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         }
 #endif /* AWS_USE_SECITEM */
 
-        /* if this is the last attempted connection and it failed, notify the user */
-        if (connection_args->failed_count == connection_args->addresses_count) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                "id=%p: Connection failed with error_code %d.",
-                (void *)connection_args->bootstrap,
-                error_code);
+        struct socket_shutdown_setup_channel_args *close_args =
+            aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_setup_channel_args));
+        close_args->allocator = allocator;
+        close_args->connection_args = connection_args;
+        close_args->error_code = error_code;
 
-            if (connection_args->tls_error_code != AWS_ERROR_SUCCESS) {
-                error_code = connection_args->tls_error_code;
-            }
+        aws_socket_set_cleanup_complete_callback(
+            socket, s_socket_shutdown_complete_setup_connection_args_fn, close_args);
 
-            /* connection_args will be released after setup_callback */
-            s_connection_args_setup_callback(connection_args, error_code, NULL);
-        }
-
-        /* every connection task adds a ref, so every failure or cancel needs to dec one */
-        s_client_connection_args_release(connection_args);
+        aws_socket_close(socket);
+        aws_socket_clean_up(socket);
+        aws_mem_release(allocator, socket);
         return;
     }
 
