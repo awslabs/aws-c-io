@@ -1946,7 +1946,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             read_node->received_data,
             (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
                 (void)region;
-                (void)offset;
+                AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: dispatch_data_apply callback invoked with offset %zu, buffer %p, size %zu", (void *)nw_socket, offset, (void *)buffer, size);
                 size_t to_copy = aws_min_size(max_to_read, size - read_node->current_offset);
                 aws_byte_buf_write(read_buffer, (const uint8_t *)buffer + read_node->current_offset, to_copy);
                 max_to_read -= to_copy;
