@@ -1953,9 +1953,11 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
                 *amount_read += to_copy;
                 read_node->current_offset += to_copy;
                 if (read_node->current_offset == size) {
+                    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: dispatch_data_apply callback used all data, moving to next buffer", (void *)nw_socket);
                     read_node->current_offset = 0;
                     return true;
                 }
+                AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: dispatch_data_apply callback did not use all data, early-outing.  Must restart next read.", (void *)nw_socket);
                 return false;
             });
 
