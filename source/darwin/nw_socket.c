@@ -502,8 +502,8 @@ struct read_queue_node {
     struct aws_allocator *allocator;
     dispatch_data_t received_data;
     struct aws_linked_list_node node;
-    size_t total_offset;
     size_t region_offset;
+    size_t current_region;
 };
 
 static void s_destroy_read_queue_node(struct read_queue_node *node) {
@@ -1948,16 +1948,19 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
                 (void)region;
                 (void)offset;
+                if (read_node->current_region && read_node->current_region < offset) {
+                    return true;
+                }
                 size_t to_copy = aws_min_size(max_to_read, size - read_node->region_offset);
-                aws_byte_buf_write(read_buffer, (const uint8_t *)buffer + read_node->total_offset, to_copy);
+                aws_byte_buf_write(read_buffer, (const uint8_t *)buffer + read_node->region_offset, to_copy);
                 max_to_read -= to_copy;
                 *amount_read += to_copy;
-                read_node->total_offset += to_copy;
                 read_node->region_offset += to_copy;
                 if (read_node->region_offset == size) {
                     read_node->region_offset = 0;
                     return true;
                 }
+                read_node->current_region = offset;
                 return false;
             });
 
