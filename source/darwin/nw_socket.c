@@ -1958,7 +1958,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
                     read_node->region_offset,
                     read_node->current_region,
                 buffer, size);
-                if (read_node->current_region && read_node->current_region < offset) {
+                if (read_node->current_region && offset < read_node->current_region) {
                     AWS_LOGF_DEBUG(
                         AWS_LS_IO_SOCKET,
                         "id=%p handle=%p: dispatch_data_apply: skipped current region : %lu, looking for region: %lu",
