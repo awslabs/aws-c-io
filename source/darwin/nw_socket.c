@@ -1948,7 +1948,24 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
                 (void)region;
                 (void)offset;
+
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: dispatch_data_apply: starting read region: %lu, with region offset: %lu and reading region %lu, read buffer %p, with size %lu",
+                    (void *)socket,
+                    socket->io_handle.data.handle,
+                    offset,
+                    read_node->region_offset,
+                    read_node->current_region,
+                buffer, size);
                 if (read_node->current_region && read_node->current_region < offset) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_SOCKET,
+                        "id=%p handle=%p: dispatch_data_apply: skipped current region : %lu, looking for region: %lu",
+                        (void *)socket,
+                        socket->io_handle.data.handle,
+                        offset,
+                        read_node->current_region);
                     return true;
                 }
                 size_t to_copy = aws_min_size(max_to_read, size - read_node->region_offset);
