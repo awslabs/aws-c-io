@@ -712,6 +712,8 @@ static int s_process_read_message(
                 /* continue the while loop */
                 continue;
             default:
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_TLS, "id=%p: read message processed with OSStatus %d.", (void *)handler, status);
                 /* unexpected error happened */
                 aws_raise_error(AWS_IO_TLS_ERROR_READ_FAILURE);
                 shutdown_error_code = AWS_IO_TLS_ERROR_READ_FAILURE;

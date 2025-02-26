@@ -199,17 +199,26 @@ static void s_rw_handler_write_now(
     struct aws_byte_buf *buffer,
     aws_channel_on_message_write_completed_fn *on_completion,
     void *user_data) {
+    size_t remaining = buffer->len;
+    struct aws_byte_cursor write_cursor = aws_byte_cursor_from_buf(buffer);
 
-    struct aws_io_message *msg =
-        aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, buffer->len);
+    while (remaining > 0) {
+        size_t chunk_size = remaining;
+        struct aws_io_message *msg =
+            aws_channel_acquire_message_from_pool(slot->channel, AWS_IO_MESSAGE_APPLICATION_DATA, chunk_size);
 
-    msg->on_completion = on_completion;
-    msg->user_data = user_data;
+        chunk_size = aws_min_size(chunk_size, msg->message_data.capacity - msg->message_data.len);
 
-    struct aws_byte_cursor write_buffer = aws_byte_cursor_from_buf(buffer);
-    AWS_FATAL_ASSERT(aws_byte_buf_append(&msg->message_data, &write_buffer) == AWS_OP_SUCCESS);
+        msg->on_completion = on_completion;
+        msg->user_data = user_data;
 
-    AWS_FATAL_ASSERT(aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE) == AWS_OP_SUCCESS);
+        struct aws_byte_cursor chunk_cursor = aws_byte_cursor_advance(&write_cursor, chunk_size);
+        AWS_FATAL_ASSERT(aws_byte_buf_append(&msg->message_data, &chunk_cursor) == AWS_OP_SUCCESS);
+
+        AWS_FATAL_ASSERT(aws_channel_slot_send_message(slot, msg, AWS_CHANNEL_DIR_WRITE) == AWS_OP_SUCCESS);
+
+        remaining -= chunk_size;
+    }
 }
 
 static void s_rw_handler_write_task(struct aws_channel_task *task, void *arg, enum aws_task_status task_status) {
