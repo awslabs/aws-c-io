@@ -744,12 +744,11 @@ static int s_socket_data_over_multiple_frames_test(struct aws_allocator *allocat
     s_socket_common_tester_init(allocator, &c_tester);
 
     // Create a large message that will be split over multiple frames
-    const size_t total_bytes_to_send_from_server = g_aws_channel_max_fragment_size * 100;
+    const size_t total_bytes_to_send_from_server = g_aws_channel_max_fragment_size * 1024;
     struct aws_byte_buf msg_from_server;
     ASSERT_SUCCESS(aws_byte_buf_init(&msg_from_server, allocator, total_bytes_to_send_from_server));
-    // Seed the random number generator
-    srand((unsigned int)time(NULL));
 
+    srand(0);
     // Fill the buffer with random printable ASCII characters
     for (size_t i = 0; i < total_bytes_to_send_from_server; ++i) {
         char random_char = 32 + (rand() % 95); // Printable ASCII characters range from 32 to 126

@@ -682,8 +682,6 @@ static int s_process_read_message(
                     handler, slot, &outgoing_read_message->message_data, secure_transport_handler->user_data);
             }
 
-            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: bytes read :" PRInSTR, (void *)handler, AWS_BYTE_BUF_PRI(outgoing_read_message->message_data));
-
             if (slot->adj_right) {
                 if (aws_channel_slot_send_message(slot, outgoing_read_message, AWS_CHANNEL_DIR_READ)) {
                     aws_mem_release(outgoing_read_message->allocator, outgoing_read_message);

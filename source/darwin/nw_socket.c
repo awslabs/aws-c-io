@@ -503,7 +503,9 @@ struct read_queue_node {
     dispatch_data_t received_data;
     struct aws_linked_list_node node;
     size_t region_offset;
-    size_t current_region;
+    // If we didn't finish reading the received_data, we need to keep track of the region offset that we would
+    // like to resume with
+    size_t resume_region;
 };
 
 static void s_destroy_read_queue_node(struct read_queue_node *node) {
@@ -1949,23 +1951,23 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
                 (void)region;
                 (void)offset;
 
-                AWS_LOGF_DEBUG(
+                AWS_LOGF_TRACE(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: dispatch_data_apply: starting read region: %lu, with region offset: %lu and reading region %lu, read buffer %p, with size %lu",
+                    "id=%p handle=%p: Starting read dispatch data region offset: %lu, buffer %p, with size %lu.",
                     (void *)socket,
                     socket->io_handle.data.handle,
                     offset,
-                    read_node->region_offset,
-                    read_node->current_region,
-                buffer, size);
-                if (read_node->current_region && offset < read_node->current_region) {
-                    AWS_LOGF_DEBUG(
+                    buffer,
+                    size);
+
+                if (read_node->resume_region && offset < read_node->resume_region) {
+                    AWS_LOGF_TRACE(
                         AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: dispatch_data_apply: skipped current region : %lu, looking for region: %lu",
+                        "id=%p handle=%p: Skipped dispatch data region region : %lu, looking for region: %lu",
                         (void *)socket,
                         socket->io_handle.data.handle,
                         offset,
-                        read_node->current_region);
+                        read_node->resume_region);
                     return true;
                 }
                 size_t to_copy = aws_min_size(max_to_read, size - read_node->region_offset);
@@ -1977,7 +1979,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
                     read_node->region_offset = 0;
                     return true;
                 }
-                read_node->current_region = offset;
+                read_node->resume_region = offset;
                 return false;
             });
 

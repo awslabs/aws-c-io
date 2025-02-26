@@ -159,10 +159,9 @@ static void s_do_read(struct socket_handler *socket_handler) {
         total_read += read;
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET_HANDLER,
-            "id=%p: read %llu from socket: " PRInSTR,
+            "id=%p: read %llu from socket",
             (void *)socket_handler->slot->handler,
-            (unsigned long long)read,
-            AWS_BYTE_BUF_PRI(message->message_data));
+            (unsigned long long)read);
 
         if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
             last_error = aws_last_error();
