@@ -2090,7 +2090,7 @@ static DWORD s_get_disabled_protocols(
                 break;
         }
 #if defined(SP_PROT_TLS1_3_SERVER)
-        if (disable_tls13) {
+        if (!disable_tls13) {
             bit_disabled_protocols |= SP_PROT_TLS1_3_SERVER;
         }
 #endif
