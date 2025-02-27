@@ -24,6 +24,7 @@ struct socket_address {
         struct sockaddr_in addr_in;
         struct sockaddr_in6 addr_in6;
         struct sockaddr_un un_addr;
+        struct sockaddr addr_base;
 #    ifdef USE_VSOCK
         struct sockaddr_vm vm_addr;
 #    endif
