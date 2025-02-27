@@ -113,8 +113,7 @@ AWS_IO_API int aws_import_key_pair_to_cert_context(
     HCERTSTORE *cert_store,
     PCCERT_CONTEXT *certs,
     HCRYPTPROV *crypto_provider,
-    HCRYPTKEY *private_key_handle,
-    bool *tls13_disabled);
+    HCRYPTKEY *private_key_handle);
 
 #endif /* _WIN32 */
 
