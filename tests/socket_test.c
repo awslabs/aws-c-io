@@ -566,7 +566,6 @@ static int s_test_socket_udp_apple_network_framework(
         &condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
-    ASSERT_SUCCESS(aws_socket_subscribe_to_readable_events(&listener, s_on_readable, NULL));
     ASSERT_SUCCESS(aws_socket_subscribe_to_readable_events(&outgoing, s_on_readable, NULL));
 
     /* now test the read and write across the connection. */
