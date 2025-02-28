@@ -110,9 +110,6 @@ struct nw_socket_timeout_args {
     struct aws_task task;
     struct aws_allocator *allocator;
     struct nw_socket *nw_socket;
-    // // The `cancelled` flag set in the following situation
-    // //      1. The
-    // bool cancelled;
 };
 
 struct nw_socket_scheduled_task_args {
@@ -179,7 +176,9 @@ struct nw_socket {
     enum aws_nw_socket_mode mode;
 
     /* The linked list of `read_queue_node`. The read queue to store read data from io events. aws_socket_read()
-     * function would read data from the queue. */
+     * function would read data from the queue.
+
+     * WARNING: The read_queue is not lock protected so far, as we always access it on event loop thread. */
     struct aws_linked_list read_queue;
 
     /*
@@ -358,44 +357,47 @@ static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *s
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
     if (options->type == AWS_SOCKET_STREAM) {
         /* if TCP, setup all the tcp options */
-        if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
-            // DEBUG WIP NW_PARAMETERS_DISABLE_PROTOCOL will need to be changed to use MTLS With SecItem
-            nw_socket->socket_options_to_params =
-                nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, ^(nw_protocol_options_t nw_options) {
-                  if (options->connect_timeout_ms) {
-                      /* this value gets set in seconds. */
-                      nw_tcp_options_set_connection_timeout(
-                          nw_options, options->connect_timeout_ms / AWS_TIMESTAMP_MILLIS);
-                  }
+        switch (options->domain) {
+            case AWS_SOCKET_IPV4:
+            case AWS_SOCKET_IPV6: {
+                // DEBUG WIP NW_PARAMETERS_DISABLE_PROTOCOL will need to be changed to use MTLS With SecItem
+                nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
+                    NW_PARAMETERS_DISABLE_PROTOCOL, ^(nw_protocol_options_t nw_options) {
+                      if (options->connect_timeout_ms) {
+                          /* this value gets set in seconds. */
+                          nw_tcp_options_set_connection_timeout(
+                              nw_options, options->connect_timeout_ms / AWS_TIMESTAMP_MILLIS);
+                      }
 
-                  // Only change default keepalive values if keepalive is true and both interval and timeout
-                  // are not zero.
-                  if (options->keepalive && options->keep_alive_interval_sec != 0 &&
-                      options->keep_alive_timeout_sec != 0) {
-                      nw_tcp_options_set_enable_keepalive(nw_options, options->keepalive);
-                      nw_tcp_options_set_keepalive_idle_time(nw_options, options->keep_alive_timeout_sec);
-                      nw_tcp_options_set_keepalive_interval(nw_options, options->keep_alive_interval_sec);
-                  }
+                      // Only change default keepalive values if keepalive is true and both interval and timeout
+                      // are not zero.
+                      if (options->keepalive && options->keep_alive_interval_sec != 0 &&
+                          options->keep_alive_timeout_sec != 0) {
+                          nw_tcp_options_set_enable_keepalive(nw_options, options->keepalive);
+                          nw_tcp_options_set_keepalive_idle_time(nw_options, options->keep_alive_timeout_sec);
+                          nw_tcp_options_set_keepalive_interval(nw_options, options->keep_alive_interval_sec);
+                      }
 
-                  if (options->keep_alive_max_failed_probes) {
-                      nw_tcp_options_set_keepalive_count(nw_options, options->keep_alive_max_failed_probes);
-                  }
+                      if (options->keep_alive_max_failed_probes) {
+                          nw_tcp_options_set_keepalive_count(nw_options, options->keep_alive_max_failed_probes);
+                      }
 
-                  if (g_aws_channel_max_fragment_size < KB_16) {
-                      nw_tcp_options_set_maximum_segment_size(nw_options, g_aws_channel_max_fragment_size);
-                  }
-                });
-        } else if (options->domain == AWS_SOCKET_LOCAL) {
-            nw_socket->socket_options_to_params =
-                nw_parameters_create_secure_tcp(NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
-        } else { // If domain is AWS_SOCKET_VSOCK, the domain is not supported.
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p options=%p: AWS_SOCKET_VSOCK is not supported on nw_socket.",
-                (void *)nw_socket,
-                (void *)options);
-            AWS_FATAL_ASSERT(0);
-            return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+                      if (g_aws_channel_max_fragment_size < KB_16) {
+                          nw_tcp_options_set_maximum_segment_size(nw_options, g_aws_channel_max_fragment_size);
+                      }
+                    });
+            } break;
+            case AWS_SOCKET_LOCAL: {
+                nw_socket->socket_options_to_params = nw_parameters_create_secure_tcp(
+                    NW_PARAMETERS_DISABLE_PROTOCOL, NW_PARAMETERS_DEFAULT_CONFIGURATION);
+            } break;
+            default:
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p options=%p: AWS_SOCKET_VSOCK is not supported on nw_socket.",
+                    (void *)nw_socket,
+                    (void *)options);
+                return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->socket_options_to_params =
@@ -511,7 +513,7 @@ struct read_queue_node {
     size_t resume_region;
 };
 
-static void s_destroy_read_queue_node(struct read_queue_node *node) {
+static void s_read_queue_node_destroy(struct read_queue_node *node) {
     /* releases reference count on dispatch_data_t that was increased during creation of read_queue_node */
     dispatch_release(node->received_data);
     aws_mem_release(node->allocator, node);
@@ -544,7 +546,7 @@ static void s_socket_impl_destroy(void *sock_ptr) {
     while (!aws_linked_list_empty(&nw_socket->read_queue)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&nw_socket->read_queue);
         struct read_queue_node *read_queue_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
-        s_destroy_read_queue_node(read_queue_node);
+        s_read_queue_node_destroy(read_queue_node);
     }
 
     /* Network Framework cleanup */
@@ -760,6 +762,9 @@ static void s_process_readable_task(struct aws_task *task, void *arg, enum aws_t
     // If data is valid, push it in read_queue. The read_queue should be only accessed in event loop, as the
     // task is scheduled in event loop, it is fine to directly access it.
     if (readable_args->data) {
+        // We directly store the dispatch_data returned from kernel. This could potentially be performance concern.
+        // Another option is to read the data out into heap buffer and store the heap buffer in read_queue. However,
+        // this would introduce extra memory copy. We would like to keep the dispatch_data_t in read_queue for now.
         struct read_queue_node *node = aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct read_queue_node));
         node->allocator = nw_socket->allocator;
         node->received_data = readable_args->data;
@@ -1239,39 +1244,52 @@ static int s_socket_connect_fn(
         s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
-    s_unlock_socket_synced_data(nw_socket);
 
     /* fill in posix sock addr, and then let Network framework sort it out. */
     size_t address_strlen;
     if (aws_secure_strlen(remote_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
+        s_unlock_socket_synced_data(nw_socket);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: failed to parse address %s:%d.",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            remote_endpoint->address,
+            (int)remote_endpoint->port);
         return AWS_OP_ERR;
     }
 
     struct socket_address address;
     AWS_ZERO_STRUCT(address);
     int pton_err = 1;
-    if (socket->options.domain == AWS_SOCKET_IPV4) {
-        pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-        address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
-        address.sock_addr_types.addr_in.sin_family = AF_INET;
-        address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
-    } else if (socket->options.domain == AWS_SOCKET_IPV6) {
-        pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-        address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
-        address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
-        address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
-    } else if (socket->options.domain == AWS_SOCKET_LOCAL) {
-        address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-        strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
-        address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
 
-    } else {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket tried to bind to an unknow domain.",
-            (void *)socket,
-            socket->io_handle.data.handle);
-        return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+    switch (socket->options.domain) {
+        case AWS_SOCKET_IPV4: {
+            pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+            address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
+            address.sock_addr_types.addr_in.sin_family = AF_INET;
+            address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
+        } break;
+        case AWS_SOCKET_IPV6: {
+            pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+            address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
+            address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
+            address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
+        } break;
+        case AWS_SOCKET_LOCAL: {
+            address.sock_addr_types.un_addr.sun_family = AF_UNIX;
+            strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
+            address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
+        } break;
+        default: {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: socket tried to bind to an unknow domain.",
+                (void *)socket,
+                socket->io_handle.data.handle);
+            s_unlock_socket_synced_data(nw_socket);
+            return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+        }
     }
 
     if (pton_err != 1) {
@@ -1282,6 +1300,7 @@ static int s_socket_connect_fn(
             socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
+        s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(s_convert_pton_error(pton_err));
     }
 
@@ -1303,6 +1322,7 @@ static int s_socket_connect_fn(
             socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
+        s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
@@ -1312,9 +1332,10 @@ static int s_socket_connect_fn(
     if (!socket->io_handle.data.handle) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: connection creation failed, please verify the socket options are correct.",
+            "id=%p handle=%p: connection creation failed, please verify the socket options are setup properly.",
             (void *)socket,
             socket->io_handle.data.handle);
+        s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
@@ -1394,6 +1415,7 @@ static int s_socket_connect_fn(
     s_socket_acquire_internal_ref(nw_socket);
     nw_retain(socket->io_handle.data.handle);
     nw_connection_start(socket->io_handle.data.handle);
+    s_unlock_socket_synced_data(nw_socket);
 
     return AWS_OP_SUCCESS;
 }
@@ -1494,9 +1516,10 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     socket->io_handle.data.handle = nw_listener_create(nw_socket->socket_options_to_params);
 
     if (!socket->io_handle.data.handle) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p:  nw_listener creation failed.", (void *)socket);
-
-        s_set_socket_state(nw_socket, socket, ERROR);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p:  listener creation failed, please verify the socket options are setup properly.",
+            (void *)socket);
         s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
@@ -1645,7 +1668,6 @@ static int s_socket_start_accept_fn(
         s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
-    s_unlock_socket_synced_data(nw_socket);
 
     if (socket->event_loop) {
         AWS_LOGF_ERROR(
@@ -1654,6 +1676,7 @@ static int s_socket_start_accept_fn(
             (void *)socket,
             socket->io_handle.data.handle,
             (void *)socket->event_loop);
+        s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
@@ -1689,6 +1712,7 @@ static int s_socket_start_accept_fn(
     // nw_listener_state_cancelled
     s_socket_acquire_internal_ref(nw_socket);
     nw_listener_start(socket->io_handle.data.handle);
+    s_unlock_socket_synced_data(nw_socket);
     return AWS_OP_SUCCESS;
 }
 
@@ -1772,7 +1796,7 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
 
     struct nw_socket *nw_socket = socket->impl;
 
-    /* If nw_parameters_t has been previously set, they need to be released prior to assinging a new one */
+    /* If nw_parameters_t has been previously set, they need to be released prior to assigning a new one */
     if (nw_socket->socket_options_to_params) {
         nw_release(nw_socket->socket_options_to_params);
         nw_socket->socket_options_to_params = NULL;
@@ -1830,7 +1854,6 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
         s_unlock_socket_synced_data(nw_socket);
         return;
     }
-    s_unlock_socket_synced_data(nw_socket);
 
     s_lock_base_socket(nw_socket);
     struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
@@ -1843,11 +1866,11 @@ static void s_schedule_next_read(struct nw_socket *nw_socket) {
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection);
         aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+        s_unlock_socket_synced_data(nw_socket);
         return;
     }
     s_unlock_base_socket(nw_socket);
 
-    s_lock_socket_synced_data(nw_socket);
     if (!(nw_socket->synced_data.state & CONNECTED_READ)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
@@ -1947,17 +1970,17 @@ static int s_socket_subscribe_to_readable_events_fn(
     nw_socket->on_readable = on_readable;
     nw_socket->on_readable_user_data = user_data;
 
-    AWS_LOGF_DEBUG(
+    AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: s_schedule_next_read : s_socket_subscribe_to_readable_events_fn.",
+        "id=%p handle=%p: socket_subscribe_to_readable_events: start to schedule read request.",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection);
     s_schedule_next_read(nw_socket);
     return AWS_OP_SUCCESS;
 }
 
-// WARNING: This function should never lock!!!! aws_socket_read() should always called on event loop thread,
-// which means we already acquire a necessary lock there.
+// WARNING: This function should be careful with locks. aws_socket_read()&aws_socket_write() should always called on
+// event loop thread.
 static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read_buffer, size_t *amount_read) {
     struct nw_socket *nw_socket = socket->impl;
 
@@ -1975,7 +1998,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
 
     __block size_t max_to_read = read_buffer->capacity - read_buffer->len;
 
-    /* if empty, schedule a read and return WOULD_BLOCK */
+    /* As the function is always called on event loop, we didn't lock protect the read_queue. */
     if (aws_linked_list_empty(&nw_socket->read_queue)) {
 
         AWS_LOGF_TRACE(
@@ -1983,23 +2006,20 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             "id=%p handle=%p: read queue is empty, scheduling another read",
             (void *)socket,
             socket->io_handle.data.handle);
+        s_lock_socket_synced_data(nw_socket);
         if (!(nw_socket->synced_data.state & CONNECTED_READ)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket is not connected to read.",
                 (void *)socket,
                 socket->io_handle.data.handle);
+            s_unlock_socket_synced_data(nw_socket);
+
             return aws_raise_error(AWS_IO_SOCKET_CLOSED);
         }
 
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: s_schedule_next_read : aws_socket_read() empty queue.",
-            (void *)nw_socket,
-            (void *)nw_socket->os_handle.nw_connection);
-
-        s_schedule_next_read(nw_socket);
         *amount_read = 0;
+        s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
     }
 
@@ -2049,7 +2069,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
 
         if (buffer_processed) {
             aws_linked_list_remove(node);
-            s_destroy_read_queue_node(read_node);
+            s_read_queue_node_destroy(read_node);
         }
 
         AWS_LOGF_TRACE(
@@ -2065,11 +2085,14 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
     return AWS_OP_SUCCESS;
 }
 
+// WARNING: This function should be careful with locks. aws_socket_read()&aws_socket_write() should always called on
+// event loop thread.
 static int s_socket_write_fn(
     struct aws_socket *socket,
     const struct aws_byte_cursor *cursor,
     aws_socket_on_write_completed_fn *written_fn,
     void *user_data) {
+    AWS_FATAL_ASSERT(written_fn);
     if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
         return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
     }
@@ -2085,8 +2108,6 @@ static int s_socket_write_fn(
         s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
-    s_unlock_socket_synced_data(nw_socket);
-    AWS_FATAL_ASSERT(written_fn);
 
     dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
     if (!data) {
@@ -2134,6 +2155,8 @@ static int s_socket_write_fn(
           s_socket_release_write_ref(nw_socket);
           s_socket_release_internal_ref(nw_socket);
         });
+
+    s_unlock_socket_synced_data(nw_socket);
 
     return AWS_OP_SUCCESS;
 }
