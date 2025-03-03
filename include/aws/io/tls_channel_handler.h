@@ -89,7 +89,8 @@ struct aws_tls_ctx {
  * Invoked upon completion of the TLS handshake. If successful error_code will be AWS_OP_SUCCESS, otherwise
  * the negotiation failed and immediately after this function is invoked, the channel will be shutting down.
  *
- * NOTE: When using SecItem, the handler and slot will be related to sockets and not tls.
+ * NOTE: When using SecItem, due to TLS being handled by the Apple Network Framework connection contained in the
+ * socket, the handler and slot arguments will be pointers to the socket slot and socket handler.
  */
 typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,
@@ -535,7 +536,7 @@ AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
  * Applies provided SecItem options to certificate and private key being
  * added to the iOS/tvOS KeyChain.
  *
- * NOTE: This only works on iOS and tvOS.
+ * NOTE: Currently only supported on iOS and tvOS using SecItem.
  *
  * @param options           aws_tls_ctx_options to be modified.
  * @param secitem_options   Options for SecItems
@@ -944,8 +945,7 @@ AWS_IO_API
 const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
 
 /**
- * Returns true if provided error_code is a TLS Negotiation related error. Use this to determine if
- * the cause related to an error originated from a TLS handshake.
+ * Returns true if error_code is a TLS Negotiation related error.
  */
 AWS_IO_API bool aws_tls_error_code_check(int error_code);
 
