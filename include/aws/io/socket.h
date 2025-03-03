@@ -85,7 +85,7 @@ struct aws_socket_options {
 
 struct aws_socket;
 struct aws_event_loop;
-struct tls_connection_context;
+struct aws_tls_connection_context;
 
 /**
  * Called in client mode when an outgoing connection has succeeded or an error has occurred.
@@ -104,7 +104,7 @@ struct aws_tls_connection_options;
  * the setup of TLS related parameters at creation of the connection as its internal framework
  * handles both the socket connection and the TLS handshake.
  */
-typedef void(aws_socket_retrieve_tls_options_fn)(struct tls_connection_context *context, void *user_data);
+typedef void(aws_socket_retrieve_tls_options_fn)(struct aws_tls_connection_context *context, void *user_data);
 
 /**
  * Called by a listening socket when a listener accept has successfully initialized or an error has occurred.

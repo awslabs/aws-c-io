@@ -731,7 +731,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 /* Called when a socket connection attempt or socket bind requires access to TLS options.
  * This is only necessary when Apple Network Framework is using Secitem
  * where the parameters used to create the Apple Network Framework socket require TLS options. */
-static void s_retrieve_client_tls_options(struct tls_connection_context *context, void *user_data) {
+static void s_retrieve_client_tls_options(struct aws_tls_connection_context *context, void *user_data) {
     struct client_connection_args *connection_args = user_data;
     context->host_name = connection_args->channel_data.tls_options.server_name;
     context->alpn_list = connection_args->channel_data.tls_options.alpn_list;
@@ -1224,7 +1224,7 @@ struct server_connection_args {
     struct aws_ref_count ref_count;
 };
 
-static void s_retrieve_server_tls_options(struct tls_connection_context *context, void *user_data) {
+static void s_retrieve_server_tls_options(struct aws_tls_connection_context *context, void *user_data) {
     struct server_connection_args *connection_args = user_data;
     context->host_name = connection_args->tls_options.server_name;
     context->alpn_list = connection_args->tls_options.alpn_list;

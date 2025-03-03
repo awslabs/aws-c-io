@@ -1641,7 +1641,7 @@ static void s_handle_write_fn(
 
 static int s_setup_tls_options_from_context(
     struct nw_socket *nw_socket,
-    struct tls_connection_context *tls_connection_context) {
+    struct aws_tls_connection_context *tls_connection_context) {
     if (tls_connection_context->host_name != NULL) {
         if (nw_socket->host_name != NULL) {
             aws_string_destroy(nw_socket->host_name);
@@ -1705,7 +1705,7 @@ static int s_socket_connect_fn(
     }
 
     if (retrieve_tls_options != NULL) {
-        struct tls_connection_context tls_connection_context;
+        struct aws_tls_connection_context tls_connection_context;
         AWS_ZERO_STRUCT(tls_connection_context);
         retrieve_tls_options(&tls_connection_context, user_data);
 
@@ -1928,7 +1928,7 @@ static int s_socket_bind_fn(
         struct aws_event_loop *event_loop = NULL;
 
         if (retrieve_tls_options) {
-            struct tls_connection_context tls_connection_context;
+            struct aws_tls_connection_context tls_connection_context;
             AWS_ZERO_STRUCT(tls_connection_context);
             retrieve_tls_options(&tls_connection_context, user_data);
 

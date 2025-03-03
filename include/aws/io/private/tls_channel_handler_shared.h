@@ -25,13 +25,13 @@ enum aws_tls_handler_read_state {
     AWS_TLS_HANDLER_READ_SHUT_DOWN_COMPLETE,
 };
 
-/* Apple Network socket connections when using secitem handles both the TCP and TLS
- * handshakes with a singular completion state change/callback.
- * Various TLS related elements must be accessible during the socket creation
- * and listener binding to fit within the framework around TCP, TLS, and ALPN.
- * This struct is used as a container that can retrieve the necessary elements when
- * they are needed. */
-struct tls_connection_context {
+/*
+ * Apple Network socket connections that use secitem manage both the TCP and TLS handshakes
+ * with a single state change callback. To properly configure these connections, various TLS-related
+ * parameters must be available during socket creation and listener binding—especially for integrating
+ * TCP, TLS, and ALPN. This struct serves as a container to store and provide access to these required elements.
+ */
+struct aws_tls_connection_context {
     struct aws_string *host_name;
     struct aws_string *alpn_list;
     struct aws_tls_ctx *tls_ctx;
