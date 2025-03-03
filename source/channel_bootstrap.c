@@ -489,11 +489,14 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
 
         if (connection_args->channel_data.use_tls) {
 #if defined(AWS_USE_SECITEM)
-            /* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
-             * The TCP and TLS handshakes are both handled by the network parameters, its options, and verification
-             * block. We do not need to set up a separate TLS slot in the channel when using SecItem. We only get to
-             * here if a TLS connection is successfully established so we trigger a success using the TLS handshake
-             * completion path to provide access to the server name and protocol if one exists. */
+            /*
+             * When AWS_USE_SECITEM is defined, we use Apple Network Framework’s built-in TLS handling.
+             * In this mode, the network parameters (along with their options and verification block) manage both
+             * the TCP and TLS handshakes together, eliminating the need for a separate TLS configuration in the
+             * channel. This code is reached only when a TLS connection has been successfully established. At that
+             * point, we signal a successful TLS handshake, which also makes the server name and protocol available (if
+             * provided).
+             */
             s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
             return;
 #endif /* AWS_USE_SECITEM */
@@ -728,9 +731,10 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     }
 }
 
-/* Called when a socket connection attempt or socket bind requires access to TLS options.
- * This is only necessary when Apple Network Framework is using Secitem
- * where the parameters used to create the Apple Network Framework socket require TLS options. */
+/* This function is called when TLS options are required during a socket connection attempt or bind operation.
+ * It is only used with Apple Network Framework's SecItem implementation, where the socket creation parameters
+ * must include TLS options.
+ */
 static void s_retrieve_client_tls_options(struct aws_tls_connection_context *context, void *user_data) {
     struct client_connection_args *connection_args = user_data;
     context->host_name = connection_args->channel_data.tls_options.server_name;
