@@ -1343,409 +1343,591 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                             }
                             nw_release(metadata);
                         }
-                    } else {
-                        // This happens when the aws_socket_clean_up() get called before the nw_connection_state_ready
-                        // get returned. We still want to set the socket to write/read state and fire the connection
-                        // succeed callback until we get the "nw_connection_state_cancelled" status.
-                        AWS_LOGF_TRACE(
-                            AWS_LS_IO_SOCKET,
-                            "id=%p handle=%p: connection succeed, however, the base socket has been cleaned up.",
-                            (void *)nw_socket,
-                            (void *)nw_socket->os_handle.nw_connection);
                     }
-                    s_lock_socket_synced_data(nw_socket);
-                    s_set_socket_state(nw_socket, socket, CONNECTED_WRITE | CONNECTED_READ);
-                    s_unlock_socket_synced_data(nw_socket);
-                    s_unlock_base_socket(nw_socket);
-
-                    nw_socket->connection_setup = true;
-                    // Cancel the connection timeout task
-                    if (nw_socket->timeout_args) {
-                        aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
-                    }
-                    aws_ref_count_acquire(&nw_socket->nw_socket_ref_count);
-                    s_handle_on_connection_result(nw_socket, AWS_OP_SUCCESS);
-                    aws_ref_count_release(&nw_socket->nw_socket_ref_count);
-                }
-                break;
-                case nw_connection_state_waiting:
-                case nw_connection_state_preparing:
-                case nw_connection_state_failed:
-                default:
-                    break;
-            }
-
-                int crt_error_code = connection_args->error;
-                if (crt_error_code) {
-                    /* any error, including if closed remotely in error */
-                    AWS_LOGF_DEBUG(
+                } else {
+                    // This happens when the aws_socket_clean_up() get called before the nw_connection_state_ready
+                    // get returned. We still want to set the socket to write/read state and fire the connection
+                    // succeed callback until we get the "nw_connection_state_cancelled" status.
+                    AWS_LOGF_TRACE(
                         AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: socket connection got error: %d",
+                        "id=%p handle=%p: connection succeed, however, the base socket has been cleaned up.",
                         (void *)nw_socket,
-                        (void *)nw_socket->os_handle.nw_connection,
-                        crt_error_code);
-
-                    nw_socket->last_error = crt_error_code;
-                    s_lock_base_socket(nw_socket);
-                    struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
-                    s_lock_socket_synced_data(nw_socket);
-                    s_set_socket_state(nw_socket, socket, ERROR);
-                    s_unlock_socket_synced_data(nw_socket);
-                    s_unlock_base_socket(nw_socket);
-
-                    if (!nw_socket->connection_setup) {
-                        s_handle_on_connection_result(nw_socket, crt_error_code);
-                        nw_socket->connection_setup = true;
-                        // Cancel the connection timeout task
-                        if (nw_socket->timeout_args) {
-                            aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
-                        }
-                    } else {
-                        s_handle_incoming_data(nw_socket, nw_socket->last_error, NULL, false);
-                    }
+                        (void *)nw_socket->os_handle.nw_connection);
                 }
-        }
+                s_lock_socket_synced_data(nw_socket);
+                s_set_socket_state(nw_socket, socket, CONNECTED_WRITE | CONNECTED_READ);
+                s_unlock_socket_synced_data(nw_socket);
+                s_unlock_base_socket(nw_socket);
 
-        s_socket_release_internal_ref(nw_socket);
-        aws_mem_release(connection_args->allocator, connection_args);
-    }
-
-    static void s_handle_connection_state_changed_fn(
-        struct aws_socket * socket,
-        struct nw_socket * nw_socket,
-        nw_connection_t nw_connection,
-        nw_connection_state_t state,
-        nw_error_t error) {
-
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_connection_state_changed_fn start...", (void *)nw_socket);
-
-        int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-        int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: nw_connection_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
-            "error code %d",
-            (void *)nw_socket,
-            (void *)nw_socket->os_handle.nw_connection,
-            nw_error_code,
-            crt_error_code);
-
-        s_lock_base_socket(nw_socket);
-        if (s_validate_event_loop(nw_socket->event_loop)) {
-            struct connection_state_change_args *args =
-                aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct connection_state_change_args));
-
-            args->socket = socket;
-            args->nw_socket = nw_socket;
-            args->allocator = nw_socket->allocator;
-            args->error = crt_error_code;
-            args->state = state;
-            args->nw_connection = nw_connection;
-
-            s_socket_acquire_internal_ref(nw_socket);
-
-            aws_task_init(&args->task, s_process_connection_state_changed_task, args, "ConnectionStateChangedTask");
-
-            aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
-
-        } else if (state == nw_connection_state_cancelled) {
-            s_socket_release_internal_ref(nw_socket);
-        }
-
-        s_unlock_base_socket(nw_socket);
-    }
-
-    static void s_process_listener_success_task(struct aws_task * task, void *args, enum aws_task_status status) {
-        (void)status;
-        (void)task;
-        struct nw_listener_connection_args *task_args = args;
-        struct aws_allocator *allocator = task_args->allocator;
-        struct nw_socket *listener_nw_socket = task_args->nw_socket;
-        int error = task_args->error_code;
-
-        AWS_FATAL_ASSERT(listener_nw_socket && listener_nw_socket->mode == NWSM_LISTENER);
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: start to process incoming connection.",
-            (void *)listener_nw_socket,
-            (void *)listener_nw_socket->os_handle.nw_listener);
-
-        if (status == AWS_TASK_STATUS_RUN_READY) {
-            s_lock_base_socket(listener_nw_socket);
-            struct aws_socket *listener = listener_nw_socket->base_socket_synced_data.base_socket;
-            AWS_FATAL_ASSERT(listener->accept_result_fn);
-            struct aws_socket *new_socket = NULL;
-
-            if (error) {
-                goto incoming_listener_error_cleanup;
-            }
-
-            new_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
-            struct aws_socket_options options = listener->options;
-            error = aws_socket_init(new_socket, allocator, &options);
-            if (error) {
-                goto incoming_listener_error_cleanup;
-            }
-
-            nw_endpoint_t endpoint = nw_connection_copy_endpoint(task_args->new_connection);
-            const char *hostname = nw_endpoint_get_hostname(endpoint);
-            uint16_t port = nw_endpoint_get_port(endpoint);
-
-            if (hostname != NULL) {
-                size_t address_strlen;
-                if (aws_secure_strlen(hostname, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
-                    nw_release(endpoint);
-                    goto incoming_listener_error_cleanup;
+                nw_socket->connection_setup = true;
+                // Cancel the connection timeout task
+                if (nw_socket->timeout_args) {
+                    aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
                 }
-                memcpy(new_socket->remote_endpoint.address, hostname, address_strlen);
-                new_socket->remote_endpoint.port = port;
-            }
-            nw_release(endpoint);
-
-            new_socket->io_handle.data.handle = task_args->new_connection;
-            new_socket->io_handle.set_queue = s_client_set_dispatch_queue;
-
-            struct nw_socket *new_nw_socket = new_socket->impl;
-            new_nw_socket->os_handle.nw_connection = task_args->new_connection;
-            new_nw_socket->connection_setup = true;
-
-            // Setup socket state to start read/write operations.
-            s_set_socket_state(new_nw_socket, new_socket, CONNECTED_READ | CONNECTED_WRITE);
-
-            nw_connection_set_state_changed_handler(
-                new_socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
-                  s_handle_connection_state_changed_fn(
-                      new_socket, new_nw_socket, new_nw_socket->os_handle.nw_connection, state, error);
-                });
-
-            // this internal ref will be released when the connection canceled ( connection state changed to
-            // nw_connection_state_cancelled)
-            s_socket_acquire_internal_ref(new_nw_socket);
-
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: incoming connection has been successfully connected to %s:%d, the incoming "
-                "handle is %p",
-                (void *)listener,
-                listener->io_handle.data.handle,
-                new_socket->remote_endpoint.address,
-                new_socket->remote_endpoint.port,
-                new_socket->io_handle.data.handle);
-
-            goto incoming_listener_finalize;
-
-        incoming_listener_error_cleanup:
-            if (new_socket) {
-                aws_socket_clean_up(new_socket);
-                aws_mem_release(allocator, new_socket);
-                new_socket = NULL;
-            }
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: failed to setup new socket for incoming connection with error code %d.",
-                (void *)listener,
-                listener->io_handle.data.handle,
-                error);
-            nw_release(task_args->new_connection);
-
-        incoming_listener_finalize:
-            listener->accept_result_fn(listener, error, new_socket, task_args->user_data);
-
-            s_unlock_base_socket(listener_nw_socket);
-
-        } else {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: process incoming listener task canceled .",
-                (void *)listener_nw_socket,
-                (void *)listener_nw_socket->os_handle.nw_listener);
-            // If the task is not scheduled, release the connection.
-            nw_release(task_args->new_connection);
+                aws_ref_count_acquire(&nw_socket->nw_socket_ref_count);
+                s_handle_on_connection_result(nw_socket, AWS_OP_SUCCESS);
+                aws_ref_count_release(&nw_socket->nw_socket_ref_count);
+            } break;
+            case nw_connection_state_waiting:
+            case nw_connection_state_preparing:
+            case nw_connection_state_failed:
+            default:
+                break;
         }
 
-        s_socket_release_internal_ref(listener_nw_socket);
-        aws_mem_release(task_args->allocator, task_args);
-    }
+        int crt_error_code = connection_args->error;
+        if (crt_error_code) {
+            /* any error, including if closed remotely in error */
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: socket connection got error: %d",
+                (void *)nw_socket,
+                (void *)nw_socket->os_handle.nw_connection,
+                crt_error_code);
 
-    static void s_handle_on_listener_success(
-        struct nw_socket * nw_socket, int error_code, nw_connection_t new_connection, void *user_data) {
-
-        s_lock_base_socket(nw_socket);
-        if (nw_socket->base_socket_synced_data.base_socket && s_validate_event_loop(nw_socket->event_loop)) {
-
-            struct nw_listener_connection_args *args =
-                aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_listener_connection_args));
-
-            args->nw_socket = nw_socket;
-            args->allocator = nw_socket->allocator;
-            args->error_code = error_code;
-            args->new_connection = new_connection;
-            args->user_data = user_data;
-
-            s_socket_acquire_internal_ref(nw_socket);
-            nw_retain(new_connection);
-
-            aws_task_init(&args->task, s_process_listener_success_task, args, "listenerSuccessTask");
-            aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
-        }
-        s_unlock_base_socket(nw_socket);
-    }
-
-    static void s_process_write_task(struct aws_task * task, void *args, enum aws_task_status status) {
-        (void)task;
-        struct nw_socket_written_args *task_args = args;
-        struct aws_allocator *allocator = task_args->allocator;
-        struct nw_socket *nw_socket = task_args->nw_socket;
-
-        if (status != AWS_TASK_STATUS_CANCELED) {
+            nw_socket->last_error = crt_error_code;
             s_lock_base_socket(nw_socket);
             struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
-            if (task_args->written_fn) {
-                task_args->written_fn(socket, task_args->error_code, task_args->bytes_written, task_args->user_data);
-            }
+            s_lock_socket_synced_data(nw_socket);
+            s_set_socket_state(nw_socket, socket, ERROR);
+            s_unlock_socket_synced_data(nw_socket);
             s_unlock_base_socket(nw_socket);
+
+            if (!nw_socket->connection_setup) {
+                s_handle_on_connection_result(nw_socket, crt_error_code);
+                nw_socket->connection_setup = true;
+                // Cancel the connection timeout task
+                if (nw_socket->timeout_args) {
+                    aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
+                }
+            } else {
+                s_handle_incoming_data(nw_socket, nw_socket->last_error, NULL, false);
+            }
         }
-
-        s_socket_release_internal_ref(nw_socket);
-
-        aws_mem_release(allocator, task_args);
     }
 
-    static void s_handle_write_fn(
-        struct nw_socket * nw_socket,
-        int error_code,
-        size_t bytes_written,
-        void *user_data,
-        aws_socket_on_write_completed_fn *written_fn) {
-        AWS_FATAL_ASSERT(s_validate_event_loop(nw_socket->event_loop));
+    s_socket_release_internal_ref(nw_socket);
+    aws_mem_release(connection_args->allocator, connection_args);
+}
 
-        struct nw_socket_written_args *args =
-            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
+static void s_handle_connection_state_changed_fn(
+    struct aws_socket *socket,
+    struct nw_socket *nw_socket,
+    nw_connection_t nw_connection,
+    nw_connection_state_t state,
+    nw_error_t error) {
+
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_connection_state_changed_fn start...", (void *)nw_socket);
+
+    int nw_error_code = error ? nw_error_get_error_code(error) : 0;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: nw_connection_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
+        "error code %d",
+        (void *)nw_socket,
+        (void *)nw_socket->os_handle.nw_connection,
+        nw_error_code,
+        crt_error_code);
+
+    s_lock_base_socket(nw_socket);
+    if (s_validate_event_loop(nw_socket->event_loop)) {
+        struct connection_state_change_args *args =
+            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct connection_state_change_args));
+
+        args->socket = socket;
+        args->nw_socket = nw_socket;
+        args->allocator = nw_socket->allocator;
+        args->error = crt_error_code;
+        args->state = state;
+        args->nw_connection = nw_connection;
+
+        s_socket_acquire_internal_ref(nw_socket);
+
+        aws_task_init(&args->task, s_process_connection_state_changed_task, args, "ConnectionStateChangedTask");
+
+        aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
+
+    } else if (state == nw_connection_state_cancelled) {
+        s_socket_release_internal_ref(nw_socket);
+    }
+
+    s_unlock_base_socket(nw_socket);
+}
+
+static void s_process_listener_success_task(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)status;
+    (void)task;
+    struct nw_listener_connection_args *task_args = args;
+    struct aws_allocator *allocator = task_args->allocator;
+    struct nw_socket *listener_nw_socket = task_args->nw_socket;
+    int error = task_args->error_code;
+
+    AWS_FATAL_ASSERT(listener_nw_socket && listener_nw_socket->mode == NWSM_LISTENER);
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: start to process incoming connection.",
+        (void *)listener_nw_socket,
+        (void *)listener_nw_socket->os_handle.nw_listener);
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        s_lock_base_socket(listener_nw_socket);
+        struct aws_socket *listener = listener_nw_socket->base_socket_synced_data.base_socket;
+        AWS_FATAL_ASSERT(listener->accept_result_fn);
+        struct aws_socket *new_socket = NULL;
+
+        if (error) {
+            goto incoming_listener_error_cleanup;
+        }
+
+        new_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
+        struct aws_socket_options options = listener->options;
+        error = aws_socket_init(new_socket, allocator, &options);
+        if (error) {
+            goto incoming_listener_error_cleanup;
+        }
+
+        nw_endpoint_t endpoint = nw_connection_copy_endpoint(task_args->new_connection);
+        const char *hostname = nw_endpoint_get_hostname(endpoint);
+        uint16_t port = nw_endpoint_get_port(endpoint);
+
+        if (hostname != NULL) {
+            size_t address_strlen;
+            if (aws_secure_strlen(hostname, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
+                nw_release(endpoint);
+                goto incoming_listener_error_cleanup;
+            }
+            memcpy(new_socket->remote_endpoint.address, hostname, address_strlen);
+            new_socket->remote_endpoint.port = port;
+        }
+        nw_release(endpoint);
+
+        new_socket->io_handle.data.handle = task_args->new_connection;
+        new_socket->io_handle.set_queue = s_client_set_dispatch_queue;
+
+        struct nw_socket *new_nw_socket = new_socket->impl;
+        new_nw_socket->os_handle.nw_connection = task_args->new_connection;
+        new_nw_socket->connection_setup = true;
+
+        // Setup socket state to start read/write operations.
+        s_set_socket_state(new_nw_socket, new_socket, CONNECTED_READ | CONNECTED_WRITE);
+
+        nw_connection_set_state_changed_handler(
+            new_socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
+              s_handle_connection_state_changed_fn(
+                  new_socket, new_nw_socket, new_nw_socket->os_handle.nw_connection, state, error);
+            });
+
+        // this internal ref will be released when the connection canceled ( connection state changed to
+        // nw_connection_state_cancelled)
+        s_socket_acquire_internal_ref(new_nw_socket);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: incoming connection has been successfully connected to %s:%d, the incoming "
+            "handle is %p",
+            (void *)listener,
+            listener->io_handle.data.handle,
+            new_socket->remote_endpoint.address,
+            new_socket->remote_endpoint.port,
+            new_socket->io_handle.data.handle);
+
+        goto incoming_listener_finalize;
+
+    incoming_listener_error_cleanup:
+        if (new_socket) {
+            aws_socket_clean_up(new_socket);
+            aws_mem_release(allocator, new_socket);
+            new_socket = NULL;
+        }
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: failed to setup new socket for incoming connection with error code %d.",
+            (void *)listener,
+            listener->io_handle.data.handle,
+            error);
+        nw_release(task_args->new_connection);
+
+    incoming_listener_finalize:
+        listener->accept_result_fn(listener, error, new_socket, task_args->user_data);
+
+        s_unlock_base_socket(listener_nw_socket);
+
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: process incoming listener task canceled .",
+            (void *)listener_nw_socket,
+            (void *)listener_nw_socket->os_handle.nw_listener);
+        // If the task is not scheduled, release the connection.
+        nw_release(task_args->new_connection);
+    }
+
+    s_socket_release_internal_ref(listener_nw_socket);
+    aws_mem_release(task_args->allocator, task_args);
+}
+
+static void s_handle_on_listener_success(
+    struct nw_socket *nw_socket,
+    int error_code,
+    nw_connection_t new_connection,
+    void *user_data) {
+
+    s_lock_base_socket(nw_socket);
+    if (nw_socket->base_socket_synced_data.base_socket && s_validate_event_loop(nw_socket->event_loop)) {
+
+        struct nw_listener_connection_args *args =
+            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_listener_connection_args));
 
         args->nw_socket = nw_socket;
         args->allocator = nw_socket->allocator;
         args->error_code = error_code;
-        args->written_fn = written_fn;
+        args->new_connection = new_connection;
         args->user_data = user_data;
-        args->bytes_written = bytes_written;
+
         s_socket_acquire_internal_ref(nw_socket);
+        nw_retain(new_connection);
 
-        aws_task_init(&args->task, s_process_write_task, args, "writtenTask");
-
+        aws_task_init(&args->task, s_process_listener_success_task, args, "listenerSuccessTask");
         aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
     }
+    s_unlock_base_socket(nw_socket);
+}
 
-    static int s_setup_tls_options_from_context(
-        struct nw_socket * nw_socket, struct tls_connection_context * tls_connection_context) {
-        if (tls_connection_context->host_name != NULL) {
-            if (nw_socket->host_name != NULL) {
-                aws_string_destroy(nw_socket->host_name);
-                nw_socket->host_name = NULL;
+static void s_process_write_task(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)task;
+    struct nw_socket_written_args *task_args = args;
+    struct aws_allocator *allocator = task_args->allocator;
+    struct nw_socket *nw_socket = task_args->nw_socket;
+
+    if (status != AWS_TASK_STATUS_CANCELED) {
+        s_lock_base_socket(nw_socket);
+        struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
+        if (task_args->written_fn) {
+            task_args->written_fn(socket, task_args->error_code, task_args->bytes_written, task_args->user_data);
+        }
+        s_unlock_base_socket(nw_socket);
+    }
+
+    s_socket_release_internal_ref(nw_socket);
+
+    aws_mem_release(allocator, task_args);
+}
+
+static void s_handle_write_fn(
+    struct nw_socket *nw_socket,
+    int error_code,
+    size_t bytes_written,
+    void *user_data,
+    aws_socket_on_write_completed_fn *written_fn) {
+    AWS_FATAL_ASSERT(s_validate_event_loop(nw_socket->event_loop));
+
+    struct nw_socket_written_args *args =
+        aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct nw_socket_written_args));
+
+    args->nw_socket = nw_socket;
+    args->allocator = nw_socket->allocator;
+    args->error_code = error_code;
+    args->written_fn = written_fn;
+    args->user_data = user_data;
+    args->bytes_written = bytes_written;
+    s_socket_acquire_internal_ref(nw_socket);
+
+    aws_task_init(&args->task, s_process_write_task, args, "writtenTask");
+
+    aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
+}
+
+static int s_setup_tls_options_from_context(
+    struct nw_socket *nw_socket,
+    struct tls_connection_context *tls_connection_context) {
+    if (tls_connection_context->host_name != NULL) {
+        if (nw_socket->host_name != NULL) {
+            aws_string_destroy(nw_socket->host_name);
+            nw_socket->host_name = NULL;
+        }
+        nw_socket->host_name =
+            aws_string_new_from_string(tls_connection_context->host_name->allocator, tls_connection_context->host_name);
+        if (nw_socket->host_name == NULL) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    if (tls_connection_context->tls_ctx != NULL) {
+        struct aws_string *alpn_list = NULL;
+        struct secure_transport_ctx *transport_ctx = tls_connection_context->tls_ctx->impl;
+        if (tls_connection_context->alpn_list != NULL) {
+            alpn_list = tls_connection_context->alpn_list;
+        } else if (transport_ctx->alpn_list != NULL) {
+            alpn_list = transport_ctx->alpn_list;
+        }
+
+        if (alpn_list != NULL) {
+            if (nw_socket->alpn_list != NULL) {
+                aws_string_destroy(nw_socket->alpn_list);
+                nw_socket->alpn_list = NULL;
             }
-            nw_socket->host_name = aws_string_new_from_string(
-                tls_connection_context->host_name->allocator, tls_connection_context->host_name);
-            if (nw_socket->host_name == NULL) {
+            nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
+            if (nw_socket->alpn_list == NULL) {
                 return AWS_OP_ERR;
             }
         }
 
-        if (tls_connection_context->tls_ctx != NULL) {
-            struct aws_string *alpn_list = NULL;
-            struct secure_transport_ctx *transport_ctx = tls_connection_context->tls_ctx->impl;
-            if (tls_connection_context->alpn_list != NULL) {
-                alpn_list = tls_connection_context->alpn_list;
-            } else if (transport_ctx->alpn_list != NULL) {
-                alpn_list = transport_ctx->alpn_list;
-            }
-
-            if (alpn_list != NULL) {
-                if (nw_socket->alpn_list != NULL) {
-                    aws_string_destroy(nw_socket->alpn_list);
-                    nw_socket->alpn_list = NULL;
-                }
-                nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
-                if (nw_socket->alpn_list == NULL) {
-                    return AWS_OP_ERR;
-                }
-            }
-
-            if (nw_socket->tls_ctx) {
-                aws_tls_ctx_release(nw_socket->tls_ctx);
-                nw_socket->tls_ctx = NULL;
-            }
-            nw_socket->tls_ctx = tls_connection_context->tls_ctx;
-            aws_tls_ctx_acquire(nw_socket->tls_ctx);
+        if (nw_socket->tls_ctx) {
+            aws_tls_ctx_release(nw_socket->tls_ctx);
+            nw_socket->tls_ctx = NULL;
         }
-
-        return AWS_OP_SUCCESS;
+        nw_socket->tls_ctx = tls_connection_context->tls_ctx;
+        aws_tls_ctx_acquire(nw_socket->tls_ctx);
     }
 
-    static int s_setup_tls_options_from_context(
-        struct nw_socket * nw_socket, struct tls_connection_context * tls_connection_context) {
-        if (tls_connection_context->host_name != NULL) {
-            if (nw_socket->host_name != NULL) {
-                aws_string_destroy(nw_socket->host_name);
-                nw_socket->host_name = NULL;
-            }
-            nw_socket->host_name = aws_string_new_from_string(
-                tls_connection_context->host_name->allocator, tls_connection_context->host_name);
-            if (nw_socket->host_name == NULL) {
-                return AWS_OP_ERR;
-            }
-        }
+    return AWS_OP_SUCCESS;
+}
 
-        if (tls_connection_context->tls_ctx != NULL) {
-            struct aws_string *alpn_list = NULL;
-            struct secure_transport_ctx *transport_ctx = tls_connection_context->tls_ctx->impl;
-            if (tls_connection_context->alpn_list != NULL) {
-                alpn_list = tls_connection_context->alpn_list;
-            } else if (transport_ctx->alpn_list != NULL) {
-                alpn_list = transport_ctx->alpn_list;
-            }
+static int s_socket_connect_fn(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *remote_endpoint,
+    struct aws_event_loop *event_loop,
+    aws_socket_on_connection_result_fn *on_connection_result,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data) {
+    struct nw_socket *nw_socket = socket->impl;
 
-            if (alpn_list != NULL) {
-                if (nw_socket->alpn_list != NULL) {
-                    aws_string_destroy(nw_socket->alpn_list);
-                    nw_socket->alpn_list = NULL;
-                }
-                nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
-                if (nw_socket->alpn_list == NULL) {
-                    return AWS_OP_ERR;
-                }
-            }
+    AWS_ASSERT(event_loop);
+    AWS_ASSERT(!socket->event_loop);
 
-            if (nw_socket->tls_ctx) {
-                aws_tls_ctx_release(nw_socket->tls_ctx);
-                nw_socket->tls_ctx = NULL;
-            }
-            nw_socket->tls_ctx = tls_connection_context->tls_ctx;
-            aws_tls_ctx_acquire(nw_socket->tls_ctx);
-        }
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, socket->io_handle.data.handle);
 
-        return AWS_OP_SUCCESS;
+    if (socket->event_loop) {
+        return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    static int s_socket_connect_fn(
-        struct aws_socket * socket,
-        const struct aws_socket_endpoint *remote_endpoint,
-        struct aws_event_loop *event_loop,
-        aws_socket_on_connection_result_fn *on_connection_result,
-        aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
-        void *user_data) {
-        struct nw_socket *nw_socket = socket->impl;
+    if (retrieve_tls_options != NULL) {
+        struct tls_connection_context tls_connection_context;
+        AWS_ZERO_STRUCT(tls_connection_context);
+        retrieve_tls_options(&tls_connection_context, user_data);
 
-        AWS_ASSERT(event_loop);
-        AWS_ASSERT(!socket->event_loop);
+        if (s_setup_tls_options_from_context(nw_socket, &tls_connection_context)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET, "id=%p: Error encounterd during setup of tls options from context.", (void *)socket);
+            return aws_last_error();
+        }
+    }
 
+    s_set_event_loop(socket, event_loop);
+    if (s_setup_socket_params(nw_socket, &socket->options, event_loop)) {
+        goto clean_up;
+    }
+
+    // Apple Network Framework uses a connection based abstraction on top of the UDP layer. We should always do an
+    // "connect" action after aws_socket_init() regardless it's a UDP socket or a TCP socket.
+    AWS_FATAL_ASSERT(on_connection_result);
+    s_lock_socket_synced_data(nw_socket);
+    if (nw_socket->synced_data.state != INIT) {
+        s_unlock_socket_synced_data(nw_socket);
+        aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        goto clean_up;
+    }
+
+    /* fill in posix sock addr, and then let Network framework sort it out. */
+    size_t address_strlen;
+    if (aws_secure_strlen(remote_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
+        s_unlock_socket_synced_data(nw_socket);
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, socket->io_handle.data.handle);
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: failed to parse address %s:%d.",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            remote_endpoint->address,
+            (int)remote_endpoint->port);
+        goto clean_up;
+    }
 
-        if (socket->event_loop) {
-            return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
+    struct socket_address address;
+    AWS_ZERO_STRUCT(address);
+    int pton_err = 1;
+
+    switch (socket->options.domain) {
+        case AWS_SOCKET_IPV4: {
+            pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+            address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
+            address.sock_addr_types.addr_in.sin_family = AF_INET;
+            address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
+        } break;
+        case AWS_SOCKET_IPV6: {
+            pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+            address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
+            address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
+            address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
+        } break;
+        case AWS_SOCKET_LOCAL: {
+            address.sock_addr_types.un_addr.sun_family = AF_UNIX;
+            strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
+            address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
+        } break;
+        default: {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p handle=%p: socket tried to bind to an unknow domain.",
+                (void *)socket,
+                socket->io_handle.data.handle);
+            s_unlock_socket_synced_data(nw_socket);
+            aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+            goto clean_up;
         }
+    }
 
-        if (retrieve_tls_options != NULL) {
+    if (pton_err != 1) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: failed to parse address %s:%d.",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            remote_endpoint->address,
+            (int)remote_endpoint->port);
+        s_unlock_socket_synced_data(nw_socket);
+        aws_raise_error(s_convert_pton_error(pton_err));
+        goto clean_up;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: connecting to endpoint %s:%d.",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        remote_endpoint->address,
+        (int)remote_endpoint->port);
+
+    nw_endpoint_t endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
+
+    if (!endpoint) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: failed to create remote address %s:%d.",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            remote_endpoint->address,
+            (int)remote_endpoint->port);
+        s_unlock_socket_synced_data(nw_socket);
+        aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+        goto clean_up;
+    }
+
+    socket->io_handle.data.handle = nw_connection_create(endpoint, nw_socket->nw_parameters);
+    nw_release(endpoint);
+
+    if (!socket->io_handle.data.handle) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: connection creation failed, please verify the socket options are setup properly.",
+            (void *)socket,
+            socket->io_handle.data.handle);
+        s_unlock_socket_synced_data(nw_socket);
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto clean_up;
+    }
+
+    socket->remote_endpoint = *remote_endpoint;
+    nw_socket->os_handle.nw_connection = socket->io_handle.data.handle;
+
+    socket->io_handle.set_queue = s_client_set_dispatch_queue;
+    aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
+
+    nw_socket->on_connection_result_fn = on_connection_result;
+    nw_socket->connect_result_user_data = user_data;
+
+    nw_socket->timeout_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_timeout_args));
+
+    nw_socket->timeout_args->nw_socket = nw_socket;
+    nw_socket->timeout_args->allocator = socket->allocator;
+
+    aws_task_init(
+        &nw_socket->timeout_args->task,
+        s_handle_socket_timeout,
+        nw_socket->timeout_args,
+        "NWSocketConnectionTimeoutTask");
+
+    /* schedule a task to run at the connect timeout interval, if this task runs before the connect
+     * happens, we consider that a timeout. */
+
+    uint64_t timeout = 0;
+    aws_event_loop_current_clock_time(event_loop, &timeout);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: start connection at %llu.",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        (unsigned long long)timeout);
+    timeout +=
+        aws_timestamp_convert(socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: scheduling timeout task for %llu.",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        (unsigned long long)timeout);
+    nw_socket->timeout_args->task.timestamp = timeout;
+    // Acquire a nw_socket for the timeout task
+    s_socket_acquire_internal_ref(nw_socket);
+
+    // The timeout task must schedule before we start the system connection. We will release the timeout args when
+    // we finished a connection. If we start the system connection first, then it is possible that the connection
+    // finished before timeout task scheduled, and the timeout args is already released by the time we schedule it.
+    aws_event_loop_schedule_task_future(event_loop, &nw_socket->timeout_args->task, timeout);
+
+    /* set a handler for socket state changes. This is where we find out if the connection timed out, was
+     * successful, was disconnected etc .... */
+    nw_connection_set_state_changed_handler(
+        socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
+          s_handle_connection_state_changed_fn(socket, nw_socket, nw_socket->os_handle.nw_connection, state, error);
+        });
+
+    s_set_socket_state(nw_socket, socket, CONNECTING);
+
+    socket->connect_accept_user_data = user_data;
+    socket->connection_result_fn = on_connection_result;
+
+    // released when the connection state changed to nw_connection_state_cancelled
+    s_socket_acquire_internal_ref(nw_socket);
+    nw_retain(socket->io_handle.data.handle);
+    nw_connection_start(socket->io_handle.data.handle);
+    s_unlock_socket_synced_data(nw_socket);
+
+    return AWS_OP_SUCCESS;
+
+clean_up:
+    s_release_event_loop(nw_socket);
+    return AWS_OP_ERR;
+}
+
+static int s_socket_bind_fn(
+    struct aws_socket *socket,
+    const struct aws_socket_endpoint *local_endpoint,
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    void *user_data) {
+    struct nw_socket *nw_socket = socket->impl;
+
+    s_lock_socket_synced_data(nw_socket);
+    if (nw_socket->synced_data.state != INIT) {
+        AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: invalid state for bind operation.", (void *)socket);
+        s_unlock_socket_synced_data(nw_socket);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    }
+
+    socket->local_endpoint = *local_endpoint;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p: binding to %s:%d.",
+        (void *)socket,
+        local_endpoint->address,
+        (int)local_endpoint->port);
+
+    if (nw_socket->nw_parameters == NULL) {
+        struct aws_event_loop *event_loop = NULL;
+
+        if (retrieve_tls_options) {
             struct tls_connection_context tls_connection_context;
             AWS_ZERO_STRUCT(tls_connection_context);
             retrieve_tls_options(&tls_connection_context, user_data);
@@ -1757,1033 +1939,805 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                     (void *)socket);
                 return aws_last_error();
             }
+            event_loop = tls_connection_context.event_loop;
         }
 
-        s_set_event_loop(socket, event_loop);
-        if (s_setup_socket_params(nw_socket, &socket->options, event_loop)) {
-            goto clean_up;
-        }
-
-        // Apple Network Framework uses a connection based abstraction on top of the UDP layer. We should always do an
-        // "connect" action after aws_socket_init() regardless it's a UDP socket or a TCP socket.
-        AWS_FATAL_ASSERT(on_connection_result);
-        s_lock_socket_synced_data(nw_socket);
-        if (nw_socket->synced_data.state != INIT) {
-            s_unlock_socket_synced_data(nw_socket);
-            aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-            goto clean_up;
-        }
-
-        /* fill in posix sock addr, and then let Network framework sort it out. */
-        size_t address_strlen;
-        if (aws_secure_strlen(remote_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
-            s_unlock_socket_synced_data(nw_socket);
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: failed to parse address %s:%d.",
-                (void *)socket,
-                socket->io_handle.data.handle,
-                remote_endpoint->address,
-                (int)remote_endpoint->port);
-            goto clean_up;
-        }
-
-        struct socket_address address;
-        AWS_ZERO_STRUCT(address);
-        int pton_err = 1;
-
-        switch (socket->options.domain) {
-            case AWS_SOCKET_IPV4: {
-                pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-                address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
-                address.sock_addr_types.addr_in.sin_family = AF_INET;
-                address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
-            } break;
-            case AWS_SOCKET_IPV6: {
-                pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-                address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
-                address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
-                address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
-            } break;
-            case AWS_SOCKET_LOCAL: {
-                address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-                strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
-                address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
-            } break;
-            default: {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: socket tried to bind to an unknow domain.",
-                    (void *)socket,
-                    socket->io_handle.data.handle);
-                s_unlock_socket_synced_data(nw_socket);
-                aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
-                goto clean_up;
-            }
-        }
-
-        if (pton_err != 1) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: failed to parse address %s:%d.",
-                (void *)socket,
-                socket->io_handle.data.handle,
-                remote_endpoint->address,
-                (int)remote_endpoint->port);
-            s_unlock_socket_synced_data(nw_socket);
-            aws_raise_error(s_convert_pton_error(pton_err));
-            goto clean_up;
-        }
-
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: connecting to endpoint %s:%d.",
-            (void *)socket,
-            socket->io_handle.data.handle,
-            remote_endpoint->address,
-            (int)remote_endpoint->port);
-
-        nw_endpoint_t endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
-
-        if (!endpoint) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: failed to create remote address %s:%d.",
-                (void *)socket,
-                socket->io_handle.data.handle,
-                remote_endpoint->address,
-                (int)remote_endpoint->port);
-            s_unlock_socket_synced_data(nw_socket);
-            aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-            goto clean_up;
-        }
-
-        socket->io_handle.data.handle = nw_connection_create(endpoint, nw_socket->nw_parameters);
-        nw_release(endpoint);
-
-        if (!socket->io_handle.data.handle) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: connection creation failed, please verify the socket options are setup properly.",
-                (void *)socket,
-                socket->io_handle.data.handle);
-            s_unlock_socket_synced_data(nw_socket);
-            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-            goto clean_up;
-        }
-
-        socket->remote_endpoint = *remote_endpoint;
-        nw_socket->os_handle.nw_connection = socket->io_handle.data.handle;
-
-        socket->io_handle.set_queue = s_client_set_dispatch_queue;
-        aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle);
-
-        nw_socket->on_connection_result_fn = on_connection_result;
-        nw_socket->connect_result_user_data = user_data;
-
-        nw_socket->timeout_args = aws_mem_calloc(socket->allocator, 1, sizeof(struct nw_socket_timeout_args));
-
-        nw_socket->timeout_args->nw_socket = nw_socket;
-        nw_socket->timeout_args->allocator = socket->allocator;
-
-        aws_task_init(
-            &nw_socket->timeout_args->task,
-            s_handle_socket_timeout,
-            nw_socket->timeout_args,
-            "NWSocketConnectionTimeoutTask");
-
-        /* schedule a task to run at the connect timeout interval, if this task runs before the connect
-         * happens, we consider that a timeout. */
-
-        uint64_t timeout = 0;
-        aws_event_loop_current_clock_time(event_loop, &timeout);
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: start connection at %llu.",
-            (void *)socket,
-            socket->io_handle.data.handle,
-            (unsigned long long)timeout);
-        timeout +=
-            aws_timestamp_convert(socket->options.connect_timeout_ms, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: scheduling timeout task for %llu.",
-            (void *)socket,
-            socket->io_handle.data.handle,
-            (unsigned long long)timeout);
-        nw_socket->timeout_args->task.timestamp = timeout;
-        // Acquire a nw_socket for the timeout task
-        s_socket_acquire_internal_ref(nw_socket);
-
-        // The timeout task must schedule before we start the system connection. We will release the timeout args when
-        // we finished a connection. If we start the system connection first, then it is possible that the connection
-        // finished before timeout task scheduled, and the timeout args is already released by the time we schedule it.
-        aws_event_loop_schedule_task_future(event_loop, &nw_socket->timeout_args->task, timeout);
-
-        /* set a handler for socket state changes. This is where we find out if the connection timed out, was
-         * successful, was disconnected etc .... */
-        nw_connection_set_state_changed_handler(
-            socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
-              s_handle_connection_state_changed_fn(socket, nw_socket, nw_socket->os_handle.nw_connection, state, error);
-            });
-
-        s_set_socket_state(nw_socket, socket, CONNECTING);
-
-        socket->connect_accept_user_data = user_data;
-        socket->connection_result_fn = on_connection_result;
-
-        // released when the connection state changed to nw_connection_state_cancelled
-        s_socket_acquire_internal_ref(nw_socket);
-        nw_retain(socket->io_handle.data.handle);
-        nw_connection_start(socket->io_handle.data.handle);
-        s_unlock_socket_synced_data(nw_socket);
-
-        return AWS_OP_SUCCESS;
-
-    clean_up:
-        s_release_event_loop(nw_socket);
-        return AWS_OP_ERR;
+        s_setup_socket_params(nw_socket, &socket->options, event_loop);
     }
 
-    static int s_socket_bind_fn(
-        struct aws_socket * socket,
-        const struct aws_socket_endpoint *local_endpoint,
-        aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
-        void *user_data) {
-        struct nw_socket *nw_socket = socket->impl;
+    struct socket_address address;
+    AWS_ZERO_STRUCT(address);
+    int pton_err = 1;
+    switch (socket->options.domain) {
+        case AWS_SOCKET_IPV4: {
+            pton_err = inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+            address.sock_addr_types.addr_in.sin_port = htons((uint16_t)local_endpoint->port);
+            address.sock_addr_types.addr_in.sin_family = AF_INET;
+            address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
+        } break;
+        case AWS_SOCKET_IPV6: {
+            pton_err = inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+            address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
+            address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
+            address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
+        } break;
+        case AWS_SOCKET_LOCAL: {
+            address.sock_addr_types.un_addr.sun_family = AF_UNIX;
+            address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
 
-        s_lock_socket_synced_data(nw_socket);
-        if (nw_socket->synced_data.state != INIT) {
-            AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: invalid state for bind operation.", (void *)socket);
+            strncpy(address.sock_addr_types.un_addr.sun_path, local_endpoint->address, AWS_ADDRESS_MAX_LEN);
+        } break;
+        default: {
             s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+            return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
         }
+    }
 
-        socket->local_endpoint = *local_endpoint;
-        AWS_LOGF_TRACE(
+    if (pton_err != 1) {
+        AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p: binding to %s:%d.",
+            "id=%p: failed to parse address %s:%d.",
             (void *)socket,
             local_endpoint->address,
             (int)local_endpoint->port);
-
-        if (nw_socket->nw_parameters == NULL) {
-            struct aws_event_loop *event_loop = NULL;
-
-            if (retrieve_tls_options) {
-                struct tls_connection_context tls_connection_context;
-                AWS_ZERO_STRUCT(tls_connection_context);
-                retrieve_tls_options(&tls_connection_context, user_data);
-
-                if (s_setup_tls_options_from_context(nw_socket, &tls_connection_context)) {
-                    AWS_LOGF_ERROR(
-                        AWS_LS_IO_SOCKET,
-                        "id=%p: Error encounterd during setup of tls options from context.",
-                        (void *)socket);
-                    return aws_last_error();
-                }
-                event_loop = tls_connection_context.event_loop;
-            }
-
-            s_setup_socket_params(nw_socket, &socket->options, event_loop);
-        }
-
-        struct socket_address address;
-        AWS_ZERO_STRUCT(address);
-        int pton_err = 1;
-        switch (socket->options.domain) {
-            case AWS_SOCKET_IPV4: {
-                pton_err = inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-                address.sock_addr_types.addr_in.sin_port = htons((uint16_t)local_endpoint->port);
-                address.sock_addr_types.addr_in.sin_family = AF_INET;
-                address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
-            } break;
-            case AWS_SOCKET_IPV6: {
-                pton_err = inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-                address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
-                address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
-                address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
-            } break;
-            case AWS_SOCKET_LOCAL: {
-                address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-                address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
-
-                strncpy(address.sock_addr_types.un_addr.sun_path, local_endpoint->address, AWS_ADDRESS_MAX_LEN);
-            } break;
-            default: {
-                s_unlock_socket_synced_data(nw_socket);
-                return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
-            }
-        }
-
-        if (pton_err != 1) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p: failed to parse address %s:%d.",
-                (void *)socket,
-                local_endpoint->address,
-                (int)local_endpoint->port);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(s_convert_pton_error(pton_err));
-        }
-
-        nw_endpoint_t endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
-
-        if (!endpoint) {
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-        }
-
-        nw_parameters_set_local_endpoint(nw_socket->nw_parameters, endpoint);
-        nw_release(endpoint);
-
-        // Apple network framework requires connection besides bind.
-        s_set_socket_state(nw_socket, socket, BOUND);
         s_unlock_socket_synced_data(nw_socket);
-
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: successfully bound to %s:%u",
-            (void *)socket,
-            socket->io_handle.data.fd,
-            socket->local_endpoint.address,
-            socket->local_endpoint.port);
-
-        return AWS_OP_SUCCESS;
+        return aws_raise_error(s_convert_pton_error(pton_err));
     }
 
-    static void s_listener_set_dispatch_queue(struct aws_io_handle * handle, void *queue) {
-        nw_listener_set_queue(handle->data.handle, queue);
-    }
+    nw_endpoint_t endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
 
-    static int s_socket_listen_fn(struct aws_socket * socket, int backlog_size) {
-        (void)backlog_size;
-
-        struct nw_socket *nw_socket = socket->impl;
-
-        s_lock_socket_synced_data(nw_socket);
-        if (nw_socket->synced_data.state != BOUND) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p: invalid state for listen operation. You must call bind first.",
-                (void *)socket);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-        }
-
-        if (nw_socket->nw_parameters == NULL) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p: socket nw_parameters needs to be set before creating a listener from socket.",
-                (void *)socket);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        }
-
-        socket->io_handle.data.handle = nw_listener_create(nw_socket->nw_parameters);
-        if (!socket->io_handle.data.handle) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p:  listener creation failed, please verify the socket options are setup properly.",
-                (void *)socket);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        }
-
-        socket->io_handle.set_queue = s_listener_set_dispatch_queue;
-        nw_socket->os_handle.nw_listener = socket->io_handle.data.handle;
-        nw_retain(socket->io_handle.data.handle);
-        nw_socket->mode = NWSM_LISTENER;
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: nw_socket successfully listening",
-            (void *)socket,
-            socket->io_handle.data.handle);
-
-        s_set_socket_state(nw_socket, socket, LISTENING);
+    if (!endpoint) {
         s_unlock_socket_synced_data(nw_socket);
-        return AWS_OP_SUCCESS;
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
-    struct listener_state_changed_args {
-        struct aws_task task;
-        struct aws_allocator *allocator;
-        struct aws_socket *socket;
-        struct nw_socket *nw_socket;
-        nw_listener_state_t state;
-        int error;
-    };
+    nw_parameters_set_local_endpoint(nw_socket->nw_parameters, endpoint);
+    nw_release(endpoint);
 
-    static void s_process_listener_state_changed_task(struct aws_task * task, void *args, enum aws_task_status status) {
-        (void)status;
-        (void)task;
+    // Apple network framework requires connection besides bind.
+    s_set_socket_state(nw_socket, socket, BOUND);
+    s_unlock_socket_synced_data(nw_socket);
 
-        struct listener_state_changed_args *listener_state_changed_args = args;
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p fd=%d: successfully bound to %s:%u",
+        (void *)socket,
+        socket->io_handle.data.fd,
+        socket->local_endpoint.address,
+        socket->local_endpoint.port);
 
-        struct nw_socket *nw_socket = listener_state_changed_args->nw_socket;
-        nw_listener_t nw_listener = nw_socket->os_handle.nw_listener;
-        nw_listener_state_t state = listener_state_changed_args->state;
-        int crt_error_code = listener_state_changed_args->error;
+    return AWS_OP_SUCCESS;
+}
 
-        /* Ideally we should not have a canceled task here, as nw_socket keeps a reference to event loop, therefore the
-         * event loop should never be destroyed before the nw_socket get destroyed. If we manually cancel the task, we
-         * should make sure we carefully handled the state change eventually, as the socket relies on this task to
-         * release and cleanup.
-         */
-        if (status != AWS_TASK_STATUS_CANCELED) {
+static void s_listener_set_dispatch_queue(struct aws_io_handle *handle, void *queue) {
+    nw_listener_set_queue(handle->data.handle, queue);
+}
 
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: listener state changed to %d ",
-                (void *)nw_socket,
-                (void *)nw_listener,
-                state);
+static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
+    (void)backlog_size;
 
-            switch (state) {
-                case nw_listener_state_failed: {
-                    AWS_LOGF_DEBUG(
-                        AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: listener failed with error %d",
-                        (void *)nw_socket,
-                        (void *)nw_listener,
-                        crt_error_code);
+    struct nw_socket *nw_socket = socket->impl;
 
-                    s_lock_base_socket(nw_socket);
-                    s_lock_socket_synced_data(nw_socket);
-                    s_set_socket_state(nw_socket, listener_state_changed_args->socket, ERROR);
-                    s_unlock_socket_synced_data(nw_socket);
-                    struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
-                    if (nw_socket->on_accept_started_fn) {
-                        nw_socket->on_accept_started_fn(
-                            aws_socket, crt_error_code, nw_socket->listen_accept_started_user_data);
-                    }
-                    s_unlock_base_socket(nw_socket);
-                } break;
-                case nw_listener_state_ready: {
-                    s_lock_base_socket(nw_socket);
-                    struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
-                    if (aws_socket) {
-                        AWS_FATAL_ASSERT(nw_socket->mode == NWSM_LISTENER);
-                        aws_socket->local_endpoint.port = nw_listener_get_port(nw_socket->os_handle.nw_listener);
-                        if (nw_socket->on_accept_started_fn) {
-                            nw_socket->on_accept_started_fn(
-                                aws_socket, AWS_OP_SUCCESS, nw_socket->listen_accept_started_user_data);
-                        }
-                        AWS_LOGF_DEBUG(
-                            AWS_LS_IO_SOCKET,
-                            "id=%p handle=%p: listener on port %d ready ",
-                            (void *)nw_socket,
-                            (void *)nw_listener,
-                            aws_socket->local_endpoint.port);
-                    }
-
-                    s_unlock_base_socket(nw_socket);
-
-                } break;
-                case nw_listener_state_cancelled: {
-                    AWS_LOGF_DEBUG(
-                        AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: listener cancelled.",
-                        (void *)nw_socket,
-                        (void *)nw_listener);
-                    s_lock_socket_synced_data(nw_socket);
-                    s_set_socket_state(nw_socket, listener_state_changed_args->socket, CLOSED);
-                    s_unlock_socket_synced_data(nw_socket);
-                    s_socket_release_internal_ref(nw_socket);
-                } break;
-                default:
-                    break;
-            }
-        }
-
-        // Release the internal ref for the task
-        s_socket_release_internal_ref(nw_socket);
-        aws_mem_release(listener_state_changed_args->allocator, listener_state_changed_args);
-    }
-
-    static void s_handle_listener_state_changed_fn(
-        struct nw_socket * nw_socket, nw_listener_state_t state, nw_error_t error) {
-
-        AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_listener_state_changed_fn start...", (void *)nw_socket);
-
-        int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-        int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: nw_listener_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
-            "error code %d",
-            (void *)nw_socket,
-            (void *)nw_socket->os_handle.nw_connection,
-            nw_error_code,
-            crt_error_code);
-
-        s_lock_base_socket(nw_socket);
-        struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
-        if (aws_socket && s_validate_event_loop(nw_socket->event_loop)) {
-            struct listener_state_changed_args *args =
-                aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct listener_state_changed_args));
-
-            args->socket = aws_socket;
-            args->nw_socket = nw_socket;
-            args->allocator = nw_socket->allocator;
-            args->error = crt_error_code;
-            args->state = state;
-
-            s_socket_acquire_internal_ref(nw_socket);
-            aws_task_init(&args->task, s_process_listener_state_changed_task, args, "ListenerStateChangedTask");
-            aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
-        } else if (state == nw_listener_state_cancelled) {
-            // If socket is already destroyed and the listener is canceled, directly closed the internal socket.
-            s_lock_socket_synced_data(nw_socket);
-            s_set_socket_state(nw_socket, aws_socket, CLOSED);
-            s_unlock_socket_synced_data(nw_socket);
-
-            s_socket_release_internal_ref(nw_socket);
-        }
-
-        s_unlock_base_socket(nw_socket);
-    }
-
-    static int s_socket_start_accept_fn(
-        struct aws_socket * socket, struct aws_event_loop * accept_loop, struct aws_socket_listener_options options) {
-        AWS_FATAL_ASSERT(options.on_accept_result);
-        AWS_FATAL_ASSERT(accept_loop);
-
-        struct nw_socket *nw_socket = socket->impl;
-        s_lock_socket_synced_data(nw_socket);
-        if (nw_socket->synced_data.state != LISTENING) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: invalid state for start_accept operation. You must call listen first.",
-                (void *)socket,
-                socket->io_handle.data.handle);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-        }
-
-        if (socket->event_loop) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: is already assigned to event-loop %p.",
-                (void *)socket,
-                socket->io_handle.data.handle,
-                (void *)socket->event_loop);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
-        }
-
-        aws_event_loop_connect_handle_to_io_completion_port(accept_loop, &socket->io_handle);
-        socket->accept_result_fn = options.on_accept_result;
-        socket->connect_accept_user_data = options.on_accept_result_user_data;
-
-        nw_socket->on_accept_started_fn = options.on_accept_start_result;
-        nw_socket->listen_accept_started_user_data = options.on_accept_start_user_data;
-
-        s_set_event_loop(socket, accept_loop);
-
-        nw_listener_set_state_changed_handler(
-            socket->io_handle.data.handle, ^(nw_listener_state_t state, nw_error_t error) {
-              s_handle_listener_state_changed_fn(nw_socket, state, error);
-            });
-
-        nw_listener_set_new_connection_handler(socket->io_handle.data.handle, ^(nw_connection_t connection) {
-          s_handle_on_listener_success(nw_socket, AWS_OP_SUCCESS, connection, socket->connect_accept_user_data);
-        });
-        // this ref should be released in nw_listener_set_state_changed_handler where get state ==
-        // nw_listener_state_cancelled
-        s_socket_acquire_internal_ref(nw_socket);
-        nw_listener_start(socket->io_handle.data.handle);
+    s_lock_socket_synced_data(nw_socket);
+    if (nw_socket->synced_data.state != BOUND) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET, "id=%p: invalid state for listen operation. You must call bind first.", (void *)socket);
         s_unlock_socket_synced_data(nw_socket);
-        return AWS_OP_SUCCESS;
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    static int s_socket_stop_accept_fn(struct aws_socket * socket) {
-        struct nw_socket *nw_socket = socket->impl;
-        s_lock_socket_synced_data(nw_socket);
-        if (nw_socket->synced_data.state != LISTENING) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: is not in a listening state, can't stop_accept.",
-                (void *)socket,
-                socket->io_handle.data.handle);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-        }
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: stopping accepting new connections",
-            (void *)socket,
-            socket->io_handle.data.handle);
-
-        nw_listener_cancel(socket->io_handle.data.handle);
-
-        s_set_socket_state(nw_socket, socket, STOPPED);
-        s_unlock_socket_synced_data(nw_socket);
-
-        return AWS_OP_SUCCESS;
-    }
-
-    // Close should always be run on event loop
-    static int s_socket_close_fn(struct aws_socket * socket) {
-
-        struct nw_socket *nw_socket = socket->impl;
-        s_lock_socket_synced_data(nw_socket);
-
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket is closing with current state %d",
-            (void *)socket,
-            socket->io_handle.data.handle,
-            socket->state);
-
-        if (nw_socket->synced_data.state < CLOSING) {
-            // We would like to keep CONNECTED_READ so that we could continue processing any received data until the we
-            // got the system callback indicates that the system connection has been closed in the receiving direction.
-            s_set_socket_state(nw_socket, nw_socket->base_socket_synced_data.base_socket, CLOSING | CONNECTED_READ);
-            s_socket_release_write_ref(nw_socket);
-        }
-        s_unlock_socket_synced_data(nw_socket);
-        return AWS_OP_SUCCESS;
-    }
-
-    static int s_socket_shutdown_dir_fn(struct aws_socket * socket, enum aws_channel_direction dir) {
-        (void)dir;
-        AWS_FATAL_ASSERT(true);
+    if (nw_socket->nw_parameters == NULL) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p: shutdown by direction is not support for Apple network framework.",
+            "id=%p: socket nw_parameters needs to be set before creating a listener from socket.",
             (void *)socket);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
-    static int s_socket_set_options_fn(struct aws_socket * socket, const struct aws_socket_options *options) {
-        if (socket->options.domain != options->domain || socket->options.type != options->type) {
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        }
-
+    socket->io_handle.data.handle = nw_listener_create(nw_socket->nw_parameters);
+    if (!socket->io_handle.data.handle) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, "
-            "keep-alive "
-            "probe "
-            "count %d.",
-            (void *)socket,
-            socket->io_handle.data.handle,
-            (int)options->keepalive,
-            (int)options->keep_alive_timeout_sec,
-            (int)options->keep_alive_interval_sec,
-            (int)options->keep_alive_max_failed_probes);
-
-        socket->options = *options;
-
-        struct nw_socket *nw_socket = socket->impl;
-
-        // DEBUG WIP TODO change s_setup_socket_params to get event_loop for TLS from the nw_socket or the aws_socket.
-        return s_setup_socket_params(nw_socket, options, NULL);
+            "id=%p:  listener creation failed, please verify the socket options are setup properly.",
+            (void *)socket);
+        s_unlock_socket_synced_data(nw_socket);
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
 
-    static int s_socket_assign_to_event_loop_fn(struct aws_socket * socket, struct aws_event_loop * event_loop) {
-        if (!socket->event_loop) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: assigning to event loop %p",
-                (void *)socket,
-                socket->io_handle.data.handle,
-                (void *)event_loop);
+    socket->io_handle.set_queue = s_listener_set_dispatch_queue;
+    nw_socket->os_handle.nw_listener = socket->io_handle.data.handle;
+    nw_retain(socket->io_handle.data.handle);
+    nw_socket->mode = NWSM_LISTENER;
 
-            if (aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle)) {
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: nw_socket successfully listening",
+        (void *)socket,
+        socket->io_handle.data.handle);
 
+    s_set_socket_state(nw_socket, socket, LISTENING);
+    s_unlock_socket_synced_data(nw_socket);
+    return AWS_OP_SUCCESS;
+}
+
+struct listener_state_changed_args {
+    struct aws_task task;
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+    struct nw_socket *nw_socket;
+    nw_listener_state_t state;
+    int error;
+};
+
+static void s_process_listener_state_changed_task(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)status;
+    (void)task;
+
+    struct listener_state_changed_args *listener_state_changed_args = args;
+
+    struct nw_socket *nw_socket = listener_state_changed_args->nw_socket;
+    nw_listener_t nw_listener = nw_socket->os_handle.nw_listener;
+    nw_listener_state_t state = listener_state_changed_args->state;
+    int crt_error_code = listener_state_changed_args->error;
+
+    /* Ideally we should not have a canceled task here, as nw_socket keeps a reference to event loop, therefore the
+     * event loop should never be destroyed before the nw_socket get destroyed. If we manually cancel the task, we
+     * should make sure we carefully handled the state change eventually, as the socket relies on this task to
+     * release and cleanup.
+     */
+    if (status != AWS_TASK_STATUS_CANCELED) {
+
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: listener state changed to %d ",
+            (void *)nw_socket,
+            (void *)nw_listener,
+            state);
+
+        switch (state) {
+            case nw_listener_state_failed: {
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: assigning event loop %p failed",
-                    (void *)socket,
-                    socket->io_handle.data.handle,
-                    (void *)event_loop);
-                return AWS_OP_ERR;
-            }
+                    "id=%p handle=%p: listener failed with error %d",
+                    (void *)nw_socket,
+                    (void *)nw_listener,
+                    crt_error_code);
 
-            s_set_event_loop(socket, event_loop);
-            nw_connection_start(socket->io_handle.data.handle);
-            return AWS_OP_SUCCESS;
+                s_lock_base_socket(nw_socket);
+                s_lock_socket_synced_data(nw_socket);
+                s_set_socket_state(nw_socket, listener_state_changed_args->socket, ERROR);
+                s_unlock_socket_synced_data(nw_socket);
+                struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
+                if (nw_socket->on_accept_started_fn) {
+                    nw_socket->on_accept_started_fn(
+                        aws_socket, crt_error_code, nw_socket->listen_accept_started_user_data);
+                }
+                s_unlock_base_socket(nw_socket);
+            } break;
+            case nw_listener_state_ready: {
+                s_lock_base_socket(nw_socket);
+                struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
+                if (aws_socket) {
+                    AWS_FATAL_ASSERT(nw_socket->mode == NWSM_LISTENER);
+                    aws_socket->local_endpoint.port = nw_listener_get_port(nw_socket->os_handle.nw_listener);
+                    if (nw_socket->on_accept_started_fn) {
+                        nw_socket->on_accept_started_fn(
+                            aws_socket, AWS_OP_SUCCESS, nw_socket->listen_accept_started_user_data);
+                    }
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_SOCKET,
+                        "id=%p handle=%p: listener on port %d ready ",
+                        (void *)nw_socket,
+                        (void *)nw_listener,
+                        aws_socket->local_endpoint.port);
+                }
+
+                s_unlock_base_socket(nw_socket);
+
+            } break;
+            case nw_listener_state_cancelled: {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_SOCKET, "id=%p handle=%p: listener cancelled.", (void *)nw_socket, (void *)nw_listener);
+                s_lock_socket_synced_data(nw_socket);
+                s_set_socket_state(nw_socket, listener_state_changed_args->socket, CLOSED);
+                s_unlock_socket_synced_data(nw_socket);
+                s_socket_release_internal_ref(nw_socket);
+            } break;
+            default:
+                break;
         }
+    }
 
-        AWS_LOGF_DEBUG(
+    // Release the internal ref for the task
+    s_socket_release_internal_ref(nw_socket);
+    aws_mem_release(listener_state_changed_args->allocator, listener_state_changed_args);
+}
+
+static void s_handle_listener_state_changed_fn(
+    struct nw_socket *nw_socket,
+    nw_listener_state_t state,
+    nw_error_t error) {
+
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_listener_state_changed_fn start...", (void *)nw_socket);
+
+    int nw_error_code = error ? nw_error_get_error_code(error) : 0;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: nw_listener_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
+        "error code %d",
+        (void *)nw_socket,
+        (void *)nw_socket->os_handle.nw_connection,
+        nw_error_code,
+        crt_error_code);
+
+    s_lock_base_socket(nw_socket);
+    struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
+    if (aws_socket && s_validate_event_loop(nw_socket->event_loop)) {
+        struct listener_state_changed_args *args =
+            aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct listener_state_changed_args));
+
+        args->socket = aws_socket;
+        args->nw_socket = nw_socket;
+        args->allocator = nw_socket->allocator;
+        args->error = crt_error_code;
+        args->state = state;
+
+        s_socket_acquire_internal_ref(nw_socket);
+        aws_task_init(&args->task, s_process_listener_state_changed_task, args, "ListenerStateChangedTask");
+        aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
+    } else if (state == nw_listener_state_cancelled) {
+        // If socket is already destroyed and the listener is canceled, directly closed the internal socket.
+        s_lock_socket_synced_data(nw_socket);
+        s_set_socket_state(nw_socket, aws_socket, CLOSED);
+        s_unlock_socket_synced_data(nw_socket);
+
+        s_socket_release_internal_ref(nw_socket);
+    }
+
+    s_unlock_base_socket(nw_socket);
+}
+
+static int s_socket_start_accept_fn(
+    struct aws_socket *socket,
+    struct aws_event_loop *accept_loop,
+    struct aws_socket_listener_options options) {
+    AWS_FATAL_ASSERT(options.on_accept_result);
+    AWS_FATAL_ASSERT(accept_loop);
+
+    struct nw_socket *nw_socket = socket->impl;
+    s_lock_socket_synced_data(nw_socket);
+    if (nw_socket->synced_data.state != LISTENING) {
+        AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: the socket is already assigned with an event loop %p",
+            "id=%p handle=%p: invalid state for start_accept operation. You must call listen first.",
+            (void *)socket,
+            socket->io_handle.data.handle);
+        s_unlock_socket_synced_data(nw_socket);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+    }
+
+    if (socket->event_loop) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: is already assigned to event-loop %p.",
             (void *)socket,
             socket->io_handle.data.handle,
-            (void *)event_loop);
+            (void *)socket->event_loop);
+        s_unlock_socket_synced_data(nw_socket);
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    static void s_handle_nw_connection_receive_completion_fn(
-        dispatch_data_t data,
-        nw_content_context_t context,
-        bool is_complete,
-        nw_error_t error,
-        struct nw_socket *nw_socket) {
-        s_lock_socket_synced_data(nw_socket);
-        nw_socket->synced_data.read_scheduled = false;
-        s_unlock_socket_synced_data(nw_socket);
+    aws_event_loop_connect_handle_to_io_completion_port(accept_loop, &socket->io_handle);
+    socket->accept_result_fn = options.on_accept_result;
+    socket->connect_accept_user_data = options.on_accept_result_user_data;
 
-        bool complete = is_complete;
-        int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-        int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
-        AWS_LOGF_TRACE(
+    nw_socket->on_accept_started_fn = options.on_accept_start_result;
+    nw_socket->listen_accept_started_user_data = options.on_accept_start_user_data;
+
+    s_set_event_loop(socket, accept_loop);
+
+    nw_listener_set_state_changed_handler(
+        socket->io_handle.data.handle, ^(nw_listener_state_t state, nw_error_t error) {
+          s_handle_listener_state_changed_fn(nw_socket, state, error);
+        });
+
+    nw_listener_set_new_connection_handler(socket->io_handle.data.handle, ^(nw_connection_t connection) {
+      s_handle_on_listener_success(nw_socket, AWS_OP_SUCCESS, connection, socket->connect_accept_user_data);
+    });
+    // this ref should be released in nw_listener_set_state_changed_handler where get state ==
+    // nw_listener_state_cancelled
+    s_socket_acquire_internal_ref(nw_socket);
+    nw_listener_start(socket->io_handle.data.handle);
+    s_unlock_socket_synced_data(nw_socket);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_socket_stop_accept_fn(struct aws_socket *socket) {
+    struct nw_socket *nw_socket = socket->impl;
+    s_lock_socket_synced_data(nw_socket);
+    if (nw_socket->synced_data.state != LISTENING) {
+        AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: nw_connection_receive invoked with nw_error_code %d, CRT error code %d",
-            (void *)nw_socket,
-            (void *)nw_socket->os_handle.nw_connection,
-            nw_error_code,
-            crt_error_code);
-
-        if (!crt_error_code) {
-            /* For protocols such as TCP, `is_complete` will be marked when the entire stream has be closed in the
-             * reading direction. For protocols such as UDP, this will be marked when the end of a datagram has
-             * been reached. */
-            if (is_complete && nw_content_context_get_is_final(context)) {
-
-                s_lock_base_socket(nw_socket);
-                struct aws_socket *base_socket = nw_socket->base_socket_synced_data.base_socket;
-
-                // If the protocol is TCP, `is_complete` means the connection is closed, raise the
-                // AWS_IO_SOCKET_CLOSED error
-                if (base_socket && base_socket->options.type != AWS_SOCKET_DGRAM) {
-                    // the message is complete, socket is closed
-                    AWS_LOGF_TRACE(
-                        AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p:complete hang up ",
-                        (void *)nw_socket,
-                        (void *)nw_socket->os_handle.nw_connection);
-
-                    complete = true;
-                    crt_error_code = AWS_IO_SOCKET_CLOSED;
-                }
-                s_unlock_base_socket(nw_socket);
-            }
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: queued read buffer of size %d",
-                (void *)nw_socket,
-                (void *)nw_socket->os_handle.nw_connection,
-                data ? (int)dispatch_data_get_size(data) : 0);
-        }
-
-        // The callback should be fired before schedule next read, so that if the socket is closed, we could
-        // prevent schedule next read earlier.
-        s_handle_incoming_data(nw_socket, crt_error_code, data, complete);
-
-        // keep reading from the system socket
-        s_schedule_next_read(nw_socket);
-
-        s_socket_release_internal_ref(nw_socket);
+            "id=%p handle=%p: is not in a listening state, can't stop_accept.",
+            (void *)socket,
+            socket->io_handle.data.handle);
+        s_unlock_socket_synced_data(nw_socket);
+        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
     }
 
-    /* s_schedule_next_read() will setup the nw_connection_receive_completion_t and start a read request to the system
-     * socket. The handler will get invoked when the system socket has data to read.
-     * The function is initially fired on the following conditions, and recursively call itself on handler invocation:
-     *   1. on function call `aws_socket_read()`
-     *   2. on function call `aws_socket_subscribe_to_readable_events`
-     */
-    static int s_schedule_next_read(struct nw_socket * nw_socket) {
-        s_lock_socket_synced_data(nw_socket);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: stopping accepting new connections",
+        (void *)socket,
+        socket->io_handle.data.handle);
 
-        // Once a read operation is scheduled, we should not schedule another one until the current one is
-        // completed.
-        if (nw_socket->synced_data.read_scheduled) {
-            AWS_LOGF_ERROR(
+    nw_listener_cancel(socket->io_handle.data.handle);
+
+    s_set_socket_state(nw_socket, socket, STOPPED);
+    s_unlock_socket_synced_data(nw_socket);
+
+    return AWS_OP_SUCCESS;
+}
+
+// Close should always be run on event loop
+static int s_socket_close_fn(struct aws_socket *socket) {
+
+    struct nw_socket *nw_socket = socket->impl;
+    s_lock_socket_synced_data(nw_socket);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: socket is closing with current state %d",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        socket->state);
+
+    if (nw_socket->synced_data.state < CLOSING) {
+        // We would like to keep CONNECTED_READ so that we could continue processing any received data until the we
+        // got the system callback indicates that the system connection has been closed in the receiving direction.
+        s_set_socket_state(nw_socket, nw_socket->base_socket_synced_data.base_socket, CLOSING | CONNECTED_READ);
+        s_socket_release_write_ref(nw_socket);
+    }
+    s_unlock_socket_synced_data(nw_socket);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_direction dir) {
+    (void)dir;
+    AWS_FATAL_ASSERT(true);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET, "id=%p: shutdown by direction is not support for Apple network framework.", (void *)socket);
+    return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
+}
+
+static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_socket_options *options) {
+    if (socket->options.domain != options->domain || socket->options.type != options->type) {
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: setting socket options to: keep-alive %d, keep idle %d, keep-alive interval %d, "
+        "keep-alive "
+        "probe "
+        "count %d.",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        (int)options->keepalive,
+        (int)options->keep_alive_timeout_sec,
+        (int)options->keep_alive_interval_sec,
+        (int)options->keep_alive_max_failed_probes);
+
+    socket->options = *options;
+
+    struct nw_socket *nw_socket = socket->impl;
+
+    // DEBUG WIP TODO change s_setup_socket_params to get event_loop for TLS from the nw_socket or the aws_socket.
+    return s_setup_socket_params(nw_socket, options, NULL);
+}
+
+static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aws_event_loop *event_loop) {
+    if (!socket->event_loop) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: assigning to event loop %p",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            (void *)event_loop);
+
+        if (aws_event_loop_connect_handle_to_io_completion_port(event_loop, &socket->io_handle)) {
+
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: there is already read queued, do not queue further read",
-                (void *)nw_socket,
-                (void *)nw_socket->os_handle.nw_connection);
-            s_unlock_socket_synced_data(nw_socket);
-            return AWS_OP_SUCCESS;
+                "id=%p handle=%p: assigning event loop %p failed",
+                (void *)socket,
+                socket->io_handle.data.handle,
+                (void *)event_loop);
+            return AWS_OP_ERR;
         }
 
-        if (nw_socket->synced_data.state & CLOSING || !(nw_socket->synced_data.state & CONNECTED_READ)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: cannot read to because socket is not connected",
-                (void *)nw_socket,
-                (void *)nw_socket->os_handle.nw_connection);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
+        s_set_event_loop(socket, event_loop);
+        nw_connection_start(socket->io_handle.data.handle);
+        return AWS_OP_SUCCESS;
+    }
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: the socket is already assigned with an event loop %p",
+        (void *)socket,
+        socket->io_handle.data.handle,
+        (void *)event_loop);
+    return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
+}
+
+static void s_handle_nw_connection_receive_completion_fn(
+    dispatch_data_t data,
+    nw_content_context_t context,
+    bool is_complete,
+    nw_error_t error,
+    struct nw_socket *nw_socket) {
+    s_lock_socket_synced_data(nw_socket);
+    nw_socket->synced_data.read_scheduled = false;
+    s_unlock_socket_synced_data(nw_socket);
+
+    bool complete = is_complete;
+    int nw_error_code = error ? nw_error_get_error_code(error) : 0;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: nw_connection_receive invoked with nw_error_code %d, CRT error code %d",
+        (void *)nw_socket,
+        (void *)nw_socket->os_handle.nw_connection,
+        nw_error_code,
+        crt_error_code);
+
+    if (!crt_error_code) {
+        /* For protocols such as TCP, `is_complete` will be marked when the entire stream has be closed in the
+         * reading direction. For protocols such as UDP, this will be marked when the end of a datagram has
+         * been reached. */
+        if (is_complete && nw_content_context_get_is_final(context)) {
+
+            s_lock_base_socket(nw_socket);
+            struct aws_socket *base_socket = nw_socket->base_socket_synced_data.base_socket;
+
+            // If the protocol is TCP, `is_complete` means the connection is closed, raise the
+            // AWS_IO_SOCKET_CLOSED error
+            if (base_socket && base_socket->options.type != AWS_SOCKET_DGRAM) {
+                // the message is complete, socket is closed
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p:complete hang up ",
+                    (void *)nw_socket,
+                    (void *)nw_socket->os_handle.nw_connection);
+
+                complete = true;
+                crt_error_code = AWS_IO_SOCKET_CLOSED;
+            }
+            s_unlock_base_socket(nw_socket);
         }
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: queued read buffer of size %d",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection,
+            data ? (int)dispatch_data_get_size(data) : 0);
+    }
 
-        nw_socket->synced_data.read_scheduled = true;
+    // The callback should be fired before schedule next read, so that if the socket is closed, we could
+    // prevent schedule next read earlier.
+    s_handle_incoming_data(nw_socket, crt_error_code, data, complete);
 
-        // Acquire nw_socket as we called nw_connection_receive, and the ref will be released when the handler is
-        // called.
-        s_socket_acquire_internal_ref(nw_socket);
+    // keep reading from the system socket
+    s_schedule_next_read(nw_socket);
 
-        /* read and let me know when you've done it. */
-        nw_connection_receive(
-            nw_socket->os_handle.nw_connection,
-            1,
-            UINT32_MAX,
-            ^(dispatch_data_t data, nw_content_context_t context, bool is_complete, nw_error_t error) {
-              s_handle_nw_connection_receive_completion_fn(data, context, is_complete, error, nw_socket);
-            });
+    s_socket_release_internal_ref(nw_socket);
+}
 
+/* s_schedule_next_read() will setup the nw_connection_receive_completion_t and start a read request to the system
+ * socket. The handler will get invoked when the system socket has data to read.
+ * The function is initially fired on the following conditions, and recursively call itself on handler invocation:
+ *   1. on function call `aws_socket_read()`
+ *   2. on function call `aws_socket_subscribe_to_readable_events`
+ */
+static int s_schedule_next_read(struct nw_socket *nw_socket) {
+    s_lock_socket_synced_data(nw_socket);
+
+    // Once a read operation is scheduled, we should not schedule another one until the current one is
+    // completed.
+    if (nw_socket->synced_data.read_scheduled) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: there is already read queued, do not queue further read",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection);
         s_unlock_socket_synced_data(nw_socket);
         return AWS_OP_SUCCESS;
     }
 
-    static int s_socket_subscribe_to_readable_events_fn(
-        struct aws_socket * socket, aws_socket_on_readable_fn * on_readable, void *user_data) {
-        struct nw_socket *nw_socket = socket->impl;
-
-        if (nw_socket->mode == NWSM_LISTENER) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: Apple Network Framework does not support read/write on a listener. Please use the "
-                "incoming socket to track the read/write operation.",
-                (void *)nw_socket,
-                (void *)nw_socket->os_handle.nw_listener);
-            return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
-        }
-
-        socket->readable_user_data = user_data;
-        socket->readable_fn = on_readable;
-
-        nw_socket->on_readable = on_readable;
-        nw_socket->on_readable_user_data = user_data;
-
-        AWS_LOGF_TRACE(
+    if (nw_socket->synced_data.state & CLOSING || !(nw_socket->synced_data.state & CONNECTED_READ)) {
+        AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: socket_subscribe_to_readable_events: start to schedule read request.",
+            "id=%p handle=%p: cannot read to because socket is not connected",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection);
-
-        return s_schedule_next_read(nw_socket);
+        s_unlock_socket_synced_data(nw_socket);
+        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    // WARNING: This function should handle the locks carefully. aws_socket_read()&aws_socket_write() should always
-    // called on event loop thread.
-    static int s_socket_read_fn(struct aws_socket * socket, struct aws_byte_buf * read_buffer, size_t *amount_read) {
-        struct nw_socket *nw_socket = socket->impl;
+    nw_socket->synced_data.read_scheduled = true;
 
-        AWS_FATAL_ASSERT(amount_read);
+    // Acquire nw_socket as we called nw_connection_receive, and the ref will be released when the handler is
+    // called.
+    s_socket_acquire_internal_ref(nw_socket);
 
-        if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+    /* read and let me know when you've done it. */
+    nw_connection_receive(
+        nw_socket->os_handle.nw_connection,
+        1,
+        UINT32_MAX,
+        ^(dispatch_data_t data, nw_content_context_t context, bool is_complete, nw_error_t error) {
+          s_handle_nw_connection_receive_completion_fn(data, context, is_complete, error, nw_socket);
+        });
+
+    s_unlock_socket_synced_data(nw_socket);
+    return AWS_OP_SUCCESS;
+}
+
+static int s_socket_subscribe_to_readable_events_fn(
+    struct aws_socket *socket,
+    aws_socket_on_readable_fn *on_readable,
+    void *user_data) {
+    struct nw_socket *nw_socket = socket->impl;
+
+    if (nw_socket->mode == NWSM_LISTENER) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: Apple Network Framework does not support read/write on a listener. Please use the "
+            "incoming socket to track the read/write operation.",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_listener);
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
+    }
+
+    socket->readable_user_data = user_data;
+    socket->readable_fn = on_readable;
+
+    nw_socket->on_readable = on_readable;
+    nw_socket->on_readable_user_data = user_data;
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: socket_subscribe_to_readable_events: start to schedule read request.",
+        (void *)nw_socket,
+        (void *)nw_socket->os_handle.nw_connection);
+
+    return s_schedule_next_read(nw_socket);
+}
+
+// WARNING: This function should handle the locks carefully. aws_socket_read()&aws_socket_write() should always
+// called on event loop thread.
+static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read_buffer, size_t *amount_read) {
+    struct nw_socket *nw_socket = socket->impl;
+
+    AWS_FATAL_ASSERT(amount_read);
+
+    if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: cannot read from a different thread than event loop %p",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            (void *)socket->event_loop);
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
+    }
+
+    __block size_t max_to_read = read_buffer->capacity - read_buffer->len;
+
+    /* As the function is always called on event loop, we didn't lock protect the read_queue. */
+    if (aws_linked_list_empty(&nw_socket->read_queue)) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: read queue is empty, scheduling another read",
+            (void *)socket,
+            socket->io_handle.data.handle);
+        s_lock_socket_synced_data(nw_socket);
+        if (!(nw_socket->synced_data.state & CONNECTED_READ)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: cannot read from a different thread than event loop %p",
-                (void *)socket,
-                socket->io_handle.data.handle,
-                (void *)socket->event_loop);
-            return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
-        }
-
-        __block size_t max_to_read = read_buffer->capacity - read_buffer->len;
-
-        /* As the function is always called on event loop, we didn't lock protect the read_queue. */
-        if (aws_linked_list_empty(&nw_socket->read_queue)) {
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: read queue is empty, scheduling another read",
+                "id=%p handle=%p: socket is not connected to read.",
                 (void *)socket,
                 socket->io_handle.data.handle);
-            s_lock_socket_synced_data(nw_socket);
-            if (!(nw_socket->synced_data.state & CONNECTED_READ)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: socket is not connected to read.",
-                    (void *)socket,
-                    socket->io_handle.data.handle);
-                s_unlock_socket_synced_data(nw_socket);
-
-                return aws_raise_error(AWS_IO_SOCKET_CLOSED);
-            }
-
-            *amount_read = 0;
             s_unlock_socket_synced_data(nw_socket);
-            s_schedule_next_read(nw_socket);
-            return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+
+            return aws_raise_error(AWS_IO_SOCKET_CLOSED);
         }
 
-        /* loop over the read queue, take the data and copy it over, and do so til we're either out of data
-         * and need to schedule another read, or we've read entirely into the requested buffer. */
-        while (!aws_linked_list_empty(&nw_socket->read_queue) && max_to_read) {
-            struct aws_linked_list_node *node = aws_linked_list_front(&nw_socket->read_queue);
-            struct read_queue_node *read_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
+        *amount_read = 0;
+        s_unlock_socket_synced_data(nw_socket);
+        s_schedule_next_read(nw_socket);
+        return aws_raise_error(AWS_IO_READ_WOULD_BLOCK);
+    }
 
-            bool buffer_processed = dispatch_data_apply(
-                read_node->received_data,
-                (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
-                    (void)region;
-                    (void)offset;
+    /* loop over the read queue, take the data and copy it over, and do so til we're either out of data
+     * and need to schedule another read, or we've read entirely into the requested buffer. */
+    while (!aws_linked_list_empty(&nw_socket->read_queue) && max_to_read) {
+        struct aws_linked_list_node *node = aws_linked_list_front(&nw_socket->read_queue);
+        struct read_queue_node *read_node = AWS_CONTAINER_OF(node, struct read_queue_node, node);
 
+        bool buffer_processed = dispatch_data_apply(
+            read_node->received_data,
+            (dispatch_data_applier_t) ^ (dispatch_data_t region, size_t offset, const void *buffer, size_t size) {
+                (void)region;
+                (void)offset;
+
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: Starting read dispatch data region offset: %lu, buffer %p, with size %lu.",
+                    (void *)socket,
+                    socket->io_handle.data.handle,
+                    offset,
+                    buffer,
+                    size);
+
+                if (read_node->resume_region && offset < read_node->resume_region) {
                     AWS_LOGF_TRACE(
                         AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: Starting read dispatch data region offset: %lu, buffer %p, with size %lu.",
+                        "id=%p handle=%p: Skipped dispatch data region region : %lu, looking for region: %lu",
                         (void *)socket,
                         socket->io_handle.data.handle,
                         offset,
-                        buffer,
-                        size);
-
-                    if (read_node->resume_region && offset < read_node->resume_region) {
-                        AWS_LOGF_TRACE(
-                            AWS_LS_IO_SOCKET,
-                            "id=%p handle=%p: Skipped dispatch data region region : %lu, looking for region: %lu",
-                            (void *)socket,
-                            socket->io_handle.data.handle,
-                            offset,
-                            read_node->resume_region);
-                        return true;
-                    }
-                    size_t to_copy = aws_min_size(max_to_read, size - read_node->region_offset);
-                    aws_byte_buf_write(read_buffer, (const uint8_t *)buffer + read_node->region_offset, to_copy);
-                    max_to_read -= to_copy;
-                    *amount_read += to_copy;
-                    read_node->region_offset += to_copy;
-                    if (read_node->region_offset == size) {
-                        read_node->region_offset = 0;
-                        return true;
-                    }
-                    read_node->resume_region = offset;
-                    return false;
-                });
-
-            if (buffer_processed) {
-                aws_linked_list_remove(node);
-                s_read_queue_node_destroy(read_node);
-            }
-
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: read of %d",
-                (void *)socket,
-                socket->io_handle.data.handle,
-                (int)*amount_read);
-        }
-
-        return AWS_OP_SUCCESS;
-    }
-
-    static void s_handle_nw_connection_send_completion_fn(
-        nw_error_t error,
-        dispatch_data_t data,
-        struct nw_socket * nw_socket,
-        aws_socket_on_write_completed_fn * written_fn,
-        void *user_data) {
-        int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-        int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: nw_connection_send invoked with nw_error_code %d, maps to CRT "
-            "error code %d",
-            (void *)nw_socket,
-            (void *)nw_socket->os_handle.nw_connection,
-            nw_error_code,
-            crt_error_code);
-
-        if (crt_error_code) {
-            nw_socket->last_error = crt_error_code;
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: error during write %d",
-                (void *)nw_socket,
-                (void *)nw_socket->os_handle.nw_connection,
-                crt_error_code);
-        }
-
-        size_t written_size = dispatch_data_get_size(data);
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: send written size %d",
-            (void *)nw_socket,
-            (void *)nw_socket->os_handle.nw_connection,
-            (int)written_size);
-        s_handle_write_fn(nw_socket, crt_error_code, data ? written_size : 0, user_data, written_fn);
-        s_socket_release_write_ref(nw_socket);
-        s_socket_release_internal_ref(nw_socket);
-    }
-
-    // WARNING: This function should be careful with locks. aws_socket_read()&aws_socket_write() should always called on
-    // event loop thread.
-    static int s_socket_write_fn(
-        struct aws_socket * socket,
-        const struct aws_byte_cursor *cursor,
-        aws_socket_on_write_completed_fn *written_fn,
-        void *user_data) {
-        AWS_FATAL_ASSERT(written_fn);
-        if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
-            return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
-        }
-
-        struct nw_socket *nw_socket = socket->impl;
-        s_lock_socket_synced_data(nw_socket);
-        if (!(nw_socket->synced_data.state & CONNECTED_WRITE)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: cannot write to because it is not connected",
-                (void *)socket,
-                socket->io_handle.data.handle);
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
-        }
-
-        dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
-        if (!data) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: failed to process write data.",
-                (void *)socket,
-                socket->io_handle.data.handle);
-            return AWS_OP_ERR;
-        }
-        s_socket_acquire_internal_ref(nw_socket);
-        s_socket_acquire_write_ref(nw_socket);
-
-        nw_connection_send(
-            socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
-              s_handle_nw_connection_send_completion_fn(error, data, nw_socket, written_fn, user_data);
+                        read_node->resume_region);
+                    return true;
+                }
+                size_t to_copy = aws_min_size(max_to_read, size - read_node->region_offset);
+                aws_byte_buf_write(read_buffer, (const uint8_t *)buffer + read_node->region_offset, to_copy);
+                max_to_read -= to_copy;
+                *amount_read += to_copy;
+                read_node->region_offset += to_copy;
+                if (read_node->region_offset == size) {
+                    read_node->region_offset = 0;
+                    return true;
+                }
+                read_node->resume_region = offset;
+                return false;
             });
 
+        if (buffer_processed) {
+            aws_linked_list_remove(node);
+            s_read_queue_node_destroy(read_node);
+        }
+
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: read of %d",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            (int)*amount_read);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_handle_nw_connection_send_completion_fn(
+    nw_error_t error,
+    dispatch_data_t data,
+    struct nw_socket *nw_socket,
+    aws_socket_on_write_completed_fn *written_fn,
+    void *user_data) {
+    int nw_error_code = error ? nw_error_get_error_code(error) : 0;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: nw_connection_send invoked with nw_error_code %d, maps to CRT "
+        "error code %d",
+        (void *)nw_socket,
+        (void *)nw_socket->os_handle.nw_connection,
+        nw_error_code,
+        crt_error_code);
+
+    if (crt_error_code) {
+        nw_socket->last_error = crt_error_code;
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: error during write %d",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection,
+            crt_error_code);
+    }
+
+    size_t written_size = dispatch_data_get_size(data);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: send written size %d",
+        (void *)nw_socket,
+        (void *)nw_socket->os_handle.nw_connection,
+        (int)written_size);
+    s_handle_write_fn(nw_socket, crt_error_code, data ? written_size : 0, user_data, written_fn);
+    s_socket_release_write_ref(nw_socket);
+    s_socket_release_internal_ref(nw_socket);
+}
+
+// WARNING: This function should be careful with locks. aws_socket_read()&aws_socket_write() should always called on
+// event loop thread.
+static int s_socket_write_fn(
+    struct aws_socket *socket,
+    const struct aws_byte_cursor *cursor,
+    aws_socket_on_write_completed_fn *written_fn,
+    void *user_data) {
+    AWS_FATAL_ASSERT(written_fn);
+    if (!aws_event_loop_thread_is_callers_thread(socket->event_loop)) {
+        return aws_raise_error(AWS_ERROR_IO_EVENT_LOOP_THREAD_ONLY);
+    }
+
+    struct nw_socket *nw_socket = socket->impl;
+    s_lock_socket_synced_data(nw_socket);
+    if (!(nw_socket->synced_data.state & CONNECTED_WRITE)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: cannot write to because it is not connected",
+            (void *)socket,
+            socket->io_handle.data.handle);
         s_unlock_socket_synced_data(nw_socket);
-
-        return AWS_OP_SUCCESS;
+        return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);
     }
 
-    static int s_socket_get_error_fn(struct aws_socket * socket) {
-        struct nw_socket *nw_socket = socket->impl;
-
-        return nw_socket->last_error;
+    dispatch_data_t data = dispatch_data_create(cursor->ptr, cursor->len, NULL, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+    if (!data) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: failed to process write data.",
+            (void *)socket,
+            socket->io_handle.data.handle);
+        return AWS_OP_ERR;
     }
+    s_socket_acquire_internal_ref(nw_socket);
+    s_socket_acquire_write_ref(nw_socket);
 
-    static bool s_socket_is_open_fn(struct aws_socket * socket) {
-        struct nw_socket *nw_socket = socket->impl;
-        s_lock_socket_synced_data(nw_socket);
-        bool is_open = nw_socket->synced_data.state < CLOSING;
-        s_unlock_socket_synced_data(nw_socket);
-        return is_open;
-    }
+    nw_connection_send(
+        socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
+          s_handle_nw_connection_send_completion_fn(error, data, nw_socket, written_fn, user_data);
+        });
 
-    static int s_set_close_callback(
-        struct aws_socket * socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
-        struct nw_socket *nw_socket = socket->impl;
-        nw_socket->close_user_data = user_data;
-        nw_socket->on_socket_close_complete_fn = fn;
-        return 0;
-    }
+    s_unlock_socket_synced_data(nw_socket);
 
-    static int s_set_cleanup_callback(
-        struct aws_socket * socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
-        struct nw_socket *nw_socket = socket->impl;
-        nw_socket->cleanup_user_data = user_data;
-        nw_socket->on_socket_cleanup_complete_fn = fn;
-        return 0;
-    }
+    return AWS_OP_SUCCESS;
+}
 
-    static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket) {
-        struct nw_socket *nw_socket = socket->impl;
-        return nw_socket->protocol_buf;
-    }
+static int s_socket_get_error_fn(struct aws_socket *socket) {
+    struct nw_socket *nw_socket = socket->impl;
 
-    static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket) {
-        struct nw_socket *nw_socket = socket->impl;
-        return nw_socket->host_name;
-    }
+    return nw_socket->last_error;
+}
+
+static bool s_socket_is_open_fn(struct aws_socket *socket) {
+    struct nw_socket *nw_socket = socket->impl;
+    s_lock_socket_synced_data(nw_socket);
+    bool is_open = nw_socket->synced_data.state < CLOSING;
+    s_unlock_socket_synced_data(nw_socket);
+    return is_open;
+}
+
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct nw_socket *nw_socket = socket->impl;
+    nw_socket->close_user_data = user_data;
+    nw_socket->on_socket_close_complete_fn = fn;
+    return 0;
+}
+
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct nw_socket *nw_socket = socket->impl;
+    nw_socket->cleanup_user_data = user_data;
+    nw_socket->on_socket_cleanup_complete_fn = fn;
+    return 0;
+}
+
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket) {
+    struct nw_socket *nw_socket = socket->impl;
+    return nw_socket->protocol_buf;
+}
+
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket) {
+    struct nw_socket *nw_socket = socket->impl;
+    return nw_socket->host_name;
+}
