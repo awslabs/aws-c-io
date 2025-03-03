@@ -652,30 +652,27 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 (void *)connection_args->bootstrap,
                 (void *)socket,
                 error_code);
+#if defined(AWS_USE_SECITEM)
+            /*
+             * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful TCP
+             * connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a TLS
+             * related failure we store it to properly handle TLS failure rather than treating it as a TCP connection
+             * failure. We also assign the socket and flip the connection_chosen to true as a TCP connection must
+             * sucessfully be established before a TLS failure can occur.
+             */
+            if (aws_tls_error_code_check(error_code)) {
+                connection_args->tls_error_code = error_code;
+                connection_args->connection_chosen = true;
+                connection_args->channel_data.socket = socket;
+            }
+#endif /* AWS_USE_SECITEM */
         } else {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                "id=%p: releasing socket %p either because we already have a "
-                "successful connection.",
+                "id=%p: releasing socket %p because we already have a successful connection.",
                 (void *)connection_args->bootstrap,
                 (void *)socket);
         }
-
-#if defined(AWS_USE_SECITEM)
-        /* If Apple Network Framework Secitem is being used, it's possible at this point that
-         * a TCP connection was successful but it failed a TLS negotiation handshake. If the error
-         * indicates a TLS negotiation error, we store it to report the TLS failure once all connection
-         * addresses fail rather than the final TCP Socket timeout failure error code. */
-        if (aws_tls_error_code_check(error_code)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                "id=%p: Connection failed with TLS error_code %d.",
-                (void *)connection_args->bootstrap,
-                error_code);
-            connection_args->tls_error_code = error_code;
-            connection_args->channel_data.socket = socket;
-        }
-#endif /* AWS_USE_SECITEM */
 
         SETUP_SOCKET_SHUTDOWN_CALLBACKS(
             allocator,
@@ -1228,6 +1225,10 @@ struct server_connection_args {
     struct aws_ref_count ref_count;
 };
 
+/* This function is called when TLS options are required during a server-side socket bind operation.
+ * It is only used with Apple Network Framework's SecItem implementation, where the socket creation parameters
+ * must include TLS options.
+ */
 static void s_retrieve_server_tls_options(struct aws_tls_connection_context *context, void *user_data) {
     struct server_connection_args *connection_args = user_data;
     context->host_name = connection_args->tls_options.server_name;
@@ -1561,14 +1562,19 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
     if (channel_data->server_connection_args->use_tls) {
-/* AWS_USE_SECITEM is using Apple Network Framework's implementation of TLS handling.
- * The TCP and TLS handshake are both handled by the network parameters and its options and verification block.
- * We do not need to set up a separate TLS slot in the channel for iOS. */
 #if defined(AWS_USE_SECITEM)
+        /*
+         * When AWS_USE_SECITEM is defined, we use Apple Network Framework’s built-in TLS handling.
+         * In this mode, the network parameters (along with their options and verification block) manage both
+         * the TCP and TLS handshakes together, eliminating the need for a separate TLS configuration in the
+         * channel. This code is reached only when a TLS connection has been successfully established. At that
+         * point, we signal a successful TLS handshake, which also makes the server name and protocol available (if
+         * provided).
+         */
         s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
         return;
-
 #endif /* AWS_USE_SECITEM */
+
         /* incoming callback will be invoked upon the negotiation completion so don't do it
          * here. */
         if (s_setup_server_tls(channel_data, channel)) {
