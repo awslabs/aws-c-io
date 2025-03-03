@@ -14,12 +14,37 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 #define AWS_C_IO_PACKAGE_ID 1
 
+struct aws_io_handle;
+
+struct aws_event_loop;
+
+/**
+ * Results of the I/O operation(s) performed on the aws_io_handle.
+ */
+struct aws_io_handle_io_op_result {
+    size_t read_bytes;
+    size_t written_bytes;
+    /** Error codes representing generic errors happening on I/O handles. */
+    int error_code;
+    /** Error codes specific to reading operations. */
+    int read_error_code;
+    /** Error codes specific to writing operations. */
+    int write_error_code;
+};
+
+typedef void(aws_io_handle_update_io_results_fn)(
+    struct aws_event_loop *,
+    struct aws_io_handle *,
+    const struct aws_io_handle_io_op_result *);
+
 struct aws_io_handle {
     union {
         int fd;
         void *handle;
     } data;
     void *additional_data;
+    /* Optional callback to return results of I/O operations performed on this handle. */
+    aws_io_handle_update_io_results_fn *update_io_result;
 };
 
 enum aws_io_message_type {
