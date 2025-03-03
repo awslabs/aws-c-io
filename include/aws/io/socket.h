@@ -84,8 +84,8 @@ struct aws_socket_options {
 };
 
 struct aws_socket;
-struct aws_event_loop;
 struct aws_tls_connection_context;
+struct aws_tls_connection_options;
 
 /**
  * Called in client mode when an outgoing connection has succeeded or an error has occurred.
@@ -96,13 +96,11 @@ struct aws_tls_connection_context;
  */
 typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int error_code, void *user_data);
 
-struct aws_tls_connection_options;
-
 /**
- * Called to retrieve TLS related options during socket creation/initialization and socket listener binding.
- * Typically the TLS handshake occurs after a socket connection is established but Apple Network Framework requires
- * the setup of TLS related parameters at creation of the connection as its internal framework
- * handles both the socket connection and the TLS handshake.
+ * Retrieves TLS-related options for both socket initialization and listener binding.
+ * Apple Network Framework deviates from our other channel setup patterns where the TLS handshake occurs in a TLS slot
+ * after the socket slot is connected, the Apple Network Framework requires TLS parameters to be configured during
+ * the socket slot creation, since it handles both the socket connection and TLS handshake.
  */
 typedef void(aws_socket_retrieve_tls_options_fn)(struct aws_tls_connection_context *context, void *user_data);
 
