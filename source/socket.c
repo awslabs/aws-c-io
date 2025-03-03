@@ -40,7 +40,7 @@ int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
     return socket->vtable->socket_listen_fn(socket, backlog_size);
 }
 
-AWS_IO_API int aws_socket_start_accept(
+int aws_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
     struct aws_socket_listener_options options) {

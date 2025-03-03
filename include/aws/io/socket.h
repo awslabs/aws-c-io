@@ -280,24 +280,6 @@ AWS_IO_API int aws_socket_start_accept(
 AWS_IO_API int aws_socket_stop_accept(struct aws_socket *socket);
 
 /**
- * Apple Network Framework only. The callback that will triggered when aws_socket_close() finished. The callback
- * will be called from the socket event loop.
- */
-AWS_IO_API int aws_socket_set_close_complete_callback(
-    struct aws_socket *socket,
-    aws_socket_on_shutdown_complete_fn fn,
-    void *user_data);
-
-/**
- * Apple Network Framework only. The callback that will triggered when aws_socket_cleanup() finished. And
- * it is only safe to release the socket afterwards. The callback will be called from the socket event loop.
- */
-AWS_IO_API int aws_socket_set_cleanup_complete_callback(
-    struct aws_socket *socket,
-    aws_socket_on_shutdown_complete_fn fn,
-    void *user_data);
-
-/**
  * Calls `close()` on the socket and unregisters all io operations from the event loop. This function must be called
  * from the event-loop's thread unless this is a listening socket. If it's a listening socket it can be called from any
  * non-event-loop thread or the event-loop the socket is currently assigned to. If called from outside the event-loop,
@@ -381,6 +363,24 @@ AWS_IO_API int aws_socket_write(
     void *user_data);
 
 /**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_close() finished. The callback
+ * will be called from the socket event loop.
+ */
+AWS_IO_API int aws_socket_set_close_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
+
+/**
+ * Apple Network Framework only. The callback that will triggered when aws_socket_cleanup() finished. And
+ * it is only safe to release the socket afterwards. The callback will be called from the socket event loop.
+ */
+AWS_IO_API int aws_socket_set_cleanup_complete_callback(
+    struct aws_socket *socket,
+    aws_socket_on_shutdown_complete_fn fn,
+    void *user_data);
+
+/**
  * Gets the latest error from the socket. If no error has occurred AWS_OP_SUCCESS will be returned. This function does
  * not raise any errors to the installed error handlers.
  */
@@ -421,7 +421,7 @@ AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
 
 /**
  * Get default impl type based on the platform.
- * For user in internal tests only
+ * For user in internal tests only.
  */
 AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
 
