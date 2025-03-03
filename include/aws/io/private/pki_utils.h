@@ -54,6 +54,16 @@ int aws_import_pkcs12_to_identity(
     CFArrayRef *identity);
 
 /**
+ * Loads PRM armored PKCS#7 certificates into certs
+ * for use with custom CA.
+ */
+int aws_import_trusted_certificates(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *certificates_blob,
+    CFArrayRef *certs);
+
+/**
  * Imports a PEM armored PKCS#7 public/private key pair
  * into protected data keychain for use with Apple Network Framework.
  * Currently only implemented for iOS.
@@ -77,15 +87,6 @@ int aws_secitem_import_pkcs12(
     const struct aws_byte_cursor *password,
     sec_identity_t *out_identity);
 
-/**
- * Loads PRM armored PKCS#7 certificates into certs
- * for use with custom CA.
- */
-int aws_import_trusted_certificates(
-    struct aws_allocator *alloc,
-    CFAllocatorRef cf_alloc,
-    const struct aws_byte_cursor *certificates_blob,
-    CFArrayRef *certs);
 
 #endif /* AWS_OS_APPLE */
 
