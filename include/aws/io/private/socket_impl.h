@@ -49,9 +49,6 @@ int aws_socket_init_apple_nw_socket(
     struct aws_allocator *alloc,
     const struct aws_socket_options *options);
 
-struct aws_byte_cursor;
-struct aws_string;
-
 struct aws_socket_vtable {
     void (*socket_cleanup_fn)(struct aws_socket *socket);
     int (*socket_connect_fn)(

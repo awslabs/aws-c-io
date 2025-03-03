@@ -87,7 +87,6 @@ int aws_secitem_import_pkcs12(
     const struct aws_byte_cursor *password,
     sec_identity_t *out_identity);
 
-
 #endif /* AWS_OS_APPLE */
 
 #ifdef _WIN32
