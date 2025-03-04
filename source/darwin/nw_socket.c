@@ -457,8 +457,7 @@ static void s_setup_tls_options(
     nw_protocol_options_t tls_options,
     const struct aws_socket_options *options,
     struct nw_socket *nw_socket,
-    struct secure_transport_ctx *transport_ctx,
-    struct aws_event_loop *event_loop) {
+    struct secure_transport_ctx *transport_ctx) {
     /*
      * Obtain the security protocol options from tls_options. Changes made to the copy will impact the protocol options
      * within the tls_options
@@ -529,7 +528,7 @@ static void s_setup_tls_options(
     /*
      * We handle the verification of the remote end here. The verify block requires a dispatch queue to execute on.
      */
-    struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
+    struct aws_dispatch_loop *dispatch_loop = nw_socket->event_loop->impl_data;
     sec_protocol_options_set_verify_block(
         sec_options,
         ^(sec_protocol_metadata_t metadata, sec_trust_t trust, sec_protocol_verify_complete_t complete) {
@@ -660,10 +659,7 @@ static void s_setup_tls_options(
         dispatch_loop->dispatch_queue);
 }
 
-static int s_setup_socket_params(
-    struct nw_socket *nw_socket,
-    const struct aws_socket_options *options,
-    struct aws_event_loop *event_loop) {
+static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
 
     /* If we already have parameters set, release them before re-establishing new parameters */
     if (nw_socket->nw_parameters != NULL) {
@@ -704,7 +700,7 @@ static int s_setup_socket_params(
                     nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                         // TLS options block
                         ^(nw_protocol_options_t tls_options) {
-                          s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
+                          s_setup_tls_options(tls_options, options, nw_socket, transport_ctx);
                         },
                         // TCP options block
                         ^(nw_protocol_options_t tcp_options) {
@@ -726,7 +722,7 @@ static int s_setup_socket_params(
                     nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
                         // TLS options block
                         ^(nw_protocol_options_t tls_options) {
-                          s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
+                          s_setup_tls_options(tls_options, options, nw_socket, transport_ctx);
                         },
                         // TCP options block
                         ^(nw_protocol_options_t tcp_options) {
@@ -1725,7 +1721,6 @@ static int s_socket_connect_fn(
     struct nw_socket *nw_socket = socket->impl;
 
     AWS_ASSERT(event_loop);
-    AWS_ASSERT(!socket->event_loop);
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, socket->io_handle.data.handle);
@@ -1747,7 +1742,7 @@ static int s_socket_connect_fn(
     }
 
     s_set_event_loop(socket, event_loop);
-    if (s_setup_socket_params(nw_socket, &socket->options, event_loop)) {
+    if (s_setup_socket_params(nw_socket, &socket->options)) {
         goto clean_up;
     }
 
@@ -1955,7 +1950,7 @@ static int s_socket_bind_fn(
         (int)local_endpoint->port);
 
     if (nw_socket->nw_parameters == NULL) {
-        struct aws_event_loop *event_loop = NULL;
+        // struct aws_event_loop *event_loop = NULL;
 
         if (retrieve_tls_options) {
             struct aws_tls_connection_context tls_connection_context;
@@ -1969,10 +1964,11 @@ static int s_socket_bind_fn(
                     (void *)socket);
                 return aws_last_error();
             }
-            event_loop = tls_connection_context.event_loop;
+            // event_loop = tls_connection_context.event_loop;
         }
-
-        s_setup_socket_params(nw_socket, &socket->options, event_loop);
+        // DEBUG WIP check how to get an event_loop into nw_socket before calling to setup params here.
+        // s_setup_socket_params(nw_socket, &socket->options, event_loop);
+        s_setup_socket_params(nw_socket, &socket->options);
     }
 
     struct socket_address address;
@@ -2364,7 +2360,7 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
     struct nw_socket *nw_socket = socket->impl;
 
     // DEBUG WIP TODO change s_setup_socket_params to get event_loop for TLS from the nw_socket or the aws_socket.
-    return s_setup_socket_params(nw_socket, options, NULL);
+    return s_setup_socket_params(nw_socket, options);
 }
 
 static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aws_event_loop *event_loop) {
