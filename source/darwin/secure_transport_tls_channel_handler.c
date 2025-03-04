@@ -9,7 +9,6 @@
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/socket_impl.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
-#include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/statistics.h>
 
@@ -834,7 +833,6 @@ struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler
     return socket->vtable->socket_get_protocol_fn(socket);
 #endif /* AWS_USE_SECITEM */
     struct secure_transport_handler *secure_transport_handler = handler->impl;
-
     return secure_transport_handler->protocol;
 }
 
