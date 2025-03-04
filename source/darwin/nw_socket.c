@@ -677,6 +677,16 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
 #endif /* AWS_USE_SECITEM*/
 
     if (setup_tls) {
+        /* The verification block of the Apple Network Framework TLS handshake requires a dispatch queue to run on. */
+        if (nw_socket->event_loop == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p Apple Network Framework setup of TLS parameters requires the nw_socket to have a valid "
+                "event_loop.",
+                (void *)nw_socket);
+            return aws_raise_error(AWS_IO_SOCKET_MISSING_EVENT_LOOP);
+        }
+
         transport_ctx = nw_socket->tls_ctx->impl;
 
         /* This check cannot be done within the TLS options block and must be handled here. */
@@ -2359,7 +2369,6 @@ static int s_socket_set_options_fn(struct aws_socket *socket, const struct aws_s
 
     struct nw_socket *nw_socket = socket->impl;
 
-    // DEBUG WIP TODO change s_setup_socket_params to get event_loop for TLS from the nw_socket or the aws_socket.
     return s_setup_socket_params(nw_socket, options);
 }
 
