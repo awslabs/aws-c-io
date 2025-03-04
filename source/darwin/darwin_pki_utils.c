@@ -334,14 +334,8 @@ int aws_import_pkcs12_to_identity(
 }
 
 /*
- * Apple's Network framework and SecItem API use of the data protection keychain is currently only implemented
- * on iOS and tvOS. We may add support for MacOS at a later date.
- *
- * MacOS migration from currently deprecated Secure Transport API and file based keychain to
- * Network framework will require it we also migrate from BSD Sockets to Apple's Network Framework.
- *
- * From a breaking existing users perspective, we must also find a way to continue support for the
- * keychain_path field which is currently only bound out to aws-crt-cpp.
+ * Apple Network framework and SecItem API's use of the data protection keychain is currently only implemented
+ * for iOS and tvOS. We may add support for MacOS at a later date.
  */
 
 int aws_secitem_add_certificate_to_keychain(
@@ -362,12 +356,14 @@ int aws_secitem_add_certificate_to_keychain(
     CFDictionaryAddValue(add_attributes, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
     CFDictionaryAddValue(add_attributes, kSecValueRef, cert_ref);
+
+    // Initial attempt to add certificate to keychain.
     status = SecItemAdd(add_attributes, NULL);
 
     // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
 
@@ -377,7 +373,7 @@ int aws_secitem_add_certificate_to_keychain(
      * query should be made up of primary keys only. Optional/non-unique attributes in the query
      * can result in not finding the matching certificate and cause the update operation to fail.
      *
-     * Certificate item primary keys we use for the query:
+     * Certificate item primary keys used for the query:
      * kSecAttrSerialNumber: (CFStringRef) value indicates the item's serial number
      *      - We explicity set this value, extracted from the certificate itself as our primary method of determining
      * uniqueness of the certificate.
@@ -408,7 +404,7 @@ int aws_secitem_add_certificate_to_keychain(
         status = SecItemDelete(delete_query);
         if (status != errSecSuccess) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemDelete certificate failed with OSStatus %d", (int)status);
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
 
@@ -416,7 +412,7 @@ int aws_secitem_add_certificate_to_keychain(
         status = SecItemAdd(add_attributes, NULL);
         if (status != errSecSuccess) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
     }
@@ -454,12 +450,14 @@ int aws_secitem_add_private_key_to_keychain(
     CFDictionaryAddValue(add_attributes, kSecAttrApplicationLabel, application_label);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
     CFDictionaryAddValue(add_attributes, kSecValueRef, key_ref);
+
+    // Initial attempt to add private key to keychain.
     status = SecItemAdd(add_attributes, NULL);
 
     // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd private key failed with OSStatus %d", (int)status);
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
 
@@ -498,7 +496,7 @@ int aws_secitem_add_private_key_to_keychain(
         status = SecItemDelete(delete_query);
         if (status != errSecSuccess) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemDelete private key failed with OSStatus %d", (int)status);
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
 
@@ -506,7 +504,7 @@ int aws_secitem_add_private_key_to_keychain(
         status = SecItemAdd(add_attributes, NULL);
         if (status != errSecSuccess) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd private key failed with OSStatus %d", (int)status);
-            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
     }
@@ -514,6 +512,7 @@ int aws_secitem_add_private_key_to_keychain(
     AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported private key into SecItem keychain.");
 
     result = AWS_OP_SUCCESS;
+
 done:
     // cleanup
     if (add_attributes)
@@ -531,7 +530,8 @@ int aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec
     (void)out_identity;
     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#else
+#endif // !AWS_USE_SECITEM
+
     int result = AWS_OP_ERR;
     OSStatus status;
     CFMutableDictionaryRef search_query = NULL;
@@ -557,7 +557,7 @@ int aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec
 
     if (status != errSecSuccess) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemCopyMatching identity failed with OSStatus %d", (int)status);
-        result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
 
@@ -575,7 +575,6 @@ done:
         CFRelease(sec_identity_ref);
 
     return result;
-#endif
 }
 
 int aws_secitem_import_cert_and_key(
@@ -586,7 +585,7 @@ int aws_secitem_import_cert_and_key(
     sec_identity_t *secitem_identity,
     const struct aws_secitem_options *secitem_options) {
 
-// We currently only support Apple's network framework and SecItem keychain API on iOS.
+// We currently only support Apple Network Framework and SecItem keychain API on iOS/tvOS.
 #if !defined(AWS_USE_SECITEM)
     (void)alloc;
     (void)cf_alloc;
@@ -596,7 +595,7 @@ int aws_secitem_import_cert_and_key(
     (void)secitem_options;
     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#else
+#endif // !AWS_USE_SECITEM
 
     AWS_PRECONDITION(public_cert_chain != NULL);
     AWS_PRECONDITION(private_key != NULL);
@@ -775,9 +774,9 @@ int aws_secitem_import_cert_and_key(
     }
 
     // Add the certificate and private key to keychain then retrieve identity
-#    if !defined(AWS_OS_IOS)
+#if !defined(AWS_OS_IOS)
     aws_mutex_lock(&s_sec_mutex);
-#    endif /* !AWS_OS_IOS */
+#endif /* !AWS_OS_IOS */
 
     if (aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
         goto done;
@@ -794,9 +793,9 @@ int aws_secitem_import_cert_and_key(
     result = AWS_OP_SUCCESS;
 
 done:
-#    if !defined(AWS_OS_IOS)
+#if !defined(AWS_OS_IOS)
     aws_mutex_unlock(&s_sec_mutex);
-#    endif /* !AWS_OS_IOS */
+#endif /* !AWS_OS_IOS */
 
     // cleanup
     if (error != NULL)
@@ -827,7 +826,6 @@ done:
     aws_pem_objects_clean_up(&decoded_key_buffer_list);
 
     return result;
-#endif
 }
 
 int aws_secitem_import_pkcs12(
