@@ -751,7 +751,6 @@ static int s_setup_socket_params(
                     "id=%p options=%p: AWS_SOCKET_VSOCK is not supported on nw_socket.",
                     (void *)nw_socket,
                     (void *)options);
-                AWS_FATAL_ASSERT(0);
                 return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
@@ -1353,9 +1352,11 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                         }
                     }
                 } else {
-                    // This happens when the aws_socket_clean_up() get called before the nw_connection_state_ready
-                    // get returned. We still want to set the socket to write/read state and fire the connection
-                    // succeed callback until we get the "nw_connection_state_cancelled" status.
+                    /*
+                     * This happens when the aws_socket_clean_up() is called before the nw_connection_state_ready is
+                     * returned. We still want to set the socket to write/read state and fire the connection succeed
+                     * callback until we get the "nw_connection_state_cancelled" status.
+                     */
                     AWS_LOGF_TRACE(
                         AWS_LS_IO_SOCKET,
                         "id=%p handle=%p: connection succeed, however, the base socket has been cleaned up.",
@@ -1647,9 +1648,15 @@ static void s_handle_write_fn(
     aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
 }
 
+/*
+ * Because TLS negotiation is handled by Apple Network Framework connection using its parameters, we need access to a
+ * number of items typically not needed until the TLS slot and handler are being initialized. This function along with
+ * aws_socket_retrieve_tls_options_fn() are used to gain access to those items.
+ */
 static int s_setup_tls_options_from_context(
     struct nw_socket *nw_socket,
     struct aws_tls_connection_context *tls_connection_context) {
+    /* The host name is needed during the setup of the verification block */
     if (tls_connection_context->host_name != NULL) {
         if (nw_socket->host_name != NULL) {
             aws_string_destroy(nw_socket->host_name);
@@ -1658,11 +1665,29 @@ static int s_setup_tls_options_from_context(
         nw_socket->host_name =
             aws_string_new_from_string(tls_connection_context->host_name->allocator, tls_connection_context->host_name);
         if (nw_socket->host_name == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p: Error encounterd during setup of host name from tls context.",
+                (void *)nw_socket);
             return AWS_OP_ERR;
         }
     }
 
+    /* The tls_ctx is needed to setup TLS negotiation options in the Apple Network Framework connection's parameters */
     if (tls_connection_context->tls_ctx != NULL) {
+        /*
+         * We acquire a refcount to the tls context. If we are replacing one we already had, we must release the
+         * previous one first.
+         */
+        if (nw_socket->tls_ctx) {
+            aws_tls_ctx_release(nw_socket->tls_ctx);
+            nw_socket->tls_ctx = NULL;
+        }
+
+        nw_socket->tls_ctx = tls_connection_context->tls_ctx;
+        aws_tls_ctx_acquire(nw_socket->tls_ctx);
+
+        /* TLS negotiation needs the alpn list if one is present for use. */
         struct aws_string *alpn_list = NULL;
         struct secure_transport_ctx *transport_ctx = tls_connection_context->tls_ctx->impl;
         if (tls_connection_context->alpn_list != NULL) {
@@ -1678,16 +1703,13 @@ static int s_setup_tls_options_from_context(
             }
             nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
             if (nw_socket->alpn_list == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p: Error encounterd during setup of alpn list from tls context.",
+                    (void *)nw_socket);
                 return AWS_OP_ERR;
             }
         }
-
-        if (nw_socket->tls_ctx) {
-            aws_tls_ctx_release(nw_socket->tls_ctx);
-            nw_socket->tls_ctx = NULL;
-        }
-        nw_socket->tls_ctx = tls_connection_context->tls_ctx;
-        aws_tls_ctx_acquire(nw_socket->tls_ctx);
     }
 
     return AWS_OP_SUCCESS;
