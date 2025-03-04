@@ -16,7 +16,6 @@
 #include <unistd.h>
 
 #include "./dispatch_queue_event_loop_private.h" // private header
-#include <Block.h>
 #include <dispatch/dispatch.h>
 #include <dispatch/queue.h>
 
