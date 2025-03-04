@@ -459,8 +459,10 @@ static void s_setup_tls_options(
     struct nw_socket *nw_socket,
     struct secure_transport_ctx *transport_ctx,
     struct aws_event_loop *event_loop) {
-    /* Obtain the security protocol options from the tls_options. Changes made directly
-     * to the copy will impact the protocol options within the tls_options */
+    /*
+     * Obtain the security protocol options from tls_options. Changes made to the copy will impact the protocol options
+     * within the tls_options
+     */
     sec_protocol_options_t sec_options = nw_tls_copy_sec_protocol_options(tls_options);
 
     sec_protocol_options_set_local_identity(sec_options, transport_ctx->secitem_identity);
@@ -474,8 +476,7 @@ static void s_setup_tls_options(
             sec_protocol_options_set_min_tls_protocol_version(sec_options, tls_protocol_version_TLSv13);
             break;
         case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            /* not assigning a min tls protocol version automatically uses the
-             * system default version. */
+            /* not assigning a min tls protocol version automatically uses the system default version. */
             break;
         default:
             AWS_LOGF_ERROR(
@@ -487,9 +488,11 @@ static void s_setup_tls_options(
             break;
     }
 
-    /* Enable/Disable peer authentication. This setting is ignored by network framework due to our
-     * implementation of the verification block below but we set it in case anything else checks this
-     * value and/or in case we decide to remove the verify block in the future. */
+    /*
+     * Enable/Disable peer authentication. This setting is ignored by network framework due to our implementation of the
+     * verification block below but we set it in case anything else checks this value and/or in case we decide to remove
+     * the verify block in the future.
+     */
     sec_protocol_options_set_peer_authentication_required(sec_options, transport_ctx->verify_peer);
 
     if (nw_socket->host_name != NULL) {
@@ -516,18 +519,17 @@ static void s_setup_tls_options(
         for (size_t i = 0; i < aws_array_list_length(&alpn_list_array); ++i) {
             struct aws_byte_cursor protocol_cursor;
             aws_array_list_get_at(&alpn_list_array, &protocol_cursor, i);
-
             struct aws_string *protocol_string = aws_string_new_from_cursor(nw_socket->allocator, &protocol_cursor);
-
             sec_protocol_options_add_tls_application_protocol(sec_options, aws_string_c_str(protocol_string));
             aws_string_destroy(protocol_string);
         }
         aws_array_list_clean_up(&alpn_list_array);
     }
 
+    /*
+     * We handle the verification of the remote end here. The verify block requires a dispatch queue to execute on.
+     */
     struct aws_dispatch_loop *dispatch_loop = event_loop->impl_data;
-
-    /* We handle the verification of the remote end here. */
     sec_protocol_options_set_verify_block(
         sec_options,
         ^(sec_protocol_metadata_t metadata, sec_trust_t trust, sec_protocol_verify_complete_t complete) {
@@ -540,15 +542,16 @@ static void s_setup_tls_options(
           OSStatus status;
           bool verification_successful = false;
 
-          /* Since we manually handle the verification of the peer, the value set using
-           * sec_protocol_options_set_peer_authentication_required is ignored and this block is
-           * run instead. We manually skip the verification at this point if verify_peer is false. */
+          /*
+           * Because we manually handle the verification of the peer, the value set using
+           * sec_protocol_options_set_peer_authentication_required is ignored and this block is run instead. We force
+           * successful verification if verify_peer is false.
+           */
           if (!transport_ctx->verify_peer) {
               AWS_LOGF_WARN(
                   AWS_LS_IO_TLS,
-                  "id=%p: x.509 validation has been disabled. "
-                  "If this is not running in a test environment, this is likely a security "
-                  "vulnerability.",
+                  "id=%p: x.509 validation has been disabled. If this is not running in a test environment, this is "
+                  "likely a security vulnerability.",
                   (void *)nw_socket);
               verification_successful = true;
               goto verification_done;
@@ -694,55 +697,62 @@ static int s_setup_socket_params(
     }
 
     if (options->type == AWS_SOCKET_STREAM) {
-        if (options->domain == AWS_SOCKET_IPV4 || options->domain == AWS_SOCKET_IPV6) {
-            if (setup_tls) {
-                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                    // TLS options block
-                    ^(nw_protocol_options_t tls_options) {
-                      s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
-                    },
-                    // TCP options block
-                    ^(nw_protocol_options_t tcp_options) {
-                      s_setup_tcp_options(tcp_options, options);
-                    });
-            } else {
-                // TLS options are not set and the TLS options block should be disabled.
-                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                    // TLS options Block disabled
-                    NW_PARAMETERS_DISABLE_PROTOCOL,
-                    // TCP options Block
-                    ^(nw_protocol_options_t tcp_options) {
-                      s_setup_tcp_options(tcp_options, options);
-                    });
-            }
-        } else if (options->domain == AWS_SOCKET_LOCAL) {
-            if (setup_tls) {
-                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                    // TLS options block
-                    ^(nw_protocol_options_t tls_options) {
-                      s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
-                    },
-                    // TCP options block
-                    ^(nw_protocol_options_t tcp_options) {
-                      s_setup_tcp_options_local(tcp_options, options);
-                    });
+        switch (options->domain) {
+            case AWS_SOCKET_IPV4:
+            case AWS_SOCKET_IPV6:
+                if (setup_tls) {
+                    nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                        // TLS options block
+                        ^(nw_protocol_options_t tls_options) {
+                          s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
+                        },
+                        // TCP options block
+                        ^(nw_protocol_options_t tcp_options) {
+                          s_setup_tcp_options(tcp_options, options);
+                        });
+                } else {
+                    // TLS options are not set and the TLS options block should be disabled.
+                    nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                        // TLS options Block disabled
+                        NW_PARAMETERS_DISABLE_PROTOCOL,
+                        // TCP options Block
+                        ^(nw_protocol_options_t tcp_options) {
+                          s_setup_tcp_options(tcp_options, options);
+                        });
+                }
+                break;
+            case AWS_SOCKET_LOCAL:
+                if (setup_tls) {
+                    nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                        // TLS options block
+                        ^(nw_protocol_options_t tls_options) {
+                          s_setup_tls_options(tls_options, options, nw_socket, transport_ctx, event_loop);
+                        },
+                        // TCP options block
+                        ^(nw_protocol_options_t tcp_options) {
+                          s_setup_tcp_options_local(tcp_options, options);
+                        });
 
-            } else {
-                nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
-                    NW_PARAMETERS_DISABLE_PROTOCOL,
-                    // TCP options Block
-                    ^(nw_protocol_options_t tcp_options) {
-                      s_setup_tcp_options_local(tcp_options, options);
-                    });
-            }
-        } else { // If domain is AWS_SOCKET_VSOCK, the domain is not supported.
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p options=%p: AWS_SOCKET_VSOCK is not supported on nw_socket.",
-                (void *)nw_socket,
-                (void *)options);
-            AWS_FATAL_ASSERT(0);
-            return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+                } else {
+                    nw_socket->nw_parameters = nw_parameters_create_secure_tcp(
+                        NW_PARAMETERS_DISABLE_PROTOCOL,
+                        // TCP options Block
+                        ^(nw_protocol_options_t tcp_options) {
+                          s_setup_tcp_options_local(tcp_options, options);
+                        });
+                }
+
+                /* allow a local address to be used by multiple parameters. */
+                nw_parameters_set_reuse_local_address(nw_socket->nw_parameters, true);
+                break;
+            default:
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p options=%p: AWS_SOCKET_VSOCK is not supported on nw_socket.",
+                    (void *)nw_socket,
+                    (void *)options);
+                AWS_FATAL_ASSERT(0);
+                return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
         }
     } else if (options->type == AWS_SOCKET_DGRAM) {
         nw_socket->nw_parameters = nw_parameters_create_secure_udp(
@@ -761,8 +771,6 @@ static int s_setup_socket_params(
             (void *)options);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
-    /* allow a local address to be used by multiple parameters. */
-    nw_parameters_set_reuse_local_address(nw_socket->nw_parameters, true);
 
     return AWS_OP_SUCCESS;
 }
