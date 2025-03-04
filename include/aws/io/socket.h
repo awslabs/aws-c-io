@@ -85,7 +85,6 @@ struct aws_socket_options {
 
 struct aws_socket;
 struct aws_tls_connection_context;
-struct aws_tls_connection_options;
 
 /**
  * Called in client mode when an outgoing connection has succeeded or an error has occurred.
