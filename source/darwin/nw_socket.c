@@ -1975,6 +1975,8 @@ static int s_socket_bind_fn(
             nw_socket->event_loop = tls_connection_context.event_loop;
         }
         s_setup_socket_params(nw_socket, &socket->options);
+        /* Because a refcount wasn't acquired, we NULL the event_loop right after its use in creating socket params. */
+        nw_socket->event_loop = NULL;
     }
 
     struct socket_address address;

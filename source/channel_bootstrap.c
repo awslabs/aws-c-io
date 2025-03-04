@@ -1225,9 +1225,10 @@ struct server_connection_args {
     struct aws_ref_count ref_count;
 };
 
-/* This function is called when TLS options are required during a server-side socket bind operation.
- * It is only used with Apple Network Framework's SecItem implementation, where the socket creation parameters
- * must include TLS options.
+/*
+ * This function is called when TLS options are required during a server-side socket bind operation.
+ * It is only used with Apple Network Framework's SecItem implementation when TLS is being used. The event_loop
+ * pulled from the connection_args event_loop_group will not have its refcount increased in this use.
  */
 static void s_retrieve_server_tls_options(struct aws_tls_connection_context *context, void *user_data) {
     struct server_connection_args *connection_args = user_data;
