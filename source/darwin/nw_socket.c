@@ -1731,6 +1731,7 @@ static int s_socket_connect_fn(
     struct nw_socket *nw_socket = socket->impl;
 
     AWS_ASSERT(event_loop);
+    AWS_FATAL_ASSERT(on_connection_result);
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, socket->io_handle.data.handle);
@@ -1751,19 +1752,17 @@ static int s_socket_connect_fn(
         }
     }
 
+    /* event_loop must be set prior to setup of socket parameters. */
     s_set_event_loop(socket, event_loop);
     if (s_setup_socket_params(nw_socket, &socket->options)) {
-        goto clean_up;
+        goto error;
     }
 
-    // Apple Network Framework uses a connection based abstraction on top of the UDP layer. We should always do an
-    // "connect" action after aws_socket_init() regardless it's a UDP socket or a TCP socket.
-    AWS_FATAL_ASSERT(on_connection_result);
     s_lock_socket_synced_data(nw_socket);
     if (nw_socket->synced_data.state != INIT) {
         s_unlock_socket_synced_data(nw_socket);
         aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-        goto clean_up;
+        goto error;
     }
 
     /* fill in posix sock addr, and then let Network framework sort it out. */
@@ -1777,7 +1776,7 @@ static int s_socket_connect_fn(
             socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
-        goto clean_up;
+        goto error;
     }
 
     struct socket_address address;
@@ -1810,7 +1809,7 @@ static int s_socket_connect_fn(
                 socket->io_handle.data.handle);
             s_unlock_socket_synced_data(nw_socket);
             aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
-            goto clean_up;
+            goto error;
         }
     }
 
@@ -1824,7 +1823,7 @@ static int s_socket_connect_fn(
             (int)remote_endpoint->port);
         s_unlock_socket_synced_data(nw_socket);
         aws_raise_error(s_convert_pton_error(pton_err));
-        goto clean_up;
+        goto error;
     }
 
     AWS_LOGF_DEBUG(
@@ -1847,7 +1846,7 @@ static int s_socket_connect_fn(
             (int)remote_endpoint->port);
         s_unlock_socket_synced_data(nw_socket);
         aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-        goto clean_up;
+        goto error;
     }
 
     socket->io_handle.data.handle = nw_connection_create(endpoint, nw_socket->nw_parameters);
@@ -1861,7 +1860,7 @@ static int s_socket_connect_fn(
             socket->io_handle.data.handle);
         s_unlock_socket_synced_data(nw_socket);
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto clean_up;
+        goto error;
     }
 
     socket->remote_endpoint = *remote_endpoint;
@@ -1932,7 +1931,7 @@ static int s_socket_connect_fn(
 
     return AWS_OP_SUCCESS;
 
-clean_up:
+error:
     s_release_event_loop(nw_socket);
     return AWS_OP_ERR;
 }
