@@ -1959,7 +1959,6 @@ static int s_socket_bind_fn(
         (int)local_endpoint->port);
 
     if (nw_socket->nw_parameters == NULL) {
-        // struct aws_event_loop *event_loop = NULL;
 
         if (retrieve_tls_options) {
             struct aws_tls_connection_context tls_connection_context;
@@ -1973,10 +1972,8 @@ static int s_socket_bind_fn(
                     (void *)socket);
                 return aws_last_error();
             }
-            // event_loop = tls_connection_context.event_loop;
+            nw_socket->event_loop = tls_connection_context.event_loop;
         }
-        // DEBUG WIP check how to get an event_loop into nw_socket before calling to setup params here.
-        // s_setup_socket_params(nw_socket, &socket->options, event_loop);
         s_setup_socket_params(nw_socket, &socket->options);
     }
 
