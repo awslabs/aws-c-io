@@ -2485,8 +2485,13 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 
-    ASSERT_SUCCESS(
-        aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, NULL, &outgoing_args));
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     struct aws_socket_listener_options listener_options = {
         .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};

@@ -1807,6 +1807,7 @@ static int s_socket_connect_fn(
                 socket->io_handle.data.handle);
             s_unlock_socket_synced_data(nw_socket);
             aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+
             goto error;
         }
     }
