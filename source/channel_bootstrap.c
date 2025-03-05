@@ -1809,7 +1809,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     struct aws_socket_listener_options options = {
         .on_accept_result = s_on_server_connection_result,
         .on_accept_result_user_data = server_connection_args,
-        .on_accept_start_result = NULL,
+        .on_accept_start = NULL,
         .on_accept_start_user_data = NULL,
     };
 
@@ -1983,7 +1983,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
     struct aws_socket_listener_options options = {
         .on_accept_result = s_on_server_connection_result,
         .on_accept_result_user_data = server_connection_args,
-        .on_accept_start_result = s_on_listener_connection_established,
+        .on_accept_start = s_on_listener_connection_established,
         .on_accept_start_user_data = server_connection_args,
     };
 
