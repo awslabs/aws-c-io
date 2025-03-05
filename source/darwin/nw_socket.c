@@ -648,10 +648,6 @@ static void s_setup_tls_options(
               CFRelease(trust_ref);
           }
           if (error) {
-              error_code = CFErrorGetCode(error);
-              error_code = s_determine_socket_error(error_code);
-              nw_socket->last_error = error_code;
-              aws_raise_error(error_code);
               CFRelease(error);
           }
           complete(verification_successful);
