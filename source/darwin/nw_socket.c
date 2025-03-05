@@ -312,6 +312,8 @@ static void s_release_event_loop(struct nw_socket *nw_socket) {
     nw_socket->event_loop = NULL;
 }
 
+/* The help function to update the socket state. The function must be called with synced_data locked (use
+ * s_lock_socket_synced_data() / s_unlock_socket_synced_data()), as the function touches the synced_data.state. */
 static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *socket, enum aws_nw_socket_state state) {
 
     AWS_LOGF_TRACE(
@@ -697,7 +699,8 @@ int aws_socket_init_apple_nw_socket(
     aws_mutex_init(&nw_socket->base_socket_synced_data.lock);
     nw_socket->base_socket_synced_data.base_socket = socket;
 
-    s_set_socket_state(nw_socket, socket, INIT);
+    nw_socket->synced_data.state = INIT;
+    socket->state = INIT;
 
     aws_ref_count_init(&nw_socket->nw_socket_ref_count, nw_socket, s_socket_impl_destroy);
     aws_ref_count_init(&nw_socket->internal_ref_count, nw_socket, s_socket_internal_destroy);
@@ -1120,7 +1123,8 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
         new_nw_socket->os_handle.nw_connection = task_args->new_connection;
         new_nw_socket->connection_setup = true;
 
-        // Setup socket state to start read/write operations.
+        // Setup socket state to start read/write operations. We didn't lock here as we are in initializing process, no
+        // other process will touch the socket state.
         s_set_socket_state(new_nw_socket, new_socket, CONNECTED_READ | CONNECTED_WRITE);
 
         nw_connection_set_state_changed_handler(
@@ -1285,7 +1289,7 @@ static int s_socket_connect_fn(
             socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
-        return AWS_OP_ERR;
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
     struct socket_address address;
