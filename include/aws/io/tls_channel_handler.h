@@ -546,6 +546,11 @@ AWS_IO_API int aws_tls_ctx_options_set_secitem_options(
     const struct aws_secitem_options *secitem_options);
 
 /**
+ * Cleans up resources in secitem_options.
+ */
+AWS_IO_API void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_options);
+
+/**
  * Initializes options for use with in server mode.
  * cert_path and pkey_path are paths to files on disk. cert_path
  * and pkey_path are treated as PKCS#7 PEM armored. They are loaded

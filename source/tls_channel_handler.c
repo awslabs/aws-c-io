@@ -45,9 +45,10 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
 
-    aws_string_destroy(options->secitem_options->cert_label);
-    aws_string_destroy(options->secitem_options->key_label);
-    aws_mem_release(options->allocator, options->secitem_options);
+    if (options->secitem_options) {
+        aws_tls_secitem_options_clean_up(options->secitem_options);
+        aws_mem_release(options->allocator, options->secitem_options);
+    }
 
     aws_string_destroy(options->keychain_path);
 
@@ -307,6 +308,22 @@ int aws_tls_ctx_options_set_secitem_options(
     (void)secitem_options;
     AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Setting of secitem options only supported on Apple.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
+
+void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_options) {
+    if (secitem_options == NULL) {
+        return;
+    }
+
+    if (secitem_options->cert_label) {
+        aws_string_destroy(secitem_options->cert_label);
+        secitem_options->cert_label = NULL;
+    }
+
+    if (secitem_options->key_label) {
+        aws_string_destroy(secitem_options->key_label);
+        secitem_options->key_label = NULL;
+    }
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_system_path(
