@@ -617,13 +617,6 @@ static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
     struct aws_socket_listener_options options) {
-    if (options.on_accept_start_result || options.on_accept_start_user_data) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: the iocp socket does not support on_accept_start_result callback. Ignore the options.",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle);
-    }
     struct iocp_socket *socket_impl = socket->impl;
     return socket_impl->winsock_vtable->start_accept(socket, accept_loop, options);
 }

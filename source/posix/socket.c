@@ -1185,14 +1185,6 @@ static int s_socket_start_accept(
     AWS_ASSERT(options.on_accept_result);
     AWS_ASSERT(accept_loop);
 
-    if (options.on_accept_start || options.on_accept_start_user_data) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: the posix socket does not support on_accept_start callback. Ignore the options.",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle);
-    }
-
     if (socket->event_loop) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
