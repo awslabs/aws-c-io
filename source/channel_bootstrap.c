@@ -1221,7 +1221,6 @@ struct server_connection_args {
     void *user_data;
     bool use_tls;
     bool enable_read_back_pressure;
-    struct aws_event_loop *requested_event_loop;
     struct aws_ref_count ref_count;
 };
 
@@ -1236,10 +1235,7 @@ static void s_retrieve_server_tls_options(struct aws_tls_connection_context *con
     context->alpn_list = connection_args->tls_options.alpn_list;
     context->tls_ctx = connection_args->tls_options.ctx;
     // verify block in an Apple Network TLS negotiation requires a dispatch loop contained within an event loop.
-    context->event_loop = connection_args->requested_event_loop;
-    if (context->event_loop == NULL) {
-        context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
-    }
+    context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 }
 
 struct server_channel_data {
@@ -1802,15 +1798,6 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     AWS_PRECONDITION(bootstrap_options->incoming_callback);
     AWS_PRECONDITION(bootstrap_options->shutdown_callback);
 
-    if (bootstrap_options->requested_event_loop != NULL) {
-        /* If we're asking for a specific event loop, verify it belongs to the bootstrap's event loop group */
-        if (!(s_does_event_loop_belong_to_event_loop_group(
-                bootstrap_options->requested_event_loop, bootstrap_options->bootstrap->event_loop_group))) {
-            aws_raise_error(AWS_ERROR_IO_PINNED_EVENT_LOOP_MISMATCH);
-            return NULL;
-        }
-    }
-
     struct server_connection_args *server_connection_args =
         aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
     if (!server_connection_args) {
@@ -1837,7 +1824,6 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     server_connection_args->on_protocol_negotiated = bootstrap_options->bootstrap->on_protocol_negotiated;
     server_connection_args->enable_read_back_pressure = bootstrap_options->enable_read_back_pressure;
     server_connection_args->retrieve_tls_options = s_retrieve_server_tls_options;
-    server_connection_args->requested_event_loop = bootstrap_options->requested_event_loop;
 
     aws_task_init(
         &server_connection_args->listener_destroy_task,
