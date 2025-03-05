@@ -144,10 +144,7 @@ static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpo
 static void s_socket_clean_up(struct aws_socket *socket);
 static int s_socket_connect(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
     void *user_data);
 static int s_socket_bind(
     struct aws_socket *socket,
@@ -520,12 +517,13 @@ static void s_socket_clean_up(struct aws_socket *socket) {
 
 static int s_socket_connect(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
     void *user_data) {
-    (void)retrieve_tls_options;
+
+    const struct aws_socket_endpoint *remote_endpoint = socket_connect_options->remote_endpoint;
+    struct aws_event_loop *event_loop = socket_connect_options->event_loop;
+    aws_socket_on_connection_result_fn *on_connection_result = socket_connect_options->on_connection_result;
+
     struct iocp_socket *socket_impl = socket->impl;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);

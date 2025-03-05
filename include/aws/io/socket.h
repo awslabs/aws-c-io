@@ -179,6 +179,13 @@ struct aws_socket {
     void *impl;
 };
 
+struct aws_socket_connect_options {
+    const struct aws_socket_endpoint *remote_endpoint;
+    struct aws_event_loop *event_loop;
+    aws_socket_on_connection_result_fn *on_connection_result;
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+};
+
 struct aws_socket_listener_options {
     aws_socket_on_accept_result_fn *on_accept_result;
     void *on_accept_result_user_data;
@@ -223,14 +230,10 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
- *
  */
 AWS_IO_API int aws_socket_connect(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
     void *user_data);
 
 /**

@@ -536,7 +536,6 @@ static void s_setup_tls_options(
 
           CFErrorRef error = NULL;
           SecPolicyRef policy = NULL;
-          int error_code = AWS_ERROR_SUCCESS;
           SecTrustRef trust_ref = NULL;
           OSStatus status;
           bool verification_successful = false;
@@ -573,7 +572,7 @@ static void s_setup_tls_options(
                       "OSStatus: %d",
                       (void *)nw_socket,
                       (int)status);
-                  error_code = aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+                  aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
                   goto verification_done;
               }
           }
@@ -591,7 +590,7 @@ static void s_setup_tls_options(
           status = SecTrustSetPolicies(trust_ref, policy);
           if (status != errSecSuccess) {
               AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed to set trust policy %d\n", (void *)nw_socket, (int)status);
-              error_code = aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
+              aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
               goto verification_done;
           }
 
@@ -779,10 +778,11 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
 static void s_socket_cleanup_fn(struct aws_socket *socket);
 static int s_socket_connect_fn(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
+    // const struct aws_socket_endpoint *remote_endpoint,
+    // struct aws_event_loop *event_loop,
+    // aws_socket_on_connection_result_fn *on_connection_result,
+    // aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
     void *user_data);
 static int s_socket_bind_fn(
     struct aws_socket *socket,
@@ -1719,12 +1719,14 @@ static int s_setup_tls_options_from_context(
 
 static int s_socket_connect_fn(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
     void *user_data) {
     struct nw_socket *nw_socket = socket->impl;
+
+    const struct aws_socket_endpoint *remote_endpoint = socket_connect_options->remote_endpoint;
+    struct aws_event_loop *event_loop = socket_connect_options->event_loop;
+    aws_socket_on_connection_result_fn *on_connection_result = socket_connect_options->on_connection_result;
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options = socket_connect_options->retrieve_tls_options;
 
     AWS_ASSERT(event_loop);
     AWS_FATAL_ASSERT(on_connection_result);

@@ -812,14 +812,13 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto socket_init_failed;
     }
 
-    if (aws_socket_connect(
-            outgoing_socket,
-            &task_data->endpoint,
-            task_data->connect_loop,
-            s_on_client_connection_established,
-            s_retrieve_client_tls_options,
-            task_data->args)) {
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &task_data->endpoint,
+        .event_loop = task_data->connect_loop,
+        .on_connection_result = s_on_client_connection_established,
+        .retrieve_tls_options = s_retrieve_client_tls_options};
 
+    if (aws_socket_connect(outgoing_socket, &connect_options, task_data->args)) {
         goto socket_connect_failed;
     }
 
@@ -1127,13 +1126,14 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         struct aws_event_loop *connect_loop = s_get_connection_event_loop(client_connection_args);
 
         s_client_connection_args_acquire(client_connection_args);
-        if (aws_socket_connect(
-                outgoing_socket,
-                &endpoint,
-                connect_loop,
-                s_on_client_connection_established,
-                s_retrieve_client_tls_options,
-                client_connection_args)) {
+
+        struct aws_socket_connect_options connect_options = {
+            .remote_endpoint = &endpoint,
+            .event_loop = connect_loop,
+            .on_connection_result = s_on_client_connection_established,
+            .retrieve_tls_options = s_retrieve_client_tls_options};
+
+        if (aws_socket_connect(outgoing_socket, &connect_options, client_connection_args)) {
 
             aws_socket_set_cleanup_complete_callback(
                 outgoing_socket, s_socket_shutdown_complete_release_client_connection_fn, client_connection_args);

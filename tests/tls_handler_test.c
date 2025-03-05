@@ -1833,14 +1833,14 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
      * This lets us hang up on the server, instead of automatically going through with proper TLS negotiation */
     ASSERT_SUCCESS(aws_socket_init(&shutdown_tester->client_socket, allocator, &local_server_tester.socket_options));
 
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &local_server_tester.endpoint,
+        .event_loop = aws_event_loop_group_get_next_loop(c_tester.el_group),
+        .on_connection_result = s_on_client_connected_do_hangup,
+        .retrieve_tls_options = NULL};
+
     /* Upon connecting, immediately close the socket */
-    ASSERT_SUCCESS(aws_socket_connect(
-        &shutdown_tester->client_socket,
-        &local_server_tester.endpoint,
-        aws_event_loop_group_get_next_loop(c_tester.el_group),
-        s_on_client_connected_do_hangup,
-        NULL,
-        shutdown_tester));
+    ASSERT_SUCCESS(aws_socket_connect(&shutdown_tester->client_socket, &connect_options, shutdown_tester));
 
     /* Wait for client socket to close */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
