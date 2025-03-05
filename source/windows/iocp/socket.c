@@ -2339,6 +2339,14 @@ static int s_local_start_accept(
         }
     }
 
+    s_invoke_on_accept_start(
+        socket->allocator,
+        accept_loop,
+        socket,
+        AWS_OP_SUCCESS,
+        options.on_accept_start,
+        options.on_accept_start_user_data);
+
     return AWS_OP_SUCCESS;
 }
 
