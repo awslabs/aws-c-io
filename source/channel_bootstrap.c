@@ -1745,11 +1745,7 @@ struct aws_socket *s_server_bootstrap_new_socket_listener(
     AWS_PRECONDITION(bootstrap_options->bootstrap);
     AWS_PRECONDITION(bootstrap_options->incoming_callback);
     AWS_PRECONDITION(bootstrap_options->shutdown_callback);
-
-    // If using Apple network framework, it is required to set setup_callback
-    if (bootstrap_options->socket_options->impl_type == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK ||
-        (bootstrap_options->socket_options->impl_type == AWS_SOCKET_IMPL_PLATFORM_DEFAULT &&
-         aws_socket_get_default_impl_type() == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK)) {
+    if (async_setup) {
         AWS_PRECONDITION(bootstrap_options->setup_callback);
     }
 

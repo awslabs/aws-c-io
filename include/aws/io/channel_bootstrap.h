@@ -297,8 +297,8 @@ AWS_IO_API int aws_server_bootstrap_set_alpn_callback(
  * shutting down. Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All
  * callbacks are invoked the thread of the event-loop that the listening socket is assigned to
  *
- * `setup_callback`. If set, the callback will be asynchronously invoked when the listener is ready for use. REQUIRED
- * for Apple Network Framework.
+ * `setup_callback`. If set, the callback will be asynchronously invoked when the listener is ready for use. For Apple
+ * Network Framework, the listener is not usable until the callback is invoked.
  *
  * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
  * value from this function.
