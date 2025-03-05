@@ -376,6 +376,8 @@ static void s_release_event_loop(struct nw_socket *nw_socket) {
     nw_socket->event_loop = NULL;
 }
 
+/* The help function to update the socket state. The function must be called with synced_data locked (use
+ * s_lock_socket_synced_data() / s_unlock_socket_synced_data()), as the function touches the synced_data.state. */
 static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *socket, enum aws_nw_socket_state state) {
 
     AWS_LOGF_TRACE(
@@ -957,7 +959,7 @@ static void s_process_socket_cancel_task(struct aws_task *task, void *arg, enum 
     struct nw_socket_cancel_task_args *args = arg;
     struct nw_socket *nw_socket = args->nw_socket;
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: written finished closing", (void *)nw_socket);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: start to process socket cancel task.", (void *)nw_socket);
 
     // The task should always run event when status == AWS_TASK_STATUS_CANCELLED. We rely on the task to clean up the
     // system connection/listener. And release the socket memory.
@@ -1048,7 +1050,7 @@ int aws_socket_init_apple_nw_socket(
 
     // Network Interface is not supported with Apple Network Framework yet
     if (options->network_interface_name[0] != 0) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p fd=%d: network_interface_name is not supported on this platform.",
             (void *)socket,
@@ -1068,7 +1070,8 @@ int aws_socket_init_apple_nw_socket(
     aws_mutex_init(&nw_socket->base_socket_synced_data.lock);
     nw_socket->base_socket_synced_data.base_socket = socket;
 
-    s_set_socket_state(nw_socket, socket, INIT);
+    nw_socket->synced_data.state = INIT;
+    socket->state = INIT;
 
     aws_ref_count_init(&nw_socket->nw_socket_ref_count, nw_socket, s_socket_impl_destroy);
     aws_ref_count_init(&nw_socket->internal_ref_count, nw_socket, s_socket_internal_destroy);
@@ -1135,7 +1138,7 @@ static void s_process_incoming_data_task(struct aws_task *task, void *arg, enum 
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: start process read data.",
+        "id=%p handle=%p: start to process read data.",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection);
 
@@ -1217,6 +1220,8 @@ static void s_process_connection_result_task(struct aws_task *task, void *arg, e
 
     struct nw_socket_scheduled_task_args *task_args = arg;
     struct nw_socket *nw_socket = task_args->nw_socket;
+
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: start to process connection result task.", (void *)nw_socket);
 
     if (status != AWS_TASK_STATUS_CANCELED) {
         s_lock_base_socket(nw_socket);
@@ -1521,7 +1526,8 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
         new_nw_socket->os_handle.nw_connection = task_args->new_connection;
         new_nw_socket->connection_setup = true;
 
-        // Setup socket state to start read/write operations.
+        // Setup socket state to start read/write operations. We didn't lock here as we are in initializing process, no
+        // other process will touch the socket state.
         s_set_socket_state(new_nw_socket, new_socket, CONNECTED_READ | CONNECTED_WRITE);
 
         nw_connection_set_state_changed_handler(
@@ -1611,6 +1617,8 @@ static void s_process_write_task(struct aws_task *task, void *args, enum aws_tas
     struct nw_socket_written_args *task_args = args;
     struct aws_allocator *allocator = task_args->allocator;
     struct nw_socket *nw_socket = task_args->nw_socket;
+
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: start to process write task.", (void *)nw_socket);
 
     if (status != AWS_TASK_STATUS_CANCELED) {
         s_lock_base_socket(nw_socket);
@@ -1774,6 +1782,7 @@ static int s_socket_connect_fn(
             socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
+        aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
         goto error;
     }
 
@@ -2112,6 +2121,12 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
     nw_listener_t nw_listener = nw_socket->os_handle.nw_listener;
     nw_listener_state_t state = listener_state_changed_args->state;
     int crt_error_code = listener_state_changed_args->error;
+
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "id=%p handle=%p: start to process listener state change task.",
+        (void *)nw_socket,
+        (void *)nw_listener);
 
     /* Ideally we should not have a canceled task here, as nw_socket keeps a reference to event loop, therefore the
      * event loop should never be destroyed before the nw_socket get destroyed. If we manually cancel the task, we
@@ -2478,7 +2493,7 @@ static int s_schedule_next_read(struct nw_socket *nw_socket) {
     // Once a read operation is scheduled, we should not schedule another one until the current one is
     // completed.
     if (nw_socket->synced_data.read_scheduled) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: there is already read queued, do not queue further read",
             (void *)nw_socket,
@@ -2488,7 +2503,7 @@ static int s_schedule_next_read(struct nw_socket *nw_socket) {
     }
 
     if (nw_socket->synced_data.state & CLOSING || !(nw_socket->synced_data.state & CONNECTED_READ)) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: cannot read to because socket is not connected",
             (void *)nw_socket,
@@ -2575,7 +2590,7 @@ static int s_socket_read_fn(struct aws_socket *socket, struct aws_byte_buf *read
             socket->io_handle.data.handle);
         s_lock_socket_synced_data(nw_socket);
         if (!(nw_socket->synced_data.state & CONNECTED_READ)) {
-            AWS_LOGF_ERROR(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: socket is not connected to read.",
                 (void *)socket,
@@ -2705,7 +2720,7 @@ static int s_socket_write_fn(
     struct nw_socket *nw_socket = socket->impl;
     s_lock_socket_synced_data(nw_socket);
     if (!(nw_socket->synced_data.state & CONNECTED_WRITE)) {
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: cannot write to because it is not connected",
             (void *)socket,

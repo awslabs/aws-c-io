@@ -587,6 +587,11 @@ static void s_socket_shutdown_complete_setup_connection_args_fn(void *user_data)
     struct socket_shutdown_setup_channel_args *shutdown_args = user_data;
     struct client_connection_args *connection_args = shutdown_args->connection_args;
 
+    // The failed count should be set before validation
+    if (shutdown_args->error_code || !connection_args->channel_data.channel) {
+        connection_args->failed_count++;
+    }
+
     /* if this is the last attempted connection and it failed, notify the user */
     if (connection_args->failed_count == connection_args->addresses_count) {
         AWS_LOGF_ERROR(
@@ -618,10 +623,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         (void *)connection_args->bootstrap,
         (void *)socket,
         error_code);
-
-    if (error_code) {
-        connection_args->failed_count++;
-    }
 
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
 
@@ -721,8 +722,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             false)
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
-        connection_args->failed_count++;
-
     } else {
         s_connection_args_creation_callback(connection_args, connection_args->channel_data.channel);
     }
