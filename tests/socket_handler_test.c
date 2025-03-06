@@ -356,7 +356,7 @@ static int s_local_server_tester_init(
     bool enable_back_pressure) {
 
     AWS_ZERO_STRUCT(*tester);
-    tester->socket_options.connect_timeout_ms = 30000;
+    tester->socket_options.connect_timeout_ms = 3000;
     tester->socket_options.type = AWS_SOCKET_STREAM;
     tester->socket_options.domain = socket_domain;
     switch (socket_domain) {
@@ -390,20 +390,16 @@ static int s_local_server_tester_init(
         .user_data = args,
     };
 
-    if (tester->socket_options.impl_type == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK ||
-        (tester->socket_options.impl_type == AWS_SOCKET_IMPL_PLATFORM_DEFAULT &&
-         aws_socket_get_default_impl_type() == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK)) {
-        tester->listener = aws_server_bootstrap_new_socket_listener_async(&bootstrap_options);
-        ASSERT_SUCCESS(aws_mutex_lock(args->mutex));
-        /* wait for listener to connected */
-        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-            args->condition_variable, args->mutex, s_listener_connected_predicate, args));
-        ASSERT_TRUE(args->error_code == AWS_OP_SUCCESS);
-        ASSERT_SUCCESS(aws_mutex_unlock(args->mutex));
-    } else {
-        tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
-    }
+    tester->listener = aws_server_bootstrap_new_socket_listener(&bootstrap_options);
     ASSERT_NOT_NULL(tester->listener);
+    // if server setup properly, waiting for setup callback
+
+    ASSERT_SUCCESS(aws_mutex_lock(args->mutex));
+    /* wait for listener to connected */
+    ASSERT_SUCCESS(
+        aws_condition_variable_wait_pred(args->condition_variable, args->mutex, s_listener_connected_predicate, args));
+    ASSERT_TRUE(args->error_code == AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_unlock(args->mutex));
 
     /* find out which port the socket is bound to */
     ASSERT_SUCCESS(aws_socket_get_bound_address(tester->listener, &tester->endpoint));

@@ -2105,7 +2105,6 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
 struct listener_state_changed_args {
     struct aws_task task;
     struct aws_allocator *allocator;
-    struct aws_socket *socket;
     struct nw_socket *nw_socket;
     nw_listener_state_t state;
     int error;
@@ -2128,10 +2127,9 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
         (void *)nw_socket,
         (void *)nw_listener);
 
-    /* Ideally we should not have a canceled task here, as nw_socket keeps a reference to event loop, therefore the
-     * event loop should never be destroyed before the nw_socket get destroyed. If we manually cancel the task, we
-     * should make sure we carefully handled the state change eventually, as the socket relies on this task to
-     * release and cleanup.
+    /* Ideally we should not have a task with AWS_TASK_STATUS_CANCELED here, as the event loop should never be destroyed
+     * before the nw_socket get destroyed. If we manually cancel the task, we should make sure we carefully handled the
+     * state change eventually, as the socket relies on this task to release and cleanup.
      */
     if (status != AWS_TASK_STATUS_CANCELED) {
 
@@ -2152,10 +2150,10 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
                     crt_error_code);
 
                 s_lock_base_socket(nw_socket);
-                s_lock_socket_synced_data(nw_socket);
-                s_set_socket_state(nw_socket, listener_state_changed_args->socket, ERROR);
-                s_unlock_socket_synced_data(nw_socket);
                 struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
+                s_lock_socket_synced_data(nw_socket);
+                s_set_socket_state(nw_socket, aws_socket, ERROR);
+                s_unlock_socket_synced_data(nw_socket);
                 if (nw_socket->on_accept_started_fn) {
                     nw_socket->on_accept_started_fn(
                         aws_socket, crt_error_code, nw_socket->listen_accept_started_user_data);
@@ -2186,9 +2184,12 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
             case nw_listener_state_cancelled: {
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_SOCKET, "id=%p handle=%p: listener cancelled.", (void *)nw_socket, (void *)nw_listener);
+                s_lock_base_socket(nw_socket);
+                struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
                 s_lock_socket_synced_data(nw_socket);
-                s_set_socket_state(nw_socket, listener_state_changed_args->socket, CLOSED);
+                s_set_socket_state(nw_socket, aws_socket, CLOSED);
                 s_unlock_socket_synced_data(nw_socket);
+                s_unlock_base_socket(nw_socket);
                 s_socket_release_internal_ref(nw_socket);
             } break;
             default:
@@ -2219,13 +2220,10 @@ static void s_handle_listener_state_changed_fn(
         nw_error_code,
         crt_error_code);
 
-    s_lock_base_socket(nw_socket);
-    struct aws_socket *aws_socket = nw_socket->base_socket_synced_data.base_socket;
-    if (aws_socket && s_validate_event_loop(nw_socket->event_loop)) {
+    if (s_validate_event_loop(nw_socket->event_loop)) {
         struct listener_state_changed_args *args =
             aws_mem_calloc(nw_socket->allocator, 1, sizeof(struct listener_state_changed_args));
 
-        args->socket = aws_socket;
         args->nw_socket = nw_socket;
         args->allocator = nw_socket->allocator;
         args->error = crt_error_code;
@@ -2234,16 +2232,9 @@ static void s_handle_listener_state_changed_fn(
         s_socket_acquire_internal_ref(nw_socket);
         aws_task_init(&args->task, s_process_listener_state_changed_task, args, "ListenerStateChangedTask");
         aws_event_loop_schedule_task_now(nw_socket->event_loop, &args->task);
-    } else if (state == nw_listener_state_cancelled) {
-        // If socket is already destroyed and the listener is canceled, directly closed the internal socket.
-        s_lock_socket_synced_data(nw_socket);
-        s_set_socket_state(nw_socket, aws_socket, CLOSED);
-        s_unlock_socket_synced_data(nw_socket);
-
-        s_socket_release_internal_ref(nw_socket);
+    } else {
+        AWS_FATAL_ASSERT(true && "The nw_socket should be always attached to a validate event loop.");
     }
-
-    s_unlock_base_socket(nw_socket);
 }
 
 static int s_socket_start_accept_fn(
@@ -2280,7 +2271,7 @@ static int s_socket_start_accept_fn(
     socket->accept_result_fn = options.on_accept_result;
     socket->connect_accept_user_data = options.on_accept_result_user_data;
 
-    nw_socket->on_accept_started_fn = options.on_accept_start_result;
+    nw_socket->on_accept_started_fn = options.on_accept_start;
     nw_socket->listen_accept_started_user_data = options.on_accept_start_user_data;
 
     s_set_event_loop(socket, accept_loop);

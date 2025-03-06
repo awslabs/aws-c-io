@@ -1151,20 +1151,55 @@ static void s_socket_accept_event(
         socket->io_handle.data.fd);
 }
 
+struct on_start_accept_result_args {
+    struct aws_task task;
+    int error;
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+    aws_socket_on_accept_started_fn *on_accept_start;
+    void *on_accept_start_user_data;
+};
+
+static void s_process_invoke_on_accept_start(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)task;
+    struct on_start_accept_result_args *on_accept_args = args;
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_socket *socket = on_accept_args->socket;
+
+        if (on_accept_args->on_accept_start) {
+            // socket should not be cleaned up until on_accept_result callback is invoked.
+            AWS_FATAL_ASSERT(socket);
+            on_accept_args->on_accept_start(socket, on_accept_args->error, on_accept_args->on_accept_start_user_data);
+        }
+    }
+    aws_mem_release(on_accept_args->allocator, args);
+}
+
+static void s_invoke_on_accept_start(
+    struct aws_allocator *allocator,
+    struct aws_event_loop *loop,
+    struct aws_socket *socket,
+    int error,
+    aws_socket_on_accept_started_fn *on_accept_start,
+    void *on_accept_start_user_data) {
+    struct on_start_accept_result_args *args = aws_mem_calloc(allocator, 1, sizeof(struct on_start_accept_result_args));
+
+    args->allocator = allocator;
+    args->socket = socket;
+    args->error = error;
+    args->on_accept_start = on_accept_start;
+    args->on_accept_start_user_data = on_accept_start_user_data;
+
+    aws_task_init(&args->task, s_process_invoke_on_accept_start, args, "SocketOnAcceptStartResultTask");
+    aws_event_loop_schedule_task_now(loop, &args->task);
+}
+
 static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
     struct aws_socket_listener_options options) {
     AWS_ASSERT(options.on_accept_result);
     AWS_ASSERT(accept_loop);
-
-    if (options.on_accept_start_result || options.on_accept_start_user_data) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: the posix socket does not support on_accept_start_result callback. Ignore the options.",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle);
-    }
 
     if (socket->event_loop) {
         AWS_LOGF_ERROR(
@@ -1207,6 +1242,13 @@ static int s_socket_start_accept(
         return AWS_OP_ERR;
     }
 
+    s_invoke_on_accept_start(
+        socket->allocator,
+        accept_loop,
+        socket,
+        AWS_OP_SUCCESS,
+        options.on_accept_start,
+        options.on_accept_start_user_data);
     return AWS_OP_SUCCESS;
 }
 

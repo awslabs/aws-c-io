@@ -191,8 +191,8 @@ struct aws_socket_listener_options {
     void *on_accept_result_user_data;
 
     // This callback is invoked when the listener starts accepting incoming connections.
-    // It is only triggered in asynchronous listener APIs while using nw_socket.
-    aws_socket_on_accept_started_fn *on_accept_start_result;
+    // If the callback set, the socket must not be released before the callback invoked.
+    aws_socket_on_accept_started_fn *on_accept_start;
     void *on_accept_start_user_data;
 };
 

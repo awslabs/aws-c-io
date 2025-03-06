@@ -218,9 +218,9 @@ struct aws_server_socket_channel_bootstrap_options {
     uint32_t port;
     const struct aws_socket_options *socket_options;
     const struct aws_tls_connection_options *tls_options;
+    aws_server_bootstrap_on_listener_setup_fn *setup_callback;
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
     aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
-    aws_server_bootstrap_on_listener_setup_fn *setup_callback;
     aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
     bool enable_read_back_pressure;
     void *user_data;
@@ -297,15 +297,16 @@ AWS_IO_API int aws_server_bootstrap_set_alpn_callback(
  * shutting down. Immediately after the `shutdown_callback` returns, the channel is cleaned up automatically. All
  * callbacks are invoked the thread of the event-loop that the listening socket is assigned to
  *
+ * `setup_callback`. If set, the callback will be asynchronously invoked when the listener is ready for use. For Apple
+ * Network Framework, the listener is not usable until the callback is invoked. If the listener creation failed
+ * (return NULL), the `setup_callback` will not be invoked.
+ *
  * Upon shutdown of your application, you'll want to call `aws_server_bootstrap_destroy_socket_listener` with the return
  * value from this function.
  *
  * bootstrap_options is copied.
  */
 AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
-
-AWS_IO_API struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
     const struct aws_server_socket_channel_bootstrap_options *bootstrap_options);
 
 /**
