@@ -1413,6 +1413,7 @@ struct nw_socket_bind_args {
     struct aws_socket *listener;
     struct aws_mutex *mutex;
     struct aws_condition_variable *condition_variable;
+    bool start_listening;
     bool incoming_invoked;
     bool error_invoked;
     bool shutdown_complete;
@@ -1433,6 +1434,12 @@ static bool s_bind_args_shutdown_completed_predicate(void *arg) {
     return bind_args->shutdown_complete;
 }
 
+static bool s_bind_args_start_listening_predicate(void *arg) {
+    struct nw_socket_bind_args *bind_args = arg;
+
+    return bind_args->start_listening;
+}
+
 static void s_local_listener_incoming_destroy_listener_bind(
     struct aws_socket *socket,
     int error_code,
@@ -1450,6 +1457,20 @@ static void s_local_listener_incoming_destroy_listener_bind(
     }
     if (new_socket)
         aws_socket_clean_up(new_socket);
+    aws_condition_variable_notify_one(listener_args->condition_variable);
+    aws_mutex_unlock(listener_args->mutex);
+}
+
+static void s_local_listener_start_accept(struct aws_socket *socket, int error_code, void *user_data) {
+    (void)socket;
+    struct nw_socket_bind_args *listener_args = (struct nw_socket_bind_args *)user_data;
+    aws_mutex_lock(listener_args->mutex);
+
+    if (!error_code) {
+        listener_args->start_listening = true;
+    } else {
+        listener_args->error_invoked = true;
+    }
     aws_condition_variable_notify_one(listener_args->condition_variable);
     aws_mutex_unlock(listener_args->mutex);
 }
@@ -1509,15 +1530,23 @@ static int s_test_bind_on_zero_port(
         ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
         struct aws_socket_listener_options listener_options = {
             .on_accept_result = s_local_listener_incoming_destroy_listener_bind,
-            .on_accept_result_user_data = &listener_args};
+            .on_accept_result_user_data = &listener_args,
+            .on_accept_start = s_local_listener_start_accept,
+            .on_accept_start_user_data = &listener_args};
 
         ASSERT_SUCCESS(aws_socket_start_accept(&incoming, event_loop, listener_options));
 
         // Apple Dispatch Queue requires a listener to be ready before it can get the assigned port. We wait until the
         // port is back.
-        while (local_address1.port == 0) {
-            ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
-        }
+        ASSERT_SUCCESS(aws_mutex_lock(listener_args.mutex));
+        ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+            listener_args.condition_variable,
+            listener_args.mutex,
+            s_bind_args_start_listening_predicate,
+            &listener_args));
+        ASSERT_SUCCESS(aws_mutex_unlock(listener_args.mutex));
+
+        ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
 
     } else {
         if (sock_type != AWS_SOCKET_DGRAM) {
