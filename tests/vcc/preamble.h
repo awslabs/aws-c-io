@@ -827,7 +827,7 @@ struct aws_event_loop *aws_event_loop_new_with_epoll(
         \fresh(c_mutex) && \wrapped0(c_mutex) && \claims_object(c_mutex, &(epoll_loop_of(\result)->task_pre_queue_mutex))))
 ;
 
-static void s_destroy(struct aws_event_loop *event_loop
+static void s_complete_destroy(struct aws_event_loop *event_loop
     _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
 )
     _(requires \malloc_root(event_loop))

@@ -253,7 +253,7 @@ clean_up_loop:
 #define aws_event_loop_stop(event_loop) \
     s_stop(event_loop _(ghost c_event_loop) _(ghost c_mutex));
 
-static void s_destroy(struct aws_event_loop *event_loop
+static void s_complete_destroy(struct aws_event_loop *event_loop
     _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
 ) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying event_loop", (void *)event_loop);

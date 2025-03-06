@@ -37,7 +37,7 @@ void test_new_destroy()
     if (!event_loop) return;
     _(ghost \claim c_event_loop;)
     _(ghost c_event_loop = \make_claim({event_loop}, event_loop->\closed);)
-    s_destroy(event_loop _(ghost c_event_loop) _(ghost c_mutex));
+    s_complete_destroy(event_loop _(ghost c_event_loop) _(ghost c_mutex));
 }
 
 void on_event(
