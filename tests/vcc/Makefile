@@ -22,9 +22,7 @@ NO_CHANGE_FILE=source/linux/epoll_event_loop.c
 	$(VCC) $(VCC_ARGS) process_task_pre_queue.c /f:s_process_task_pre_queue
 	$(VCC) $(VCC_ARGS) lifecycle.c /f:s_stop_task /f:s_stop /f:s_wait_for_stop_completion /f:s_run
 	$(VCC) $(VCC_ARGS) main_loop.c /f:s_on_tasks_to_schedule /f:s_main_loop
-	$(VCC) $(VCC_ARGS) new_destroy.c /f:aws_event_loop_new_default
-# TODO: the s_destroy process is split into `s_start_destroy()` and `s_complete_destroy()`. As so far, s_start_destroy is 
-# a no-op, we only brought in `s_complete_destroy()`. We should update to add `s_start_destroy()` eventually. 
+	$(VCC) $(VCC_ARGS) new_destroy.c /f:aws_event_loop_new_default /f:s_start_destroy
 	$(VCC) $(VCC_ARGS) new_destroy.c /f:aws_event_loop_new_with_epoll /f:s_complete_destroy /p:"-DUSE_EFD=0"
 	$(VCC) $(VCC_ARGS) new_destroy.c /f:aws_event_loop_new_with_epoll /f:s_complete_destroy /p:"-DUSE_EFD=1"
 	$(VCC) $(VCC_ARGS) client.c /f:test_new_destroy /f:test_subscribe_unsubscribe

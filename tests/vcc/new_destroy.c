@@ -249,6 +249,12 @@ clean_up_loop:
     return NULL;
 }
 
+static void s_start_destroy(struct aws_event_loop *event_loop
+    _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
+) {
+    (void)event_loop;
+}
+
 /* Fake-up call to s_stop since this is just a vtable lookup */
 #define aws_event_loop_stop(event_loop) \
     s_stop(event_loop _(ghost c_event_loop) _(ghost c_mutex));
