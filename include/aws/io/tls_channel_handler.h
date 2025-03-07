@@ -950,7 +950,7 @@ const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type opera
 /**
  * Returns true if error_code is a TLS Negotiation related error.
  */
-AWS_IO_API bool aws_tls_error_code_check(int error_code);
+AWS_IO_API bool aws_error_code_is_tls(int error_code);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL

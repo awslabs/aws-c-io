@@ -57,8 +57,7 @@ struct aws_socket_vtable {
         void *user_data);
     int (*socket_bind_fn)(
         struct aws_socket *socket,
-        const struct aws_socket_endpoint *local_endpoint,
-        aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+        struct aws_socket_bind_options *socket_bind_options,
         void *user_data);
     int (*socket_listen_fn)(struct aws_socket *socket, int backlog_size);
     int (*socket_start_accept_fn)(

@@ -196,6 +196,11 @@ struct aws_socket_listener_options {
     void *on_accept_start_user_data;
 };
 
+struct aws_socket_bind_options {
+    const struct aws_socket_endpoint *local_endpoint;
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+};
+
 struct aws_byte_buf;
 struct aws_byte_cursor;
 
@@ -243,8 +248,7 @@ AWS_IO_API int aws_socket_connect(
  */
 AWS_IO_API int aws_socket_bind(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *local_endpoint,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_bind_options *socket_bind_options,
     void *user_data);
 
 /**

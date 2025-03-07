@@ -924,7 +924,7 @@ void aws_custom_key_op_handler_perform_operation(
     key_op_handler->vtable->on_key_operation(key_op_handler, operation);
 }
 
-bool aws_tls_error_code_check(int error_code) {
+bool aws_error_code_is_tls(int error_code) {
     switch (error_code) {
         case AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE:
         case AWS_IO_TLS_ERROR_NOT_NEGOTIATED:

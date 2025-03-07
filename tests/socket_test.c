@@ -275,7 +275,12 @@ static bool s_test_running_as_root(struct aws_allocator *alloc) {
     int err = aws_socket_init(&socket, alloc, &options);
     AWS_FATAL_ASSERT(!err);
 
-    err = aws_socket_bind(&socket, &endpoint, NULL, NULL);
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+
+    err = aws_socket_bind(&socket, &socket_bind_options, NULL);
     err |= aws_socket_listen(&socket, 1024);
 
     struct error_test_args args = {
@@ -351,7 +356,12 @@ static int s_test_socket_ex(
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint, NULL, NULL));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = endpoint,
+        .retrieve_tls_options = NULL,
+    };
+
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
 
     struct aws_socket_endpoint bound_endpoint;
     ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
@@ -375,7 +385,11 @@ static int s_test_socket_ex(
 
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
-        ASSERT_SUCCESS(aws_socket_bind(&outgoing, local, NULL, NULL));
+        struct aws_socket_bind_options socket_bind_options = {
+            .local_endpoint = local,
+            .retrieve_tls_options = NULL,
+        };
+        ASSERT_SUCCESS(aws_socket_bind(&outgoing, &socket_bind_options, NULL));
     }
 
     struct aws_socket_connect_options connect_options = {
@@ -549,7 +563,11 @@ static int s_test_socket_udp_apple_network_framework(
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint, NULL, NULL));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
 
     struct aws_socket_endpoint bound_endpoint;
     ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
@@ -1390,7 +1408,12 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 
         struct aws_socket incoming;
         ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-        ASSERT_ERROR(AWS_ERROR_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint, NULL, NULL));
+
+        struct aws_socket_bind_options socket_bind_options = {
+            .local_endpoint = &endpoint,
+            .retrieve_tls_options = NULL,
+        };
+        ASSERT_ERROR(AWS_ERROR_NO_PERMISSION, aws_socket_bind(&incoming, &socket_bind_options, NULL));
 
         aws_socket_set_cleanup_complete_callback(&incoming, s_socket_error_shutdown_complete, &args);
 
@@ -1433,11 +1456,16 @@ static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *alloc
 
     struct aws_socket incoming;
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint, NULL, NULL));
+
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&incoming, &socket_bind_options, NULL));
     ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
     struct aws_socket duplicate_bind;
     ASSERT_SUCCESS(aws_socket_init(&duplicate_bind, allocator, &options));
-    ASSERT_ERROR(AWS_IO_SOCKET_ADDRESS_IN_USE, aws_socket_bind(&duplicate_bind, &endpoint, NULL, NULL));
+    ASSERT_ERROR(AWS_IO_SOCKET_ADDRESS_IN_USE, aws_socket_bind(&duplicate_bind, &socket_bind_options, NULL));
 
     aws_socket_close(&duplicate_bind);
     aws_socket_clean_up(&duplicate_bind);
@@ -1552,7 +1580,11 @@ static int s_test_bind_on_zero_port(
     struct aws_socket_endpoint local_address1;
     ASSERT_FAILS(aws_socket_get_bound_address(&incoming, &local_address1));
 
-    ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint, NULL, NULL));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&incoming, &socket_bind_options, NULL));
 
     ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
 
@@ -1660,7 +1692,11 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
 
         struct aws_socket incoming;
         ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-        ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint, NULL, NULL));
+        struct aws_socket_bind_options socket_bind_options = {
+            .local_endpoint = &endpoint,
+            .retrieve_tls_options = NULL,
+        };
+        ASSERT_FAILS(aws_socket_bind(&incoming, &socket_bind_options, NULL));
         int error = aws_last_error();
         ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_ERROR_NO_PERMISSION == error);
 
@@ -1704,7 +1740,12 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
 
     struct aws_socket socket;
     ASSERT_SUCCESS(aws_socket_init(&socket, allocator, &options));
-    aws_socket_bind(&socket, &endpoint, NULL, NULL);
+
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    aws_socket_bind(&socket, &socket_bind_options, NULL);
     aws_socket_assign_to_event_loop(&socket, event_loop);
     aws_socket_subscribe_to_readable_events(&socket, s_on_null_readable_notification, NULL);
     size_t amount_read = 0;
@@ -1924,7 +1965,11 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint, NULL, NULL));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
@@ -2090,7 +2135,11 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint, NULL, NULL));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
     struct aws_socket_listener_options listener_options = {
         .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
@@ -2394,7 +2443,11 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint, NULL, NULL));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
     struct aws_socket_listener_options listener_options = {
         .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};

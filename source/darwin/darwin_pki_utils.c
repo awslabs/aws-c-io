@@ -338,7 +338,13 @@ int aws_import_pkcs12_to_identity(
  * for iOS and tvOS. We may add support for MacOS at a later date.
  */
 
-int aws_secitem_add_certificate_to_keychain(
+void aws_cf_release(CFTypeRef obj) {
+    if (obj != NULL) {
+        CFRelease(obj);
+    }
+}
+
+static int s_aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
     SecCertificateRef cert_ref,
     CFDataRef serial_data,
@@ -362,8 +368,19 @@ int aws_secitem_add_certificate_to_keychain(
 
     // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        switch ((int)status) {
+            case -34018:
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_PKI,
+                    "SecItemAdd certificate failed with OSStatus %d : errSecMissingEntitlement. The process attempting "
+                    "to access the keychain is missing the necessary entitlements.",
+                    (int)status);
+                break;
+            default:
+                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
+                aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+                break;
+        }
         goto done;
     }
 
@@ -423,15 +440,12 @@ int aws_secitem_add_certificate_to_keychain(
 
 done:
     // cleanup
-    if (add_attributes)
-        CFRelease(add_attributes);
-    if (delete_query)
-        CFRelease(delete_query);
-
+    aws_cf_release(add_attributes);
+    aws_cf_release(delete_query);
     return result;
 }
 
-int aws_secitem_add_private_key_to_keychain(
+static int s_aws_secitem_add_private_key_to_keychain(
     CFAllocatorRef cf_alloc,
     SecKeyRef key_ref,
     CFStringRef label,
@@ -456,8 +470,19 @@ int aws_secitem_add_private_key_to_keychain(
 
     // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd private key failed with OSStatus %d", (int)status);
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        switch ((int)status) {
+            case -34018:
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_PKI,
+                    "SecItemAdd private key failed with OSStatus %d : errSecMissingEntitlement. The process attempting "
+                    "to access the keychain is missing the necessary entitlements.",
+                    (int)status);
+                break;
+            default:
+                AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd private key failed with OSStatus %d", (int)status);
+                aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+                break;
+        }
         goto done;
     }
 
@@ -515,22 +540,13 @@ int aws_secitem_add_private_key_to_keychain(
 
 done:
     // cleanup
-    if (add_attributes)
-        CFRelease(add_attributes);
-    if (delete_query)
-        CFRelease(delete_query);
+    aws_cf_release(add_attributes);
+    aws_cf_release(delete_query);
 
     return result;
 }
 
-int aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec_identity_t *out_identity) {
-#if !defined(AWS_USE_SECITEM)
-    (void)cf_alloc;
-    (void)serial_data;
-    (void)out_identity;
-    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif // !AWS_USE_SECITEM
+static int s_aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec_identity_t *out_identity) {
 
     int result = AWS_OP_ERR;
     OSStatus status;
@@ -562,6 +578,12 @@ int aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec
     }
 
     *out_identity = sec_identity_create(sec_identity_ref);
+    if (*out_identity == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "sec_identity_create failed to create a sec_identity_t from provided SecIdentityRef.");
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
 
     AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully retrieved identity from keychain.");
 
@@ -569,10 +591,8 @@ int aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec
 
 done:
     // cleanup
-    if (search_query)
-        CFRelease(search_query);
-    if (sec_identity_ref)
-        CFRelease(sec_identity_ref);
+    aws_cf_release(search_query);
+    aws_cf_release(sec_identity_ref);
 
     return result;
 }
@@ -584,18 +604,6 @@ int aws_secitem_import_cert_and_key(
     const struct aws_byte_cursor *private_key,
     sec_identity_t *secitem_identity,
     const struct aws_secitem_options *secitem_options) {
-
-// We currently only support Apple Network Framework and SecItem keychain API on iOS/tvOS.
-#if !defined(AWS_USE_SECITEM)
-    (void)alloc;
-    (void)cf_alloc;
-    (void)public_cert_chain;
-    (void)private_key;
-    (void)secitem_identity;
-    (void)secitem_options;
-    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif // !AWS_USE_SECITEM
 
     AWS_PRECONDITION(public_cert_chain != NULL);
     AWS_PRECONDITION(private_key != NULL);
@@ -634,7 +642,7 @@ int aws_secitem_import_cert_and_key(
     AWS_ASSERT(aws_array_list_is_valid(&decoded_cert_buffer_list));
 
     if (aws_pem_objects_init_from_file_contents(&decoded_key_buffer_list, alloc, *private_key)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM certificate to DER format.");
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
         goto done;
     }
     AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
@@ -772,54 +780,34 @@ int aws_secitem_import_cert_and_key(
     }
 
     // Add the certificate and private key to keychain then retrieve identity
-#if !defined(AWS_OS_IOS)
-    aws_mutex_lock(&s_sec_mutex);
-#endif /* !AWS_OS_IOS */
 
-    if (aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
-        goto done_unlock;
+    if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
+        goto done;
     }
 
-    if (aws_secitem_add_private_key_to_keychain(cf_alloc, key_ref, key_label_ref, application_label_ref)) {
-        goto done_unlock;
+    if (s_aws_secitem_add_private_key_to_keychain(cf_alloc, key_ref, key_label_ref, application_label_ref)) {
+        goto done;
     }
 
-    if (aws_secitem_get_identity(cf_alloc, cert_serial_data, secitem_identity)) {
-        goto done_unlock;
+    if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, secitem_identity)) {
+        goto done;
     }
 
     result = AWS_OP_SUCCESS;
 
-done_unlock:
-
-#if !defined(AWS_OS_IOS)
-    aws_mutex_unlock(&s_sec_mutex);
-#endif /* !AWS_OS_IOS */
-
 done:
     // cleanup
-    if (error != NULL)
-        CFRelease(error);
-    if (cert_data != NULL)
-        CFRelease(cert_data);
-    if (cert_ref != NULL)
-        CFRelease(cert_ref);
-    if (cert_serial_data != NULL)
-        CFRelease(cert_serial_data);
-    if (cert_label_ref)
-        CFRelease(cert_label_ref);
-    if (key_attributes)
-        CFRelease(key_attributes);
-    if (key_copied_attributes)
-        CFRelease(key_copied_attributes);
-    if (key_data != NULL)
-        CFRelease(key_data);
-    if (key_ref != NULL)
-        CFRelease(key_ref);
-    if (key_type != NULL)
-        CFRelease(key_type);
-    if (key_label_ref)
-        CFRelease(key_label_ref);
+    aws_cf_release(error);
+    aws_cf_release(cert_data);
+    aws_cf_release(cert_ref);
+    aws_cf_release(cert_serial_data);
+    aws_cf_release(cert_label_ref);
+    aws_cf_release(key_attributes);
+    aws_cf_release(key_copied_attributes);
+    aws_cf_release(key_data);
+    aws_cf_release(key_ref);
+    aws_cf_release(key_type);
+    aws_cf_release(key_label_ref);
 
     // Zero out the array list and release it
     aws_pem_objects_clean_up(&decoded_cert_buffer_list);
@@ -833,15 +821,6 @@ int aws_secitem_import_pkcs12(
     const struct aws_byte_cursor *pkcs12_cursor,
     const struct aws_byte_cursor *password,
     sec_identity_t *out_identity) {
-// We currently only support Apple's network framework and SecItem keychain API on iOS.
-#if !defined(AWS_USE_SECITEM)
-    (void)cf_alloc;
-    (void)pkcs12_cursor;
-    (void)password;
-    (void)out_identity;
-    AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Secitem not supported on this platform.");
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-#endif // !AWS_USE_SECITEM
 
     int result = AWS_OP_ERR;
     CFArrayRef items = NULL;
@@ -849,7 +828,6 @@ int aws_secitem_import_pkcs12(
     CFMutableDictionaryRef dictionary = NULL;
     SecIdentityRef sec_identity_ref = NULL;
     CFStringRef password_ref = NULL;
-    bool should_release_password = true;
 
     pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
     if (!pkcs12_data) {
@@ -861,8 +839,7 @@ int aws_secitem_import_pkcs12(
     if (password->len) {
         password_ref = CFStringCreateWithBytes(cf_alloc, password->ptr, password->len, kCFStringEncodingUTF8, false);
     } else {
-        should_release_password = false;
-        password_ref = CFSTR("");
+        password_ref = CFStringCreateWithCString(cf_alloc, "", kCFStringEncodingUTF8);
     }
 
     dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
@@ -896,14 +873,10 @@ int aws_secitem_import_pkcs12(
 
 done:
     // cleanup
-    if (pkcs12_data)
-        CFRelease(pkcs12_data);
-    if (dictionary)
-        CFRelease(dictionary);
-    if (should_release_password)
-        CFRelease(password_ref);
-    if (items)
-        CFRelease(items);
+    aws_cf_release(pkcs12_data);
+    aws_cf_release(dictionary);
+    aws_cf_release(password_ref);
+    aws_cf_release(items);
     return result;
 }
 

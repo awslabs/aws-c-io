@@ -22,13 +22,9 @@ int aws_socket_connect(
     return socket->vtable->socket_connect_fn(socket, socket_connect_options, user_data);
 }
 
-int aws_socket_bind(
-    struct aws_socket *socket,
-    const struct aws_socket_endpoint *local_endpoint,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
-    void *user_data) {
+int aws_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options, void *user_data) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_bind_fn);
-    return socket->vtable->socket_bind_fn(socket, local_endpoint, retrieve_tls_options, user_data);
+    return socket->vtable->socket_bind_fn(socket, socket_bind_options, user_data);
 }
 
 int aws_socket_listen(struct aws_socket *socket, int backlog_size) {

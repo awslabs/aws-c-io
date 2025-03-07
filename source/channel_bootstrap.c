@@ -661,7 +661,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
              * failure. We also assign the socket and flip the connection_chosen to true as a TCP connection must
              * sucessfully be established before a TLS failure can occur.
              */
-            if (aws_tls_error_code_check(error_code)) {
+            if (aws_error_code_is_tls(error_code)) {
                 connection_args->tls_error_code = error_code;
                 connection_args->connection_chosen = true;
                 connection_args->channel_data.socket = socket;
@@ -1923,8 +1923,12 @@ struct aws_socket *s_server_bootstrap_new_socket_listener(
     memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
     endpoint.port = bootstrap_options->port;
 
-    if (aws_socket_bind(
-            &server_connection_args->listener, &endpoint, s_retrieve_server_tls_options, server_connection_args)) {
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = s_retrieve_server_tls_options,
+    };
+
+    if (aws_socket_bind(&server_connection_args->listener, &socket_bind_options, server_connection_args)) {
         goto cleanup_listener;
     }
 
