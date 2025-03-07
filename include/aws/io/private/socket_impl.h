@@ -53,11 +53,12 @@ struct aws_socket_vtable {
     void (*socket_cleanup_fn)(struct aws_socket *socket);
     int (*socket_connect_fn)(
         struct aws_socket *socket,
-        const struct aws_socket_endpoint *remote_endpoint,
-        struct aws_event_loop *event_loop,
-        aws_socket_on_connection_result_fn *on_connection_result,
+        struct aws_socket_connect_options *socket_connect_options,
         void *user_data);
-    int (*socket_bind_fn)(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+    int (*socket_bind_fn)(
+        struct aws_socket *socket,
+        struct aws_socket_bind_options *socket_bind_options,
+        void *user_data);
     int (*socket_listen_fn)(struct aws_socket *socket, int backlog_size);
     int (*socket_start_accept_fn)(
         struct aws_socket *socket,
@@ -85,6 +86,8 @@ struct aws_socket_vtable {
         struct aws_socket *socket,
         aws_socket_on_shutdown_complete_fn fn,
         void *user_data);
+    struct aws_byte_buf (*socket_get_protocol_fn)(const struct aws_socket *socket);
+    struct aws_string *(*socket_get_server_name_fn)(const struct aws_socket *socket);
 };
 
 #endif // AWS_IO_SOCKET_IMPL_H

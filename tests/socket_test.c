@@ -275,7 +275,12 @@ static bool s_test_running_as_root(struct aws_allocator *alloc) {
     int err = aws_socket_init(&socket, alloc, &options);
     AWS_FATAL_ASSERT(!err);
 
-    err = aws_socket_bind(&socket, &endpoint);
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+
+    err = aws_socket_bind(&socket, &socket_bind_options, NULL);
     err |= aws_socket_listen(&socket, 1024);
 
     struct error_test_args args = {
@@ -351,7 +356,12 @@ static int s_test_socket_ex(
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = endpoint,
+        .retrieve_tls_options = NULL,
+    };
+
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
 
     struct aws_socket_endpoint bound_endpoint;
     ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
@@ -375,9 +385,20 @@ static int s_test_socket_ex(
 
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
-        ASSERT_SUCCESS(aws_socket_bind(&outgoing, local));
+        struct aws_socket_bind_options socket_bind_options = {
+            .local_endpoint = local,
+            .retrieve_tls_options = NULL,
+        };
+        ASSERT_SUCCESS(aws_socket_bind(&outgoing, &socket_bind_options, NULL));
     }
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     if (listener.options.type == AWS_SOCKET_STREAM ||
         aws_socket_get_default_impl_type() == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
@@ -542,7 +563,11 @@ static int s_test_socket_udp_apple_network_framework(
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, endpoint));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
 
     struct aws_socket_endpoint bound_endpoint;
     ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
@@ -559,7 +584,14 @@ static int s_test_socket_udp_apple_network_framework(
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -1040,7 +1072,14 @@ static int s_test_connect_timeout(struct aws_allocator *allocator, void *ctx) {
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
     aws_socket_set_cleanup_complete_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
     aws_mutex_lock(&mutex);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &condition_variable, &mutex, s_connection_completed_predicate, &outgoing_args));
@@ -1142,7 +1181,14 @@ static int s_test_connect_timeout_cancellation(struct aws_allocator *allocator, 
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     aws_socket_set_cleanup_complete_callback(&outgoing, s_local_outgoing_connection_shutdown_complete, &outgoing_args);
 
@@ -1214,7 +1260,14 @@ static int s_test_outgoing_local_sock_errors(struct aws_allocator *allocator, vo
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 
     aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
-    int socket_connect_result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .retrieve_tls_options = NULL};
+
+    int socket_connect_result = aws_socket_connect(&outgoing, &connect_options, &args);
     // As Apple network framework has an async API design, we would not get the error back on connect
     if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
         ASSERT_FAILS(socket_connect_result);
@@ -1280,7 +1333,14 @@ static int s_test_outgoing_tcp_sock_error(struct aws_allocator *allocator, void 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
     aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
-    int result = aws_socket_connect(&outgoing, &endpoint, event_loop, s_null_sock_connection, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .retrieve_tls_options = NULL};
+
+    int result = aws_socket_connect(&outgoing, &connect_options, &args);
 #ifdef __FreeBSD__
     /**
      * FreeBSD doesn't seem to respect the O_NONBLOCK or SOCK_NONBLOCK flag. It fails immediately when trying to
@@ -1348,7 +1408,12 @@ static int s_test_incoming_tcp_sock_errors(struct aws_allocator *allocator, void
 
         struct aws_socket incoming;
         ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-        ASSERT_ERROR(AWS_ERROR_NO_PERMISSION, aws_socket_bind(&incoming, &endpoint));
+
+        struct aws_socket_bind_options socket_bind_options = {
+            .local_endpoint = &endpoint,
+            .retrieve_tls_options = NULL,
+        };
+        ASSERT_ERROR(AWS_ERROR_NO_PERMISSION, aws_socket_bind(&incoming, &socket_bind_options, NULL));
 
         aws_socket_set_cleanup_complete_callback(&incoming, s_socket_error_shutdown_complete, &args);
 
@@ -1391,11 +1456,16 @@ static int s_test_incoming_duplicate_tcp_bind_errors(struct aws_allocator *alloc
 
     struct aws_socket incoming;
     ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint));
+
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&incoming, &socket_bind_options, NULL));
     ASSERT_SUCCESS(aws_socket_listen(&incoming, 1024));
     struct aws_socket duplicate_bind;
     ASSERT_SUCCESS(aws_socket_init(&duplicate_bind, allocator, &options));
-    ASSERT_ERROR(AWS_IO_SOCKET_ADDRESS_IN_USE, aws_socket_bind(&duplicate_bind, &endpoint));
+    ASSERT_ERROR(AWS_IO_SOCKET_ADDRESS_IN_USE, aws_socket_bind(&duplicate_bind, &socket_bind_options, NULL));
 
     aws_socket_close(&duplicate_bind);
     aws_socket_clean_up(&duplicate_bind);
@@ -1510,7 +1580,11 @@ static int s_test_bind_on_zero_port(
     struct aws_socket_endpoint local_address1;
     ASSERT_FAILS(aws_socket_get_bound_address(&incoming, &local_address1));
 
-    ASSERT_SUCCESS(aws_socket_bind(&incoming, &endpoint));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&incoming, &socket_bind_options, NULL));
 
     ASSERT_SUCCESS(aws_socket_get_bound_address(&incoming, &local_address1));
 
@@ -1618,7 +1692,11 @@ static int s_test_incoming_udp_sock_errors(struct aws_allocator *allocator, void
 
         struct aws_socket incoming;
         ASSERT_SUCCESS(aws_socket_init(&incoming, allocator, &options));
-        ASSERT_FAILS(aws_socket_bind(&incoming, &endpoint));
+        struct aws_socket_bind_options socket_bind_options = {
+            .local_endpoint = &endpoint,
+            .retrieve_tls_options = NULL,
+        };
+        ASSERT_FAILS(aws_socket_bind(&incoming, &socket_bind_options, NULL));
         int error = aws_last_error();
         ASSERT_TRUE(AWS_IO_SOCKET_INVALID_ADDRESS == error || AWS_ERROR_NO_PERMISSION == error);
 
@@ -1662,7 +1740,12 @@ static int s_test_wrong_thread_read_write_fails(struct aws_allocator *allocator,
 
     struct aws_socket socket;
     ASSERT_SUCCESS(aws_socket_init(&socket, allocator, &options));
-    aws_socket_bind(&socket, &endpoint);
+
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    aws_socket_bind(&socket, &socket_bind_options, NULL);
     aws_socket_assign_to_event_loop(&socket, event_loop);
     aws_socket_subscribe_to_readable_events(&socket, s_on_null_readable_notification, NULL);
     size_t amount_read = 0;
@@ -1785,7 +1868,13 @@ static int s_cleanup_before_connect_or_timeout_doesnt_explode(struct aws_allocat
 
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
     aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &shutdown_args);
 
     aws_event_loop_schedule_task_now(event_loop, &destroy_task);
@@ -1876,7 +1965,11 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
 #ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
@@ -1892,7 +1985,14 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -2035,7 +2135,11 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
     struct aws_socket_listener_options listener_options = {
         .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
@@ -2046,7 +2150,14 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -2332,7 +2443,11 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
     struct aws_socket_listener_options listener_options = {
         .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
@@ -2343,7 +2458,14 @@ static int s_sock_write_cb_is_async(struct aws_allocator *allocator, void *ctx) 
 
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&condition_variable, &mutex, s_incoming_predicate, &listener_args));
@@ -2433,7 +2555,7 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint));
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint, NULL, NULL));
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
 
@@ -2445,7 +2567,13 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     struct aws_socket outgoing;
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &endpoint, event_loop, s_local_outgoing_connection, &outgoing_args));
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_local_outgoing_connection,
+        .retrieve_tls_options = NULL};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options, &outgoing_args));
 
     struct aws_socket_listener_options listener_options = {
         .on_accept_result = s_local_listener_incoming, .on_accept_result_user_data = &listener_args};
