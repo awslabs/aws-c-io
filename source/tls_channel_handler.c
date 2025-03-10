@@ -27,9 +27,10 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
 
 #ifdef __APPLE__
 
-    options->secitem_options = aws_mem_calloc(allocator, 1, sizeof(struct aws_secitem_options));
-    options->secitem_options->cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
-    options->secitem_options->key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
+    if (aws_is_use_secitem()) {
+        options->secitem_options.cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
+        options->secitem_options.key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
+    }
 
 #endif /* __APPLE__ */
 }
@@ -45,10 +46,7 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
 
-    if (options->secitem_options) {
-        aws_tls_secitem_options_clean_up(options->secitem_options);
-        aws_mem_release(options->allocator, options->secitem_options);
-    }
+    aws_tls_secitem_options_clean_up(&options->secitem_options);
 
     aws_string_destroy(options->keychain_path);
 
@@ -283,12 +281,13 @@ int aws_tls_ctx_options_set_secitem_options(
     struct aws_tls_ctx_options *tls_ctx_options,
     const struct aws_secitem_options *secitem_options) {
     if (aws_is_use_secitem()) {
+
         if (secitem_options->cert_label != NULL) {
-            aws_string_destroy(tls_ctx_options->secitem_options->cert_label);
-            tls_ctx_options->secitem_options->cert_label = NULL;
-            tls_ctx_options->secitem_options->cert_label =
+            aws_string_destroy(tls_ctx_options->secitem_options.cert_label);
+            tls_ctx_options->secitem_options.cert_label = NULL;
+            tls_ctx_options->secitem_options.cert_label =
                 aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->cert_label);
-            if (tls_ctx_options->secitem_options->cert_label == NULL) {
+            if (tls_ctx_options->secitem_options.cert_label == NULL) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option certificate label is invalid.");
                 return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             }
@@ -296,11 +295,11 @@ int aws_tls_ctx_options_set_secitem_options(
         }
 
         if (secitem_options->key_label != NULL) {
-            aws_string_destroy(tls_ctx_options->secitem_options->key_label);
-            tls_ctx_options->secitem_options->key_label = NULL;
-            tls_ctx_options->secitem_options->key_label =
+            aws_string_destroy(tls_ctx_options->secitem_options.key_label);
+            tls_ctx_options->secitem_options.key_label = NULL;
+            tls_ctx_options->secitem_options.key_label =
                 aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->key_label);
-            if (tls_ctx_options->secitem_options->key_label == NULL) {
+            if (tls_ctx_options->secitem_options.key_label == NULL) {
                 AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option key label is invalid.");
                 return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             }

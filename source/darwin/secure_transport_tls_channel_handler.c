@@ -1117,7 +1117,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                     &cert_chain_cur,
                     &private_key_cur,
                     &secure_transport_ctx->secitem_identity,
-                    options->secitem_options)) {
+                    &options->secitem_options)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS,
                     "static: failed to import certificate and private key with error %d.",

@@ -244,7 +244,7 @@ struct aws_tls_ctx_options {
      * On iOS/tvOS the available settings when adding items to the keychain using
      * SecItem are contained within this struct. This is NOT supported on MacOS.
      */
-    struct aws_secitem_options *secitem_options;
+    struct aws_secitem_options secitem_options;
 
     /**
      * On MacOS you can also use a custom keychain instead of
