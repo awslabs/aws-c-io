@@ -385,11 +385,11 @@ static int s_test_socket_ex(
 
     ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, options));
     if (local && (strcmp(local->address, endpoint->address) != 0 || local->port != endpoint->port)) {
-        struct aws_socket_bind_options socket_bind_options = {
+        struct aws_socket_bind_options socket_bind_options_local = {
             .local_endpoint = local,
             .retrieve_tls_options = NULL,
         };
-        ASSERT_SUCCESS(aws_socket_bind(&outgoing, &socket_bind_options, NULL));
+        ASSERT_SUCCESS(aws_socket_bind(&outgoing, &socket_bind_options_local, NULL));
     }
 
     struct aws_socket_connect_options connect_options = {
