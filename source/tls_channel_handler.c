@@ -45,9 +45,7 @@ void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options) {
 
     aws_byte_buf_clean_up_secure(&options->pkcs12);
     aws_byte_buf_clean_up_secure(&options->pkcs12_password);
-
     aws_tls_secitem_options_clean_up(&options->secitem_options);
-
     aws_string_destroy(options->keychain_path);
 
 #endif /* __APPLE__ */
@@ -330,15 +328,8 @@ void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_option
         return;
     }
 
-    if (secitem_options->cert_label) {
-        aws_string_destroy(secitem_options->cert_label);
-        secitem_options->cert_label = NULL;
-    }
-
-    if (secitem_options->key_label) {
-        aws_string_destroy(secitem_options->key_label);
-        secitem_options->key_label = NULL;
-    }
+    aws_string_destroy(secitem_options->cert_label);
+    aws_string_destroy(secitem_options->key_label);
 }
 
 int aws_tls_ctx_options_init_client_mtls_from_system_path(

@@ -625,29 +625,28 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         error_code);
 
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
+    if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
+        struct aws_host_address host_address;
+        host_address.host = connection_args->host_name;
+        host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
+        host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
+                                       ? AWS_ADDRESS_RECORD_TYPE_AAAA
+                                       : AWS_ADDRESS_RECORD_TYPE_A;
+
+        if (host_address.address) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: recording bad address %s.",
+                (void *)connection_args->bootstrap,
+                socket->remote_endpoint.address);
+            aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
+            aws_string_destroy((void *)host_address.address);
+        }
+    }
 
     if (error_code || connection_args->connection_chosen) {
-        if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
-            struct aws_host_address host_address;
-            host_address.host = connection_args->host_name;
-            host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
-            host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
-                                           ? AWS_ADDRESS_RECORD_TYPE_AAAA
-                                           : AWS_ADDRESS_RECORD_TYPE_A;
-
-            if (host_address.address) {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                    "id=%p: recording bad address %s.",
-                    (void *)connection_args->bootstrap,
-                    socket->remote_endpoint.address);
-                aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
-                aws_string_destroy((void *)host_address.address);
-            }
-        }
-
         if (error_code) {
-            AWS_LOGF_TRACE(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
                 "id=%p: releasing socket %p due to error_code %d.",
                 (void *)connection_args->bootstrap,
@@ -662,13 +661,20 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                  * connection must sucessfully be established before a TLS failure can occur.
                  */
                 if (aws_error_code_is_tls(error_code)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                        "id=%p: Storing socket %p error_code %d as this socket's TCP connection has succeeded but was "
+                        "followed up by a TLS neotiation error.",
+                        (void *)connection_args->bootstrap,
+                        (void *)socket,
+                        error_code);
                     connection_args->tls_error_code = error_code;
                     connection_args->connection_chosen = true;
                     connection_args->channel_data.socket = socket;
                 }
             }
         } else {
-            AWS_LOGF_TRACE(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
                 "id=%p: releasing socket %p because we already have a successful connection.",
                 (void *)connection_args->bootstrap,

@@ -1679,9 +1679,15 @@ static void s_handle_write_fn(
 static int s_setup_tls_options_from_context(
     struct nw_socket *nw_socket,
     struct aws_tls_connection_context *tls_connection_context) {
+
+    if (nw_socket->tls_ctx != NULL || nw_socket->host_name != NULL || nw_socket->alpn_list != NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKET, "id=%p: Socket cannot have TLS options set more than once.", (void *)nw_socket);
+        return AWS_OP_ERR;
+    }
+
     /* The host name is needed during the setup of the verification block */
     if (tls_connection_context->host_name != NULL) {
-        aws_string_destroy(nw_socket->host_name);
         nw_socket->host_name =
             aws_string_new_from_string(tls_connection_context->host_name->allocator, tls_connection_context->host_name);
         if (nw_socket->host_name == NULL) {
@@ -1695,15 +1701,6 @@ static int s_setup_tls_options_from_context(
 
     /* The tls_ctx is needed to setup TLS negotiation options in the Apple Network Framework connection's parameters */
     if (tls_connection_context->tls_ctx != NULL) {
-        /*
-         * We acquire a refcount to the tls context. If we are replacing one we already had, we must release the
-         * previous one first.
-         */
-        if (nw_socket->tls_ctx) {
-            aws_tls_ctx_release(nw_socket->tls_ctx);
-            nw_socket->tls_ctx = NULL;
-        }
-
         nw_socket->tls_ctx = tls_connection_context->tls_ctx;
         aws_tls_ctx_acquire(nw_socket->tls_ctx);
 
@@ -1717,7 +1714,6 @@ static int s_setup_tls_options_from_context(
         }
 
         if (alpn_list != NULL) {
-            aws_string_destroy(nw_socket->alpn_list);
             nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
             if (nw_socket->alpn_list == NULL) {
                 AWS_LOGF_ERROR(
