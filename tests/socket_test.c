@@ -2555,7 +2555,11 @@ static int s_local_socket_pipe_connected_race(struct aws_allocator *allocator, v
     struct aws_socket listener;
     ASSERT_SUCCESS(aws_socket_init(&listener, allocator, &options));
 
-    ASSERT_SUCCESS(aws_socket_bind(&listener, &endpoint, NULL, NULL));
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = endpoint,
+        .retrieve_tls_options = NULL,
+    };
+    ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options, NULL));
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
 
