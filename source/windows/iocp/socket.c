@@ -550,7 +550,6 @@ static int s_socket_bind(
     struct aws_socket_bind_options *socket_bind_options,
     void *user_data) {
     const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;
-    (void)retrieve_tls_options;
     (void)user_data;
     if (socket->state != INIT) {
         socket->state = ERRORED;
