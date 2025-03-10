@@ -67,9 +67,6 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
 
-    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
-    void *shutdown_user_data;
-
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API
      * (Optional)
@@ -281,8 +278,7 @@ AWS_IO_API int aws_socket_close(struct aws_socket *socket);
 AWS_IO_API int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir);
 
 /**
- * Sets new socket options on the underlying socket. This is mainly useful in context of accepting a new connection via:
- * `on_incoming_connection()`. options is copied.
+ * Sets new socket options on the underlying socket.
  */
 AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options);
 
