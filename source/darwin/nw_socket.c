@@ -382,8 +382,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                       if (options->keepalive && options->keep_alive_interval_sec != 0 &&
                           options->keep_alive_timeout_sec != 0) {
                           nw_tcp_options_set_enable_keepalive(nw_options, options->keepalive);
-                          nw_tcp_options_set_keepalive_idle_time(nw_options, options->keep_alive_timeout_sec);
-                          nw_tcp_options_set_keepalive_interval(nw_options, options->keep_alive_interval_sec);
+                          nw_tcp_options_set_keepalive_idle_time(nw_options, options->keep_alive_interval_sec);
+                          nw_tcp_options_set_keepalive_interval(nw_options, options->keep_alive_timeout_sec);
                       }
 
                       if (options->keep_alive_max_failed_probes) {
