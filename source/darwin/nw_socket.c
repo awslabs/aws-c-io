@@ -168,6 +168,33 @@ enum aws_nw_socket_state {
     CLOSED = 0x200,
 };
 
+static const char *aws_socket_state_to_c_string(enum aws_nw_socket_state state) {
+    switch (state) {
+        case INVALID:
+            return "INVALID";
+        case CONNECTING:
+            return "CONNECTING";
+        case CONNECTED_READ:
+            return "CONNECTED_READ";
+        case CONNECTED_WRITE:
+            return "CONNECTED_WRITE";
+        case BOUND:
+            return "BOUND";
+        case LISTENING:
+            return "LISTENING";
+        case STOPPED:
+            return "STOPPED";
+        case ERROR:
+            return "ERROR";
+        case CLOSING:
+            return "CLOSING";
+        case CLOSED:
+            return "CLOSED";
+        default:
+            return "UNKNOWN";
+    }
+}
+
 enum aws_nw_socket_mode {
     NWSM_CONNECTION,
     NWSM_LISTENER,
@@ -399,10 +426,10 @@ static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *s
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p: s_set_socket_state: socket state set from %d to %d.",
+        "id=%p: s_set_socket_state: socket state set from %s to %s.",
         (void *)nw_socket,
-        nw_socket->synced_data.state,
-        state);
+        aws_socket_state_to_c_string(nw_socket->synced_data.state),
+        aws_socket_state_to_c_string(state));
     enum aws_nw_socket_state result_state = nw_socket->synced_data.state;
 
     // clip the read/write bits
@@ -438,9 +465,9 @@ static void s_set_socket_state(struct nw_socket *nw_socket, struct aws_socket *s
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p: s_set_socket_state: socket state set to %d.",
+        "id=%p: s_set_socket_state: socket state set to %s.",
         (void *)nw_socket,
-        nw_socket->synced_data.state);
+        aws_socket_state_to_c_string(nw_socket->synced_data.state));
 }
 
 /* setup the TCP options Block for use in socket parameters */
@@ -1309,14 +1336,7 @@ static void s_process_connection_state_changed_ready(struct nw_socket *nw_socket
 
                 const char *negotiated_protocol = sec_protocol_metadata_get_negotiated_protocol(sec_metadata);
                 if (negotiated_protocol) {
-                    nw_socket->protocol_buf.allocator = nw_socket->allocator;
-                    size_t protocol_len = strlen(negotiated_protocol);
-                    nw_socket->protocol_buf.buffer = (uint8_t *)aws_mem_acquire(nw_socket->allocator, protocol_len + 1);
-                    nw_socket->protocol_buf.len = protocol_len;
-                    nw_socket->protocol_buf.capacity = protocol_len + 1;
-                    memcpy(nw_socket->protocol_buf.buffer, negotiated_protocol, protocol_len);
-                    nw_socket->protocol_buf.buffer[protocol_len] = '\0';
-
+                    nw_socket->protocol_buf = aws_byte_buf_from_c_str(negotiated_protocol);
                     AWS_LOGF_DEBUG(
                         AWS_LS_IO_TLS,
                         "id=%p handle=%p: ALPN protocol set to: '%s'",
