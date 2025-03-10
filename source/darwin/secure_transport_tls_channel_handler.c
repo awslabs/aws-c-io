@@ -825,29 +825,30 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
-#if defined(AWS_USE_SECITEM)
-    /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection
-     * and an aws_channel using it does not have a TLS. The negotiated protocol is stored
-     * in the nw_socket and must be retrieved from the socket rather than a secure_transport_handler. */
-    const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
-    return socket->vtable->socket_get_protocol_fn(socket);
-#endif /* AWS_USE_SECITEM */
+    if (aws_is_use_secitem()) {
+        /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
+         * using it does not have a TLS. The negotiated protocol is stored in the nw_socket and must be retrieved from
+         * the socket rather than a secure_transport_handler. */
+        const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
+        return socket->vtable->socket_get_protocol_fn(socket);
+    }
     struct secure_transport_handler *secure_transport_handler = handler->impl;
     return secure_transport_handler->protocol;
 }
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct aws_string *server_name = NULL;
-#if defined(AWS_USE_SECITEM)
-    /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection
-     * and an aws_channel using it does not have a TLS slot. The server_name is stored
-     * in the nw_socket and must be retrieved from the socket rather than a secure_transport_handler. */
-    const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
-    server_name = socket->vtable->socket_get_server_name_fn(socket);
-#else
-    struct secure_transport_handler *secure_transport_handler = handler->impl;
-    server_name = secure_transport_handler->server_name;
-#endif
+    if (aws_is_use_secitem()) {
+        /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
+         * using it does not have a TLS slot. The server_name is stored in the nw_socket and must be retrieved from the
+         * socket rather than a secure_transport_handler. */
+        const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
+        server_name = socket->vtable->socket_get_server_name_fn(socket);
+    } else {
+        struct secure_transport_handler *secure_transport_handler = handler->impl;
+        server_name = secure_transport_handler->server_name;
+    }
+
     const uint8_t *bytes = NULL;
     size_t len = 0;
     if (server_name) {
@@ -1109,60 +1110,61 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
-#if !defined(AWS_USE_SECITEM)
-        if (aws_import_public_and_private_keys_to_identity(
-                alloc,
-                secure_transport_ctx->wrapped_allocator,
-                &cert_chain_cur,
-                &private_key_cur,
-                &secure_transport_ctx->certs,
-                options->keychain_path)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
-            goto cleanup_wrapped_allocator;
+        if (aws_is_use_secitem()) {
+            if (aws_secitem_import_cert_and_key(
+                    alloc,
+                    secure_transport_ctx->wrapped_allocator,
+                    &cert_chain_cur,
+                    &private_key_cur,
+                    &secure_transport_ctx->secitem_identity,
+                    options->secitem_options)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "static: failed to import certificate and private key with error %d.",
+                    aws_last_error());
+                goto cleanup_wrapped_allocator;
+            }
+        } else {
+            if (aws_import_public_and_private_keys_to_identity(
+                    alloc,
+                    secure_transport_ctx->wrapped_allocator,
+                    &cert_chain_cur,
+                    &private_key_cur,
+                    &secure_transport_ctx->certs,
+                    options->keychain_path)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS,
+                    "static: failed to import certificate and private key with error %d.",
+                    aws_last_error());
+                goto cleanup_wrapped_allocator;
+            }
         }
-#endif /* !AWS_USE_SECITEM */
-#if defined(AWS_USE_SECITEM)
-
-        if (aws_secitem_import_cert_and_key(
-                alloc,
-                secure_transport_ctx->wrapped_allocator,
-                &cert_chain_cur,
-                &private_key_cur,
-                &secure_transport_ctx->secitem_identity,
-                options->secitem_options)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
-            goto cleanup_wrapped_allocator;
-        }
-#endif /* AWS_USE_SECITEM */
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting it up now.");
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
         struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);
-#if !defined(AWS_USE_SECITEM)
-        if (aws_import_pkcs12_to_identity(
-                secure_transport_ctx->wrapped_allocator,
-                &pkcs12_blob_cur,
-                &password_cur,
-                &secure_transport_ctx->certs)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
-            goto cleanup_wrapped_allocator;
+        if (aws_is_use_secitem()) {
+            if (aws_secitem_import_pkcs12(
+                    secure_transport_ctx->wrapped_allocator,
+                    &pkcs12_blob_cur,
+                    &password_cur,
+                    &secure_transport_ctx->secitem_identity)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
+                goto cleanup_wrapped_allocator;
+            }
+        } else {
+            if (aws_import_pkcs12_to_identity(
+                    secure_transport_ctx->wrapped_allocator,
+                    &pkcs12_blob_cur,
+                    &password_cur,
+                    &secure_transport_ctx->certs)) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
+                goto cleanup_wrapped_allocator;
+            }
         }
-#endif /* !AWS_USE_SECITEM */
-#if defined(AWS_USE_SECITEM)
-        if (aws_secitem_import_pkcs12(
-                secure_transport_ctx->wrapped_allocator,
-                &pkcs12_blob_cur,
-                &password_cur,
-                &secure_transport_ctx->secitem_identity)) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
-            goto cleanup_wrapped_allocator;
-        }
-#endif /* AWS_USE_SECITEM */
     }
 
     if (aws_tls_options_buf_is_set(&options->ca_file)) {
