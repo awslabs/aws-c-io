@@ -1273,6 +1273,87 @@ struct connection_state_change_args {
     int error;
 };
 
+static void s_process_connection_state_changed_ready(struct nw_socket *nw_socket, nw_connection_t nw_connection) {
+    s_lock_base_socket(nw_socket);
+    struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
+    if (socket) {
+        nw_path_t path = nw_connection_copy_current_path(nw_connection);
+        nw_endpoint_t local_endpoint = nw_path_copy_effective_local_endpoint(path);
+        nw_release(path);
+        const char *hostname = nw_endpoint_get_hostname(local_endpoint);
+        uint16_t port = nw_endpoint_get_port(local_endpoint);
+        nw_release(local_endpoint);
+
+        if (hostname != NULL) {
+            size_t hostname_len = strlen(hostname);
+            size_t buffer_size = AWS_ARRAY_SIZE(socket->local_endpoint.address);
+            size_t to_copy = aws_min_size(hostname_len, buffer_size);
+            memcpy(socket->local_endpoint.address, hostname, to_copy);
+            socket->local_endpoint.port = port;
+        }
+
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: set local endpoint %s:%d",
+            (void *)socket,
+            socket->io_handle.data.handle,
+            socket->local_endpoint.address,
+            port);
+
+        /* Check and store protocol for connection */
+        if (nw_socket->tls_ctx) {
+            nw_protocol_metadata_t metadata =
+                nw_connection_copy_protocol_metadata(socket->io_handle.data.handle, nw_protocol_copy_tls_definition());
+            if (metadata != NULL) {
+                sec_protocol_metadata_t sec_metadata = (sec_protocol_metadata_t)metadata;
+
+                const char *negotiated_protocol = sec_protocol_metadata_get_negotiated_protocol(sec_metadata);
+                if (negotiated_protocol) {
+                    nw_socket->protocol_buf.allocator = nw_socket->allocator;
+                    size_t protocol_len = strlen(negotiated_protocol);
+                    nw_socket->protocol_buf.buffer = (uint8_t *)aws_mem_acquire(nw_socket->allocator, protocol_len + 1);
+                    nw_socket->protocol_buf.len = protocol_len;
+                    nw_socket->protocol_buf.capacity = protocol_len + 1;
+                    memcpy(nw_socket->protocol_buf.buffer, negotiated_protocol, protocol_len);
+                    nw_socket->protocol_buf.buffer[protocol_len] = '\0';
+
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_TLS,
+                        "id=%p handle=%p: ALPN protocol set to: '%s'",
+                        (void *)socket,
+                        socket->io_handle.data.handle,
+                        nw_socket->protocol_buf.buffer);
+                }
+                nw_release(metadata);
+            }
+        }
+    } else {
+        /*
+         * This happens when the aws_socket_clean_up() is called before the nw_connection_state_ready is
+         * returned. We still want to set the socket to write/read state and fire the connection succeed
+         * callback until we get the "nw_connection_state_cancelled" status.
+         */
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: connection succeed, however, the base socket has been cleaned up.",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection);
+    }
+    s_lock_socket_synced_data(nw_socket);
+    s_set_socket_state(nw_socket, socket, CONNECTED_WRITE | CONNECTED_READ);
+    s_unlock_socket_synced_data(nw_socket);
+    s_unlock_base_socket(nw_socket);
+
+    nw_socket->connection_setup = true;
+    // Cancel the connection timeout task
+    if (nw_socket->timeout_args) {
+        aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
+    }
+    aws_ref_count_acquire(&nw_socket->nw_socket_ref_count);
+    s_handle_on_connection_result(nw_socket, AWS_OP_SUCCESS);
+    aws_ref_count_release(&nw_socket->nw_socket_ref_count);
+}
+
 static void s_process_connection_state_changed_task(struct aws_task *task, void *args, enum aws_task_status status) {
     (void)status;
     (void)task;
@@ -1316,86 +1397,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                     (void *)nw_socket,
                     (void *)nw_socket->os_handle.nw_connection,
                     connection_args->error);
-                s_lock_base_socket(nw_socket);
-                struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
-                if (socket) {
-                    nw_path_t path = nw_connection_copy_current_path(nw_connection);
-                    nw_endpoint_t local_endpoint = nw_path_copy_effective_local_endpoint(path);
-                    nw_release(path);
-                    const char *hostname = nw_endpoint_get_hostname(local_endpoint);
-                    uint16_t port = nw_endpoint_get_port(local_endpoint);
-                    nw_release(local_endpoint);
-
-                    if (hostname != NULL) {
-                        size_t hostname_len = strlen(hostname);
-                        size_t buffer_size = AWS_ARRAY_SIZE(socket->local_endpoint.address);
-                        size_t to_copy = aws_min_size(hostname_len, buffer_size);
-                        memcpy(socket->local_endpoint.address, hostname, to_copy);
-                        socket->local_endpoint.port = port;
-                    }
-
-                    AWS_LOGF_TRACE(
-                        AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: set local endpoint %s:%d",
-                        (void *)socket,
-                        socket->io_handle.data.handle,
-                        socket->local_endpoint.address,
-                        port);
-
-                    /* Check and store protocol for connection */
-                    if (nw_socket->tls_ctx) {
-                        nw_protocol_metadata_t metadata = nw_connection_copy_protocol_metadata(
-                            socket->io_handle.data.handle, nw_protocol_copy_tls_definition());
-                        if (metadata != NULL) {
-                            sec_protocol_metadata_t sec_metadata = (sec_protocol_metadata_t)metadata;
-
-                            const char *negotiated_protocol =
-                                sec_protocol_metadata_get_negotiated_protocol(sec_metadata);
-                            if (negotiated_protocol) {
-                                nw_socket->protocol_buf.allocator = nw_socket->allocator;
-                                size_t protocol_len = strlen(negotiated_protocol);
-                                nw_socket->protocol_buf.buffer =
-                                    (uint8_t *)aws_mem_acquire(nw_socket->allocator, protocol_len + 1);
-                                nw_socket->protocol_buf.len = protocol_len;
-                                nw_socket->protocol_buf.capacity = protocol_len + 1;
-                                memcpy(nw_socket->protocol_buf.buffer, negotiated_protocol, protocol_len);
-                                nw_socket->protocol_buf.buffer[protocol_len] = '\0';
-
-                                AWS_LOGF_DEBUG(
-                                    AWS_LS_IO_TLS,
-                                    "id=%p handle=%p: ALPN protocol set to: '%s'",
-                                    (void *)socket,
-                                    socket->io_handle.data.handle,
-                                    nw_socket->protocol_buf.buffer);
-                            }
-                            nw_release(metadata);
-                        }
-                    }
-                } else {
-                    /*
-                     * This happens when the aws_socket_clean_up() is called before the nw_connection_state_ready is
-                     * returned. We still want to set the socket to write/read state and fire the connection succeed
-                     * callback until we get the "nw_connection_state_cancelled" status.
-                     */
-                    AWS_LOGF_TRACE(
-                        AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: connection succeed, however, the base socket has been cleaned up.",
-                        (void *)nw_socket,
-                        (void *)nw_socket->os_handle.nw_connection);
-                }
-                s_lock_socket_synced_data(nw_socket);
-                s_set_socket_state(nw_socket, socket, CONNECTED_WRITE | CONNECTED_READ);
-                s_unlock_socket_synced_data(nw_socket);
-                s_unlock_base_socket(nw_socket);
-
-                nw_socket->connection_setup = true;
-                // Cancel the connection timeout task
-                if (nw_socket->timeout_args) {
-                    aws_event_loop_cancel_task(nw_socket->event_loop, &nw_socket->timeout_args->task);
-                }
-                aws_ref_count_acquire(&nw_socket->nw_socket_ref_count);
-                s_handle_on_connection_result(nw_socket, AWS_OP_SUCCESS);
-                aws_ref_count_release(&nw_socket->nw_socket_ref_count);
+                s_process_connection_state_changed_ready(nw_socket, nw_connection);
             } break;
             case nw_connection_state_waiting:
             case nw_connection_state_preparing:
