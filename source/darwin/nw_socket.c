@@ -41,7 +41,7 @@ static const char *s_aws_sec_trust_result_type_to_string(SecTrustResultType trus
     }
 }
 
-static int s_determine_nw_socket_error(int error) {
+static int s_determine_socket_error(int error) {
     switch (error) {
         /* SSL/TLS Errors */
         case errSSLUnknownRootCert:
@@ -78,13 +78,6 @@ static int s_determine_nw_socket_error(int error) {
         case errSSLPeerProtocolVersion:
             return AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE;
 
-        default:
-            return AWS_IO_NW_UNKNOWN;
-    }
-}
-
-static int s_determine_socket_error(int error) {
-    switch (error) {
         /* POSIX Errors */
         case ECONNREFUSED:
             return AWS_IO_SOCKET_CONNECTION_REFUSED;
@@ -578,7 +571,7 @@ static void s_tls_verification_block(
     } else {
         char description_buffer[256];
         s_get_error_description(error, description_buffer, sizeof(description_buffer));
-        int crt_error_code = s_determine_nw_socket_error(CFErrorGetCode(error));
+        int crt_error_code = s_determine_socket_error(CFErrorGetCode(error));
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
             "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %d CF error "
@@ -1296,17 +1289,15 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
      * and cleanup.
      */
     if (status != AWS_TASK_STATUS_CANCELED) {
-
-        AWS_LOGF_INFO(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: Apple network framework socket connection state changed to %d, nw error code : %d",
-            (void *)nw_socket,
-            (void *)nw_socket->os_handle.nw_connection,
-            connection_args->state,
-            connection_args->error);
-
         switch (state) {
             case nw_connection_state_cancelled: {
+                AWS_LOGF_INFO(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: Apple network framework socket connection state changed to cancelled, nw error "
+                    "code : %d",
+                    (void *)nw_socket,
+                    (void *)nw_socket->os_handle.nw_connection,
+                    connection_args->error);
                 s_lock_base_socket(nw_socket);
                 struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
                 s_unlock_base_socket(nw_socket);
@@ -1318,6 +1309,13 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                 s_socket_release_internal_ref(nw_socket);
             } break;
             case nw_connection_state_ready: {
+                AWS_LOGF_INFO(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: Apple network framework socket connection state changed to ready, nw error "
+                    "code : %d",
+                    (void *)nw_socket,
+                    (void *)nw_socket->os_handle.nw_connection,
+                    connection_args->error);
                 s_lock_base_socket(nw_socket);
                 struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
                 if (socket) {
@@ -1451,7 +1449,7 @@ static void s_handle_connection_state_changed_fn(
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_connection_state_changed_fn start...", (void *)nw_socket);
 
     int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-    int crt_error_code = nw_error_code ? s_determine_nw_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: nw_connection_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
@@ -2226,7 +2224,7 @@ static void s_handle_listener_state_changed_fn(
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_listener_state_changed_fn start...", (void *)nw_socket);
 
     int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-    int crt_error_code = nw_error_code ? s_determine_nw_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: nw_listener_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
@@ -2437,7 +2435,7 @@ static void s_handle_nw_connection_receive_completion_fn(
 
     bool complete = is_complete;
     int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-    int crt_error_code = nw_error_code ? s_determine_nw_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: nw_connection_receive invoked with nw_error_code %d, CRT error code %d",
@@ -2680,7 +2678,7 @@ static void s_handle_nw_connection_send_completion_fn(
     aws_socket_on_write_completed_fn *written_fn,
     void *user_data) {
     int nw_error_code = error ? nw_error_get_error_code(error) : 0;
-    int crt_error_code = nw_error_code ? s_determine_nw_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
         "id=%p handle=%p: nw_connection_send invoked with nw_error_code %d, maps to CRT "
