@@ -285,7 +285,26 @@ done:
     return result;
 }
 
-#endif /* !AWS_OS_IOS */
+#else /* !AWS_OS_IOS */
+
+int aws_import_public_and_private_keys_to_identity(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
+    CFArrayRef *identity,
+    const struct aws_string *keychain_path) {
+    (void)alloc;
+    (void)cf_alloc;
+    (void)public_cert_chain;
+    (void)private_key;
+    (void)identity;
+    (void)keychain_path;
+    /* This should not be reached when using iOS */
+    AWS_FATAL_ASSERT(false);
+}
+
+#endif
 
 int aws_import_pkcs12_to_identity(
     CFAllocatorRef cf_alloc,

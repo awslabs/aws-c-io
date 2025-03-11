@@ -2376,7 +2376,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
 
 static int s_socket_shutdown_dir_fn(struct aws_socket *socket, enum aws_channel_direction dir) {
     (void)dir;
-    AWS_FATAL_ASSERT(true);
+    AWS_ASSERT(false);
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKET, "id=%p: shutdown by direction is not support for Apple network framework.", (void *)socket);
     return aws_raise_error(AWS_IO_SOCKET_INVALID_OPERATION_FOR_TYPE);
