@@ -122,6 +122,9 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKET_CONNECT_ABORTED,
         "Incoming connection was aborted."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKET_MISSING_EVENT_LOOP,
+        "Socket is missing its event loop."),
     AWS_DEFINE_ERROR_INFO_IO (
         AWS_IO_DNS_QUERY_FAILED,
         "A query to dns failed to resolve."),

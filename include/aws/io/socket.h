@@ -67,9 +67,6 @@ struct aws_socket_options {
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
 
-    aws_socket_on_shutdown_complete_fn *on_shutdown_complete;
-    void *shutdown_user_data;
-
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API
      * (Optional)
@@ -85,7 +82,6 @@ struct aws_socket_options {
 
 struct aws_socket;
 struct aws_tls_connection_context;
-struct aws_tls_connection_options;
 
 /**
  * Called in client mode when an outgoing connection has succeeded or an error has occurred.
@@ -180,14 +176,26 @@ struct aws_socket {
     void *impl;
 };
 
+struct aws_socket_connect_options {
+    const struct aws_socket_endpoint *remote_endpoint;
+    struct aws_event_loop *event_loop;
+    aws_socket_on_connection_result_fn *on_connection_result;
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+};
+
 struct aws_socket_listener_options {
     aws_socket_on_accept_result_fn *on_accept_result;
     void *on_accept_result_user_data;
 
     // This callback is invoked when the listener starts accepting incoming connections.
-    // It is only triggered in asynchronous listener APIs while using nw_socket.
-    aws_socket_on_accept_started_fn *on_accept_start_result;
+    // If the callback set, the socket must not be released before the callback invoked.
+    aws_socket_on_accept_started_fn *on_accept_start;
     void *on_accept_start_user_data;
+};
+
+struct aws_socket_bind_options {
+    const struct aws_socket_endpoint *local_endpoint;
+    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
 };
 
 struct aws_byte_buf;
@@ -224,14 +232,10 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * on_connection_result in the event-loop's thread. Upon completion, the socket will already be assigned
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
- *
  */
 AWS_IO_API int aws_socket_connect(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
     void *user_data);
 
 /**
@@ -241,8 +245,7 @@ AWS_IO_API int aws_socket_connect(
  */
 AWS_IO_API int aws_socket_bind(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *local_endpoint,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_bind_options *socket_bind_options,
     void *user_data);
 
 /**
@@ -295,8 +298,7 @@ AWS_IO_API int aws_socket_close(struct aws_socket *socket);
 AWS_IO_API int aws_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir);
 
 /**
- * Sets new socket options on the underlying socket. This is mainly useful in context of accepting a new connection via:
- * `on_incoming_connection()`. options is copied.
+ * Sets new socket options on the underlying socket.
  */
 AWS_IO_API int aws_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options);
 

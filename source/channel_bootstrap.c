@@ -488,18 +488,18 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         }
 
         if (connection_args->channel_data.use_tls) {
-#if defined(AWS_USE_SECITEM)
-            /*
-             * When AWS_USE_SECITEM is defined, we use Apple Network Framework’s built-in TLS handling.
-             * In this mode, the network parameters (along with their options and verification block) manage both
-             * the TCP and TLS handshakes together, eliminating the need for a separate TLS configuration in the
-             * channel. This code is reached only when a TLS connection has been successfully established. At that
-             * point, we signal a successful TLS handshake, which also makes the server name and protocol available (if
-             * provided).
-             */
-            s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
-            return;
-#endif /* AWS_USE_SECITEM */
+            if (aws_is_use_secitem()) {
+                /*
+                 * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
+                 * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
+                 * together, eliminating the need for a separate TLS configuration in the channel. This code is reached
+                 * only when a TLS connection has been successfully established. At that point, we signal a successful
+                 * TLS handshake, which also makes the server name and protocol available (if provided).
+                 */
+                s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
+                return;
+            }
+
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
             if (s_setup_client_tls(connection_args, channel)) {
@@ -587,9 +587,11 @@ static void s_socket_shutdown_complete_setup_connection_args_fn(void *user_data)
     struct socket_shutdown_setup_channel_args *shutdown_args = user_data;
     struct client_connection_args *connection_args = shutdown_args->connection_args;
 
-    if(shutdown_args->error_code || !shutdown_args->release_connection_args){
+    // The failed count should be set before validation
+    if (shutdown_args->error_code || !connection_args->channel_data.channel) {
         connection_args->failed_count++;
     }
+
     /* if this is the last attempted connection and it failed, notify the user */
     if (connection_args->failed_count == connection_args->addresses_count) {
         AWS_LOGF_ERROR(
@@ -623,50 +625,56 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         error_code);
 
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
+    if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
+        struct aws_host_address host_address;
+        host_address.host = connection_args->host_name;
+        host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
+        host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
+                                       ? AWS_ADDRESS_RECORD_TYPE_AAAA
+                                       : AWS_ADDRESS_RECORD_TYPE_A;
+
+        if (host_address.address) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: recording bad address %s.",
+                (void *)connection_args->bootstrap,
+                socket->remote_endpoint.address);
+            aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
+            aws_string_destroy((void *)host_address.address);
+        }
+    }
 
     if (error_code || connection_args->connection_chosen) {
-        if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
-            struct aws_host_address host_address;
-            host_address.host = connection_args->host_name;
-            host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
-            host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
-                                           ? AWS_ADDRESS_RECORD_TYPE_AAAA
-                                           : AWS_ADDRESS_RECORD_TYPE_A;
-
-            if (host_address.address) {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                    "id=%p: recording bad address %s.",
-                    (void *)connection_args->bootstrap,
-                    socket->remote_endpoint.address);
-                aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
-                aws_string_destroy((void *)host_address.address);
-            }
-        }
-
         if (error_code) {
-            AWS_LOGF_TRACE(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
                 "id=%p: releasing socket %p due to error_code %d.",
                 (void *)connection_args->bootstrap,
                 (void *)socket,
                 error_code);
-#if defined(AWS_USE_SECITEM)
-            /*
-             * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful TCP
-             * connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a TLS
-             * related failure we store it to properly handle TLS failure rather than treating it as a TCP connection
-             * failure. We also assign the socket and flip the connection_chosen to true as a TCP connection must
-             * sucessfully be established before a TLS failure can occur.
-             */
-            if (aws_tls_error_code_check(error_code)) {
-                connection_args->tls_error_code = error_code;
-                connection_args->connection_chosen = true;
-                connection_args->channel_data.socket = socket;
+            if (aws_is_use_secitem()) {
+                /*
+                 * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful
+                 * TCP connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a
+                 * TLS related failure we store it to properly handle TLS failure rather than treating it as a TCP
+                 * connection failure. We also assign the socket and flip the connection_chosen to true as a TCP
+                 * connection must sucessfully be established before a TLS failure can occur.
+                 */
+                if (aws_error_code_is_tls(error_code)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                        "id=%p: Storing socket %p error_code %d as this socket's TCP connection has succeeded but was "
+                        "followed up by a TLS neotiation error.",
+                        (void *)connection_args->bootstrap,
+                        (void *)socket,
+                        error_code);
+                    connection_args->tls_error_code = error_code;
+                    connection_args->connection_chosen = true;
+                    connection_args->channel_data.socket = socket;
+                }
             }
-#endif /* AWS_USE_SECITEM */
         } else {
-            AWS_LOGF_TRACE(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
                 "id=%p: releasing socket %p because we already have a successful connection.",
                 (void *)connection_args->bootstrap,
@@ -720,7 +728,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
             false)
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
-
     } else {
         s_connection_args_creation_callback(connection_args, connection_args->channel_data.channel);
     }
@@ -810,14 +817,13 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto socket_init_failed;
     }
 
-    if (aws_socket_connect(
-            outgoing_socket,
-            &task_data->endpoint,
-            task_data->connect_loop,
-            s_on_client_connection_established,
-            s_retrieve_client_tls_options,
-            task_data->args)) {
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &task_data->endpoint,
+        .event_loop = task_data->connect_loop,
+        .on_connection_result = s_on_client_connection_established,
+        .retrieve_tls_options = s_retrieve_client_tls_options};
 
+    if (aws_socket_connect(outgoing_socket, &connect_options, task_data->args)) {
         goto socket_connect_failed;
     }
 
@@ -1125,13 +1131,14 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         struct aws_event_loop *connect_loop = s_get_connection_event_loop(client_connection_args);
 
         s_client_connection_args_acquire(client_connection_args);
-        if (aws_socket_connect(
-                outgoing_socket,
-                &endpoint,
-                connect_loop,
-                s_on_client_connection_established,
-                s_retrieve_client_tls_options,
-                client_connection_args)) {
+
+        struct aws_socket_connect_options connect_options = {
+            .remote_endpoint = &endpoint,
+            .event_loop = connect_loop,
+            .on_connection_result = s_on_client_connection_established,
+            .retrieve_tls_options = s_retrieve_client_tls_options};
+
+        if (aws_socket_connect(outgoing_socket, &connect_options, client_connection_args)) {
 
             aws_socket_set_cleanup_complete_callback(
                 outgoing_socket, s_socket_shutdown_complete_release_client_connection_fn, client_connection_args);
@@ -1219,13 +1226,13 @@ struct server_connection_args {
     void *user_data;
     bool use_tls;
     bool enable_read_back_pressure;
-    struct aws_event_loop *requested_event_loop;
     struct aws_ref_count ref_count;
 };
 
-/* This function is called when TLS options are required during a server-side socket bind operation.
- * It is only used with Apple Network Framework's SecItem implementation, where the socket creation parameters
- * must include TLS options.
+/*
+ * This function is called when TLS options are required during a server-side socket bind operation.
+ * It is only used with Apple Network Framework's SecItem implementation when TLS is being used. The event_loop
+ * pulled from the connection_args event_loop_group will not have its refcount increased in this use.
  */
 static void s_retrieve_server_tls_options(struct aws_tls_connection_context *context, void *user_data) {
     struct server_connection_args *connection_args = user_data;
@@ -1233,10 +1240,7 @@ static void s_retrieve_server_tls_options(struct aws_tls_connection_context *con
     context->alpn_list = connection_args->tls_options.alpn_list;
     context->tls_ctx = connection_args->tls_options.ctx;
     // verify block in an Apple Network TLS negotiation requires a dispatch loop contained within an event loop.
-    context->event_loop = connection_args->requested_event_loop;
-    if (context->event_loop == NULL) {
-        context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
-    }
+    context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
 }
 
 struct server_channel_data {
@@ -1560,19 +1564,17 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
     if (channel_data->server_connection_args->use_tls) {
-#if defined(AWS_USE_SECITEM)
-        /*
-         * When AWS_USE_SECITEM is defined, we use Apple Network Framework’s built-in TLS handling.
-         * In this mode, the network parameters (along with their options and verification block) manage both
-         * the TCP and TLS handshakes together, eliminating the need for a separate TLS configuration in the
-         * channel. This code is reached only when a TLS connection has been successfully established. At that
-         * point, we signal a successful TLS handshake, which also makes the server name and protocol available (if
-         * provided).
-         */
-        s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
-        return;
-#endif /* AWS_USE_SECITEM */
-
+        if (aws_is_use_secitem()) {
+            /*
+             * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
+             * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
+             * together, eliminating the need for a separate TLS configuration in the channel. This code is reached only
+             * when a TLS connection has been successfully established. At that point, we signal a successful TLS
+             * handshake, which also makes the server name and protocol available (if provided).
+             */
+            s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
+            return;
+        }
         /* incoming callback will be invoked upon the negotiation completion so don't do it
          * here. */
         if (s_setup_server_tls(channel_data, channel)) {
@@ -1792,153 +1794,6 @@ static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_t
     aws_socket_clean_up(&server_connection_args->listener);
 }
 
-struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
-    AWS_PRECONDITION(bootstrap_options);
-    AWS_PRECONDITION(bootstrap_options->bootstrap);
-    AWS_PRECONDITION(bootstrap_options->incoming_callback);
-    AWS_PRECONDITION(bootstrap_options->shutdown_callback);
-
-    if (bootstrap_options->requested_event_loop != NULL) {
-        /* If we're asking for a specific event loop, verify it belongs to the bootstrap's event loop group */
-        if (!(s_does_event_loop_belong_to_event_loop_group(
-                bootstrap_options->requested_event_loop, bootstrap_options->bootstrap->event_loop_group))) {
-            aws_raise_error(AWS_ERROR_IO_PINNED_EVENT_LOOP_MISMATCH);
-            return NULL;
-        }
-    }
-
-    struct server_connection_args *server_connection_args =
-        aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
-    if (!server_connection_args) {
-        return NULL;
-    }
-
-    AWS_LOGF_INFO(
-        AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: attempting to initialize a new "
-        "server socket listener for %s:%u",
-        (void *)bootstrap_options->bootstrap,
-        bootstrap_options->host_name,
-        bootstrap_options->port);
-
-    aws_ref_count_init(
-        &server_connection_args->ref_count,
-        server_connection_args,
-        (aws_simple_completion_callback *)s_server_connection_args_destroy);
-    server_connection_args->user_data = bootstrap_options->user_data;
-    server_connection_args->bootstrap = aws_server_bootstrap_acquire(bootstrap_options->bootstrap);
-    server_connection_args->shutdown_callback = bootstrap_options->shutdown_callback;
-    server_connection_args->incoming_callback = bootstrap_options->incoming_callback;
-    server_connection_args->destroy_callback = bootstrap_options->destroy_callback;
-    server_connection_args->on_protocol_negotiated = bootstrap_options->bootstrap->on_protocol_negotiated;
-    server_connection_args->enable_read_back_pressure = bootstrap_options->enable_read_back_pressure;
-    server_connection_args->retrieve_tls_options = s_retrieve_server_tls_options;
-    server_connection_args->requested_event_loop = bootstrap_options->requested_event_loop;
-
-    aws_task_init(
-        &server_connection_args->listener_destroy_task,
-        s_listener_destroy_task,
-        server_connection_args,
-        "listener socket destroy");
-
-    if (bootstrap_options->tls_options) {
-        AWS_LOGF_INFO(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: using tls on listener", (void *)bootstrap_options->tls_options);
-        if (aws_tls_connection_options_copy(&server_connection_args->tls_options, bootstrap_options->tls_options)) {
-            goto cleanup_server_connection_args;
-        }
-
-        server_connection_args->use_tls = true;
-
-        server_connection_args->tls_user_data = bootstrap_options->tls_options->user_data;
-
-        /* in order to honor any callbacks a user may have installed on their tls_connection_options,
-         * we need to wrap them if they were set.*/
-        if (bootstrap_options->bootstrap->on_protocol_negotiated) {
-            server_connection_args->tls_options.advertise_alpn_message = true;
-        }
-
-        if (bootstrap_options->tls_options->on_data_read) {
-            server_connection_args->user_on_data_read = bootstrap_options->tls_options->on_data_read;
-            server_connection_args->tls_options.on_data_read = s_tls_server_on_data_read;
-        }
-
-        if (bootstrap_options->tls_options->on_error) {
-            server_connection_args->user_on_error = bootstrap_options->tls_options->on_error;
-            server_connection_args->tls_options.on_error = s_tls_server_on_error;
-        }
-
-        if (bootstrap_options->tls_options->on_negotiation_result) {
-            server_connection_args->user_on_negotiation_result = bootstrap_options->tls_options->on_negotiation_result;
-        }
-
-        server_connection_args->tls_options.on_negotiation_result = s_tls_server_on_negotiation_result;
-        server_connection_args->tls_options.user_data = server_connection_args;
-    }
-
-    struct aws_event_loop *connection_loop =
-        aws_event_loop_group_get_next_loop(bootstrap_options->bootstrap->event_loop_group);
-
-    if (aws_socket_init(
-            &server_connection_args->listener,
-            bootstrap_options->bootstrap->allocator,
-            bootstrap_options->socket_options)) {
-        goto cleanup_server_connection_args;
-    }
-
-    struct aws_socket_endpoint endpoint;
-    AWS_ZERO_STRUCT(endpoint);
-    size_t host_name_len = 0;
-    if (aws_secure_strlen(bootstrap_options->host_name, sizeof(endpoint.address), &host_name_len)) {
-        goto cleanup_server_connection_args;
-    }
-
-    memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
-    endpoint.port = bootstrap_options->port;
-
-    if (aws_socket_bind(
-            &server_connection_args->listener, &endpoint, s_retrieve_server_tls_options, server_connection_args)) {
-        goto cleanup_listener;
-    }
-
-    if (aws_socket_listen(&server_connection_args->listener, 1024)) {
-        goto cleanup_listener;
-    }
-
-    struct aws_socket_listener_options options = {
-        .on_accept_result = s_on_server_connection_result,
-        .on_accept_result_user_data = server_connection_args,
-        .on_accept_start_result = NULL,
-        .on_accept_start_user_data = NULL,
-    };
-
-    if (aws_socket_start_accept(&server_connection_args->listener, connection_loop, options)) {
-        goto cleanup_listener;
-    }
-
-    return &server_connection_args->listener;
-
-cleanup_listener:
-
-    ; // This line just used to avoid expression error after the label
-
-    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
-        bootstrap_options->bootstrap->allocator,
-        &server_connection_args->listener,
-        socket_shutdown_release_server_connection_args,
-        s_socket_shutdown_complete_release_server_connection_fn,
-        server_connection_args)
-
-    aws_socket_clean_up(&server_connection_args->listener);
-    return NULL;
-
-cleanup_server_connection_args:
-    s_server_connection_args_release(server_connection_args);
-
-    return NULL;
-}
-
 /* Called when a listener connection attempt task completes.
  */
 static void s_on_listener_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
@@ -1973,13 +1828,16 @@ static void s_on_listener_connection_established(struct aws_socket *socket, int 
     return;
 }
 
-struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
-    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
+struct aws_socket *s_server_bootstrap_new_socket_listener(
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options,
+    bool async_setup) {
     AWS_PRECONDITION(bootstrap_options);
     AWS_PRECONDITION(bootstrap_options->bootstrap);
     AWS_PRECONDITION(bootstrap_options->incoming_callback);
     AWS_PRECONDITION(bootstrap_options->shutdown_callback);
-    AWS_PRECONDITION(bootstrap_options->setup_callback);
+    if (async_setup) {
+        AWS_PRECONDITION(bootstrap_options->setup_callback);
+    }
 
     struct server_connection_args *server_connection_args =
         aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
@@ -2069,8 +1927,12 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
     memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
     endpoint.port = bootstrap_options->port;
 
-    if (aws_socket_bind(
-            &server_connection_args->listener, &endpoint, s_retrieve_server_tls_options, server_connection_args)) {
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint,
+        .retrieve_tls_options = s_retrieve_server_tls_options,
+    };
+
+    if (aws_socket_bind(&server_connection_args->listener, &socket_bind_options, server_connection_args)) {
         goto cleanup_listener;
     }
 
@@ -2078,18 +1940,26 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener_async(
         goto cleanup_listener;
     }
 
-    // Acquire for listener establish callbacks, should be released in `s_on_listener_connection_established`
-    s_server_connection_args_acquire(server_connection_args);
-
     struct aws_socket_listener_options options = {
         .on_accept_result = s_on_server_connection_result,
         .on_accept_result_user_data = server_connection_args,
-        .on_accept_start_result = s_on_listener_connection_established,
-        .on_accept_start_user_data = server_connection_args,
+        .on_accept_start = NULL,
+        .on_accept_start_user_data = NULL,
     };
 
+    if (async_setup) {
+        // If we use an async socket, acquire the connection args for listener establish callbacks, if
+        // aws_socket_start_accept succeed, the args should be released in `s_on_listener_connection_established`
+        s_server_connection_args_acquire(server_connection_args);
+        options.on_accept_start = s_on_listener_connection_established;
+        options.on_accept_start_user_data = server_connection_args;
+    }
+
     if (aws_socket_start_accept(&server_connection_args->listener, connection_loop, options)) {
-        s_server_connection_args_release(server_connection_args);
+        if (async_setup) {
+            // release the args we acquired above
+            s_server_connection_args_release(server_connection_args);
+        }
         goto cleanup_listener;
     }
 
@@ -2113,6 +1983,11 @@ cleanup_server_connection_args:
     s_server_connection_args_release(server_connection_args);
 
     return NULL;
+}
+
+struct aws_socket *aws_server_bootstrap_new_socket_listener(
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
+    return s_server_bootstrap_new_socket_listener(bootstrap_options, bootstrap_options->setup_callback);
 }
 
 void aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {

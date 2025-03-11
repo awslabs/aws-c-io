@@ -43,6 +43,9 @@ enum aws_tls_cipher_pref {
      */
     AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10 = 7,
 
+    /* Recommended default policy with post-quantum algorithm support. This policy may change over time. */
+    AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT = 8,
+
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
 };
 
@@ -89,8 +92,8 @@ struct aws_tls_ctx {
  * Invoked upon completion of the TLS handshake. If successful error_code will be AWS_OP_SUCCESS, otherwise
  * the negotiation failed and immediately after this function is invoked, the channel will be shutting down.
  *
- * NOTE: When using SecItem, due to TLS being handled by the Apple Network Framework connection contained in the
- * socket, the handler and slot arguments will be pointers to the socket slot and socket handler.
+ * NOTE: When using SecItem the handler and slot arguments will be pointers to the socket slot and socket handler. This
+ * is due to TLS negotiaion being handled by the Apple Network Framework connection in the socket slot/handler.
  */
 typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,
@@ -241,7 +244,7 @@ struct aws_tls_ctx_options {
      * On iOS/tvOS the available settings when adding items to the keychain using
      * SecItem are contained within this struct. This is NOT supported on MacOS.
      */
-    struct aws_secitem_options *secitem_options;
+    struct aws_secitem_options secitem_options;
 
     /**
      * On MacOS you can also use a custom keychain instead of
@@ -947,7 +950,7 @@ const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type opera
 /**
  * Returns true if error_code is a TLS Negotiation related error.
  */
-AWS_IO_API bool aws_tls_error_code_check(int error_code);
+AWS_IO_API bool aws_error_code_is_tls(int error_code);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL

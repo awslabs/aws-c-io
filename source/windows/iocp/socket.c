@@ -144,15 +144,11 @@ static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpo
 static void s_socket_clean_up(struct aws_socket *socket);
 static int s_socket_connect(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
     void *user_data);
 static int s_socket_bind(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *local_endpoint,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_bind_options *socket_bind_options,
     void *user_data);
 static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
@@ -520,12 +516,13 @@ static void s_socket_clean_up(struct aws_socket *socket) {
 
 static int s_socket_connect(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_connect_options *socket_connect_options,
     void *user_data) {
-    (void)retrieve_tls_options;
+
+    const struct aws_socket_endpoint *remote_endpoint = socket_connect_options->remote_endpoint;
+    struct aws_event_loop *event_loop = socket_connect_options->event_loop;
+    aws_socket_on_connection_result_fn *on_connection_result = socket_connect_options->on_connection_result;
+
     struct iocp_socket *socket_impl = socket->impl;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
@@ -550,10 +547,9 @@ static int s_socket_connect(
 
 static int s_socket_bind(
     struct aws_socket *socket,
-    const struct aws_socket_endpoint *local_endpoint,
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options,
+    struct aws_socket_bind_options *socket_bind_options,
     void *user_data) {
-    (void)retrieve_tls_options;
+    const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;
     (void)user_data;
     if (socket->state != INIT) {
         socket->state = ERRORED;
@@ -634,13 +630,6 @@ static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
     struct aws_socket_listener_options options) {
-    if (options.on_accept_start_result || options.on_accept_start_user_data) {
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: the iocp socket does not support on_accept_start_result callback. Ignore the options.",
-            (void *)socket,
-            (void *)socket->io_handle.data.handle);
-    }
     struct iocp_socket *socket_impl = socket->impl;
     return socket_impl->winsock_vtable->start_accept(socket, accept_loop, options);
 }
@@ -2066,6 +2055,49 @@ static void s_tcp_accept_event(
     }
 }
 
+struct on_start_accept_result_args {
+    struct aws_task task;
+    int error;
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+    aws_socket_on_accept_started_fn *on_accept_start;
+    void *on_accept_start_user_data;
+};
+
+static void s_process_invoke_on_accept_start(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)task;
+    struct on_start_accept_result_args *on_accept_args = args;
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_socket *socket = on_accept_args->socket;
+
+        if (on_accept_args->on_accept_start) {
+            // socket should not be cleaned up until on_accept_result callback is invoked.
+            AWS_FATAL_ASSERT(socket);
+            on_accept_args->on_accept_start(socket, on_accept_args->error, on_accept_args->on_accept_start_user_data);
+        }
+    }
+    aws_mem_release(on_accept_args->allocator, args);
+}
+
+static void s_invoke_on_accept_start(
+    struct aws_allocator *allocator,
+    struct aws_event_loop *loop,
+    struct aws_socket *socket,
+    int error,
+    aws_socket_on_accept_started_fn *on_accept_start,
+    void *on_accept_start_user_data) {
+    struct on_start_accept_result_args *args = aws_mem_calloc(allocator, 1, sizeof(struct on_start_accept_result_args));
+
+    args->allocator = allocator;
+    args->socket = socket;
+    args->error = error;
+    args->on_accept_start = on_accept_start;
+    args->on_accept_start_user_data = on_accept_start_user_data;
+
+    aws_task_init(&args->task, s_process_invoke_on_accept_start, args, "SocketOnAcceptStartResultTask");
+    aws_event_loop_schedule_task_now(loop, &args->task);
+}
+
 static int s_tcp_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
@@ -2113,6 +2145,13 @@ static int s_tcp_start_accept(
     int err = s_socket_setup_accept(socket, el_to_use);
 
     if (!err || aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
+        s_invoke_on_accept_start(
+            socket->allocator,
+            accept_loop,
+            socket,
+            AWS_OP_SUCCESS,
+            options.on_accept_start,
+            options.on_accept_start_user_data);
         return AWS_OP_SUCCESS;
     }
 
@@ -2312,6 +2351,14 @@ static int s_local_start_accept(
             aws_event_loop_schedule_task_now(socket->event_loop, &socket_impl->read_io_data->sequential_task_storage);
         }
     }
+
+    s_invoke_on_accept_start(
+        socket->allocator,
+        accept_loop,
+        socket,
+        AWS_OP_SUCCESS,
+        options.on_accept_start,
+        options.on_accept_start_user_data);
 
     return AWS_OP_SUCCESS;
 }
