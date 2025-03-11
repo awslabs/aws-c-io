@@ -490,8 +490,8 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
      * are not zero. */
     if (options->keepalive && options->keep_alive_interval_sec != 0 && options->keep_alive_timeout_sec != 0) {
         nw_tcp_options_set_enable_keepalive(tcp_options, options->keepalive);
-        nw_tcp_options_set_keepalive_idle_time(tcp_options, options->keep_alive_timeout_sec);
-        nw_tcp_options_set_keepalive_interval(tcp_options, options->keep_alive_interval_sec);
+        nw_tcp_options_set_keepalive_idle_time(tcp_options, options->keep_alive_interval_sec);
+        nw_tcp_options_set_keepalive_interval(tcp_options, options->keep_alive_timeout_sec);
     }
 
     if (options->keep_alive_max_failed_probes) {
