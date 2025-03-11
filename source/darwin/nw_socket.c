@@ -1565,15 +1565,17 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
         // other process will touch the socket state.
         s_set_socket_state(new_nw_socket, new_socket, CONNECTED_READ | CONNECTED_WRITE);
 
+        // this internal ref will be released when the connection canceled ( connection state changed to
+        // nw_connection_state_cancelled)
+        s_socket_acquire_internal_ref(new_nw_socket);
+
         nw_connection_set_state_changed_handler(
             new_socket->io_handle.data.handle, ^(nw_connection_state_t state, nw_error_t error) {
               s_handle_connection_state_changed_fn(
                   new_socket, new_nw_socket, new_nw_socket->os_handle.nw_connection, state, error);
             });
 
-        // this internal ref will be released when the connection canceled ( connection state changed to
-        // nw_connection_state_cancelled)
-        s_socket_acquire_internal_ref(new_nw_socket);
+
 
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
