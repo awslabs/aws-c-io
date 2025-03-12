@@ -1994,7 +1994,7 @@ void aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *b
     struct server_connection_args *server_connection_args =
         AWS_CONTAINER_OF(listener, struct server_connection_args, listener);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: releasing bootstrap reference", (void *)bootstrap);
+    AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: start destroying bootstrap socket listener", (void *)bootstrap);
     aws_event_loop_schedule_task_now(listener->event_loop, &server_connection_args->listener_destroy_task);
 }
 
