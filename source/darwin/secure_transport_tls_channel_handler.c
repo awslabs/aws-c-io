@@ -1140,11 +1140,12 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
             }
         }
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting it up now.");
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
         struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);
         if (aws_is_use_secitem()) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting up for secitem now.");
             if (aws_secitem_import_pkcs12(
                     secure_transport_ctx->wrapped_allocator,
                     &pkcs12_blob_cur,
@@ -1155,6 +1156,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                 goto cleanup_wrapped_allocator;
             }
         } else {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting up for secKeychain now.");
             if (aws_import_pkcs12_to_identity(
                     secure_transport_ctx->wrapped_allocator,
                     &pkcs12_blob_cur,
