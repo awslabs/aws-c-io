@@ -1359,7 +1359,7 @@ static void s_process_connection_state_changed_ready(struct nw_socket *nw_socket
             (void *)nw_socket->os_handle.nw_connection);
     }
     s_lock_socket_synced_data(nw_socket);
-    s_set_socket_state(nw_socket, socket, CONNECTED_WRITE | CONNECTED_READ);
+    s_set_socket_state(nw_socket, CONNECTED_WRITE | CONNECTED_READ);
     s_unlock_socket_synced_data(nw_socket);
     s_unlock_base_socket(nw_socket);
 
@@ -1403,7 +1403,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                 s_unlock_base_socket(nw_socket);
 
                 s_lock_socket_synced_data(nw_socket);
-                s_set_socket_state(nw_socket, socket, CLOSED);
+                s_set_socket_state(nw_socket, CLOSED);
                 s_unlock_socket_synced_data(nw_socket);
 
                 s_socket_release_internal_ref(nw_socket);
@@ -2358,7 +2358,7 @@ static int s_socket_close_fn(struct aws_socket *socket) {
     if (nw_socket->synced_data.state < CLOSING) {
         // We would like to keep CONNECTED_READ so that we could continue processing any received data until the we
         // got the system callback indicates that the system connection has been closed in the receiving direction.
-        s_set_socket_state(nw_socket, nw_socket->base_socket_synced_data.base_socket, CLOSING | CONNECTED_READ);
+        s_set_socket_state(nw_socket, CLOSING | CONNECTED_READ);
         s_socket_release_write_ref(nw_socket);
     }
     s_unlock_socket_synced_data(nw_socket);
