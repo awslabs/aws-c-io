@@ -1828,16 +1828,14 @@ static void s_on_listener_connection_established(struct aws_socket *socket, int 
     return;
 }
 
-struct aws_socket *s_server_bootstrap_new_socket_listener(
-    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options,
-    bool async_setup) {
+struct aws_socket *aws_server_bootstrap_new_socket_listener(
+    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
     AWS_PRECONDITION(bootstrap_options);
     AWS_PRECONDITION(bootstrap_options->bootstrap);
     AWS_PRECONDITION(bootstrap_options->incoming_callback);
     AWS_PRECONDITION(bootstrap_options->shutdown_callback);
-    if (async_setup) {
-        AWS_PRECONDITION(bootstrap_options->setup_callback);
-    }
+
+    bool async_setup = bootstrap_options->setup_callback != NULL;
 
     struct server_connection_args *server_connection_args =
         aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
@@ -1983,11 +1981,6 @@ cleanup_server_connection_args:
     s_server_connection_args_release(server_connection_args);
 
     return NULL;
-}
-
-struct aws_socket *aws_server_bootstrap_new_socket_listener(
-    const struct aws_server_socket_channel_bootstrap_options *bootstrap_options) {
-    return s_server_bootstrap_new_socket_listener(bootstrap_options, bootstrap_options->setup_callback);
 }
 
 void aws_server_bootstrap_destroy_socket_listener(struct aws_server_bootstrap *bootstrap, struct aws_socket *listener) {
