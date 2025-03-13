@@ -87,4 +87,13 @@ struct aws_socket_vtable {
         void *user_data);
 };
 
+struct on_start_accept_result_args {
+    struct aws_task task;
+    int error;
+    struct aws_allocator *allocator;
+    struct aws_socket *socket;
+    aws_socket_on_accept_started_fn *on_accept_start;
+    void *on_accept_start_user_data;
+};
+
 #endif // AWS_IO_SOCKET_IMPL_H
