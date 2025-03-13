@@ -1100,7 +1100,14 @@ static void s_process_listener_success_task(struct aws_task *task, void *args, e
                 nw_release(endpoint);
                 goto incoming_listener_error_cleanup;
             }
-            memcpy(new_socket->remote_endpoint.address, hostname, address_strlen);
+
+            struct aws_byte_buf hostname_buf = aws_byte_buf_from_c_str(hostname);
+            struct aws_byte_buf address_buf =
+                aws_byte_buf_from_empty_array(new_socket->remote_endpoint.address, AWS_ADDRESS_MAX_LEN);
+            aws_byte_buf_write_from_whole_buffer(&address_buf, hostname_buf);
+            aws_byte_buf_clean_up(&address_buf);
+            aws_byte_buf_clean_up(&hostname_buf);
+
             new_socket->remote_endpoint.port = port;
         }
         nw_release(endpoint);
