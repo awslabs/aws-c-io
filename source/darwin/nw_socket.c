@@ -59,6 +59,11 @@ static int s_determine_socket_error(int error) {
 static int s_convert_nw_error(nw_error_t nw_error) {
     int nw_error_code = nw_error ? nw_error_get_error_code(nw_error) : 0;
     int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_SOCKET,
+        "s_convert_nw_error invoked with nw_error_code %d, maps to CRT error code %d",
+        nw_error_code,
+        crt_error_code);
     return crt_error_code;
 }
 
@@ -1030,11 +1035,9 @@ static void s_handle_connection_state_changed_fn(
     int crt_error_code = s_convert_nw_error(error);
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: nw_connection_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
-        "error code %d",
+        "id=%p handle=%p: s_handle_connection_state_changed_fn invoked error code %d.",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection,
-        nw_error_get_error_code(error),
         crt_error_code);
 
     if (s_validate_event_loop(nw_socket->event_loop)) {
@@ -1670,11 +1673,9 @@ static void s_handle_listener_state_changed_fn(
     int crt_error_code = s_convert_nw_error(error);
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: nw_listener_set_state_changed_handler invoked with nw_error_code %d, maps to CRT "
-        "error code %d",
+        "id=%p handle=%p: s_handle_listener_state_changed_fn invoked error code %d.",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection,
-        nw_error_get_error_code(error),
         crt_error_code);
 
     if (s_validate_event_loop(nw_socket->event_loop)) {
@@ -1886,10 +1887,9 @@ static void s_handle_nw_connection_receive_completion_fn(
     int crt_error_code = s_convert_nw_error(error);
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: nw_connection_receive invoked with nw_error_code %d, CRT error code %d",
+        "id=%p handle=%p: s_handle_nw_connection_receive_completion_fn invoked error code %d.",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection,
-        nw_error_get_error_code(error),
         crt_error_code);
 
     if (!crt_error_code) {
@@ -2110,13 +2110,11 @@ static void s_handle_nw_connection_send_completion_fn(
     void *user_data) {
 
     int crt_error_code = s_convert_nw_error(error);
-    AWS_LOGF_TRACE(
+    AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: nw_connection_send invoked with nw_error_code %d, maps to CRT "
-        "error code %d",
+        "id=%p handle=%p: s_handle_nw_connection_send_completion_fn invoked error code %d.",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection,
-        nw_error_get_error_code(error),
         crt_error_code);
 
     if (crt_error_code) {
