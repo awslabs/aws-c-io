@@ -2055,15 +2055,6 @@ static void s_tcp_accept_event(
     }
 }
 
-struct on_start_accept_result_args {
-    struct aws_task task;
-    int error;
-    struct aws_allocator *allocator;
-    struct aws_socket *socket;
-    aws_socket_on_accept_started_fn *on_accept_start;
-    void *on_accept_start_user_data;
-};
-
 static void s_process_invoke_on_accept_start(struct aws_task *task, void *args, enum aws_task_status status) {
     (void)task;
     struct on_start_accept_result_args *on_accept_args = args;
