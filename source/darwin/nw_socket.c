@@ -1765,8 +1765,7 @@ static int s_socket_connect_fn(
     AWS_ASSERT(event_loop);
     AWS_FATAL_ASSERT(on_connection_result);
 
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET, "id=%p handle=%p: beginning connect.", (void *)socket, socket->io_handle.data.handle);
+    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p beginning connect.", (void *)socket);
 
     if (socket->event_loop) {
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
@@ -1803,9 +1802,8 @@ static int s_socket_connect_fn(
         s_unlock_socket_synced_data(nw_socket);
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: failed to parse address %s:%d.",
+            "id=%p: failed to parse address %s:%d.",
             (void *)socket,
-            socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
         aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
@@ -1838,11 +1836,7 @@ static int s_socket_connect_fn(
             break;
         }
         default: {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: socket tried to bind to an unknow domain.",
-                (void *)socket,
-                socket->io_handle.data.handle);
+            AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: socket tried to bind to an unknow domain.", (void *)socket);
             s_unlock_socket_synced_data(nw_socket);
             aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
 
@@ -1853,9 +1847,8 @@ static int s_socket_connect_fn(
     if (pton_err != 1) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: failed to parse address %s:%d.",
+            "id=%p: failed to parse address %s:%d.",
             (void *)socket,
-            socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
         s_unlock_socket_synced_data(nw_socket);
@@ -1865,9 +1858,8 @@ static int s_socket_connect_fn(
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: connecting to endpoint %s:%d.",
+        "id=%p: connecting to endpoint %s:%d.",
         (void *)socket,
-        socket->io_handle.data.handle,
         remote_endpoint->address,
         (int)remote_endpoint->port);
 
@@ -1876,9 +1868,8 @@ static int s_socket_connect_fn(
     if (!endpoint) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: failed to create remote address %s:%d.",
+            "id=%p: failed to create remote address %s:%d.",
             (void *)socket,
-            socket->io_handle.data.handle,
             remote_endpoint->address,
             (int)remote_endpoint->port);
         s_unlock_socket_synced_data(nw_socket);
@@ -1898,6 +1889,12 @@ static int s_socket_connect_fn(
         s_unlock_socket_synced_data(nw_socket);
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p: nw_connection_create successfully created handle=%p",
+            (void *)socket,
+            socket->io_handle.data.handle);
     }
 
     socket->remote_endpoint = *remote_endpoint;

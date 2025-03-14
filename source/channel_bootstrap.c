@@ -596,9 +596,10 @@ static void s_socket_shutdown_complete_setup_connection_args_fn(void *user_data)
     if (connection_args->failed_count == connection_args->addresses_count) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: Connection failed with error_code %d.",
+            "id=%p: Connection failed with error_code %d : %s.",
             (void *)connection_args->bootstrap,
-            shutdown_args->error_code);
+            shutdown_args->error_code,
+            aws_error_name(shutdown_args->error_code));
         /* connection_args will be released after setup_callback */
         s_connection_args_setup_callback(connection_args, shutdown_args->error_code, NULL);
     }
@@ -619,10 +620,11 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: client connection on socket %p completed with error %d.",
+        "id=%p: client connection on socket %p completed with error %d : %s",
         (void *)connection_args->bootstrap,
         (void *)socket,
-        error_code);
+        error_code,
+        aws_error_name(error_code));
 
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
     if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
@@ -648,10 +650,11 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         if (error_code) {
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                "id=%p: releasing socket %p due to error_code %d.",
+                "id=%p: releasing socket %p due to error_code %d : %s",
                 (void *)connection_args->bootstrap,
                 (void *)socket,
-                error_code);
+                error_code,
+                aws_error_name(error_code));
             if (aws_is_use_secitem()) {
                 /*
                  * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful
