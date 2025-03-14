@@ -419,18 +419,23 @@ static void s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loo
     AWS_FATAL_ASSERT(nw_socket->event_loop == NULL);
     nw_socket->event_loop = event_loop;
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: s_set_event_loop: socket acquire event loop group.", (void *)nw_socket);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p nw_socket=%p: s_set_event_loop: socket acquire event loop group.",
+        (void *)aws_socket,
+        (void *)nw_socket);
     aws_event_loop_group_acquire(get_base_event_loop_group(event_loop));
 }
 
 static void s_release_event_loop(struct nw_socket *nw_socket) {
     if (nw_socket->event_loop == NULL) {
-        AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p: s_release_event_loop: socket has not event loop.", (void *)nw_socket);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET, "nw_socket=%p: s_release_event_loop: socket has not event loop.", (void *)nw_socket);
         return;
     }
     aws_event_loop_group_release(get_base_event_loop_group(nw_socket->event_loop));
     AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET, "id=%p: s_release_event_loop: socket release event loop group.", (void *)nw_socket);
+        AWS_LS_IO_SOCKET, "nw_socket=%p: s_release_event_loop: socket release event loop group.", (void *)nw_socket);
     nw_socket->event_loop = NULL;
 }
 
@@ -440,7 +445,7 @@ static void s_set_socket_state(struct nw_socket *nw_socket, enum aws_nw_socket_s
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p: s_set_socket_state: socket state set from %s to %s.",
+        "nw_socket=%p: s_set_socket_state: socket state set from %s to %s.",
         (void *)nw_socket,
         aws_socket_state_to_c_string(nw_socket->synced_data.state),
         aws_socket_state_to_c_string(state));
@@ -478,7 +483,7 @@ static void s_set_socket_state(struct nw_socket *nw_socket, enum aws_nw_socket_s
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p: s_set_socket_state: socket state set to %s.",
+        "nw_socket=%p: s_set_socket_state: socket state set to %s.",
         (void *)nw_socket,
         aws_socket_state_to_c_string(nw_socket->synced_data.state));
 }
@@ -538,7 +543,7 @@ static void s_tls_verification_block(
     if (!transport_ctx->verify_peer) {
         AWS_LOGF_WARN(
             AWS_LS_IO_TLS,
-            "id=%p: x.509 validation has been disabled. If this is not running in a test environment, this is "
+            "nw_socket=%p: x.509 validation has been disabled. If this is not running in a test environment, this is "
             "likely a security vulnerability.",
             (void *)nw_socket);
         verification_successful = true;
@@ -551,14 +556,14 @@ static void s_tls_verification_block(
     if (transport_ctx->ca_cert != NULL) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
-            "id=%p: nw_socket verify block applying provided root CA for remote verification.",
+            "nw_socket=%p: nw_socket verify block applying provided root CA for remote verification.",
             (void *)nw_socket);
         // We add the ca certificate as a anchor certificate in the trust_ref
         status = SecTrustSetAnchorCertificates(trust_ref, transport_ctx->ca_cert);
         if (status != errSecSuccess) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "id=%p: nw_socket verify block SecTrustSetAnchorCertificates failed with "
+                "nw_socket=%p: nw_socket verify block SecTrustSetAnchorCertificates failed with "
                 "OSStatus: %d",
                 (void *)nw_socket,
                 (int)status);
@@ -579,7 +584,7 @@ static void s_tls_verification_block(
 
     status = SecTrustSetPolicies(trust_ref, policy);
     if (status != errSecSuccess) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed to set trust policy %d\n", (void *)nw_socket, (int)status);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "nw_socket=%p: Failed to set trust policy %d\n", (void *)nw_socket, (int)status);
         aws_raise_error(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE);
         goto verification_done;
     }
@@ -593,7 +598,7 @@ static void s_tls_verification_block(
         if (status == errSecSuccess) {
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
-                "id=%p: nw_socket verify block trust result: %s",
+                "nw_socket=%p: nw_socket verify block trust result: %s",
                 (void *)nw_socket,
                 s_aws_sec_trust_result_type_to_string(trust_result));
 
@@ -604,7 +609,7 @@ static void s_tls_verification_block(
         } else {
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
-                "id=%p: nw_socket SecTrustGetTrustResult failed with OSStatus: %d",
+                "nw_socket=%p: nw_socket SecTrustGetTrustResult failed with OSStatus: %d",
                 (void *)nw_socket,
                 (int)status);
         }
@@ -614,7 +619,8 @@ static void s_tls_verification_block(
         int crt_error_code = s_determine_socket_error(CFErrorGetCode(error));
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
-            "id=%p: nw_socket SecTrustEvaluateWithError failed with crt error code: %d : %s translated from CF error "
+            "nw_socket=%p: nw_socket SecTrustEvaluateWithError failed with crt error code: %d : %s translated from CF "
+            "error "
             "code: %ld : %s",
             (void *)nw_socket,
             crt_error_code,
@@ -679,7 +685,10 @@ static void s_setup_tls_options(
     // Add alpn protocols
     if (nw_socket->alpn_list != NULL) {
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_TLS, "id=%p: Setting ALPN list %s", (void *)nw_socket, aws_string_c_str(nw_socket->alpn_list));
+            AWS_LS_IO_TLS,
+            "nw_socket=%p: Setting ALPN list %s",
+            (void *)nw_socket,
+            aws_string_c_str(nw_socket->alpn_list));
 
         struct aws_byte_cursor alpn_data = aws_byte_cursor_from_string(nw_socket->alpn_list);
         struct aws_array_list alpn_list_array;
@@ -690,7 +699,8 @@ static void s_setup_tls_options(
              * was required for this connection to succeeed, the connection's state change handler will catch the
              * connection failure.
              */
-            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: Failed to setup array list for ALPN setup.", (void *)nw_socket);
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "nw_socket=%p: Failed to setup array list for ALPN setup.", (void *)nw_socket);
         } else {
             for (size_t i = 0; i < aws_array_list_length(&alpn_list_array); ++i) {
                 struct aws_byte_cursor protocol_cursor;
@@ -737,7 +747,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
             if (nw_socket->event_loop == NULL) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
-                    "id=%p Apple Network Framework setup of TLS parameters requires the nw_socket to have a valid "
+                    "nw_socket=%p Apple Network Framework setup of TLS parameters requires the nw_socket to have a "
+                    "valid "
                     "event_loop.",
                     (void *)nw_socket);
                 return aws_raise_error(AWS_IO_SOCKET_MISSING_EVENT_LOOP);
@@ -751,7 +762,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                 transport_ctx->minimum_tls_version == AWS_IO_TLSv1_1) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
-                    "id=%p options=%p: Selected minimum tls version not supported by Apple Network Framework due "
+                    "nw_socket=%p options=%p: Selected minimum tls version not supported by Apple Network Framework "
+                    "due "
                     "to deprecated status and known security flaws.",
                     (void *)nw_socket,
                     (void *)options);
@@ -797,7 +809,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
                 default:
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_SOCKET,
-                        "id=%p options=%p: AWS_SOCKET_VSOCK is not supported on nw_socket.",
+                        "nw_socket=%p options=%p: AWS_SOCKET_VSOCK is not supported on nw_socket.",
                         (void *)nw_socket,
                         (void *)options);
                     return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
@@ -811,7 +823,10 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
     } else if (options->type == AWS_SOCKET_DGRAM) {
         if (setup_tls) {
             AWS_LOGF_ERROR(
-                AWS_LS_IO_SOCKET, "id=%p options=%p: Cannot use TLS with UDP.", (void *)nw_socket, (void *)options);
+                AWS_LS_IO_SOCKET,
+                "nw_socket=%p options=%p: Cannot use TLS with UDP.",
+                (void *)nw_socket,
+                (void *)options);
             return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
         } else {
             nw_socket->nw_parameters = nw_parameters_create_secure_udp(
@@ -826,7 +841,7 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
     if (!nw_socket->nw_parameters) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p options=%p: failed to create nw_parameters_t for nw_socket.",
+            "nw_socket=%p options=%p: failed to create nw_parameters_t for nw_socket.",
             (void *)nw_socket,
             (void *)options);
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
@@ -1008,7 +1023,7 @@ static void s_process_socket_cancel_task(struct aws_task *task, void *arg, enum 
     struct nw_socket_cancel_task_args *args = arg;
     struct nw_socket *nw_socket = args->nw_socket;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: start to process socket cancel task.", (void *)nw_socket);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "nw_socket=%p: start to process socket cancel task.", (void *)nw_socket);
 
     // The task should always run event when status == AWS_TASK_STATUS_CANCELLED. We rely on the task to clean up the
     // system connection/listener. And release the socket memory.
@@ -1131,7 +1146,12 @@ int aws_socket_init_apple_nw_socket(
 
     aws_linked_list_init(&nw_socket->read_queue);
 
-    AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "id=%p fd=%d: socket created.", (void *)nw_socket, socket->io_handle.data.fd);
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_SOCKET,
+        "id=%p nw_socket=%d fd=%d: socket created.",
+        (void *)socket,
+        (void *)nw_socket,
+        socket->io_handle.data.fd);
 
     return AWS_OP_SUCCESS;
 }
@@ -1271,7 +1291,7 @@ static void s_process_connection_result_task(struct aws_task *task, void *arg, e
     struct nw_socket_scheduled_task_args *task_args = arg;
     struct nw_socket *nw_socket = task_args->nw_socket;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: start to process connection result task.", (void *)nw_socket);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "nw_socket=%p: start to process connection result task.", (void *)nw_socket);
 
     if (status != AWS_TASK_STATUS_CANCELED) {
         s_lock_base_socket(nw_socket);
@@ -1365,7 +1385,7 @@ static void s_process_connection_state_changed_ready(struct nw_socket *nw_socket
          */
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: connection succeed, however, the base socket has been cleaned up.",
+            "nw_socket=%p handle=%p: connection succeed, however, the base socket has been cleaned up.",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection);
     }
@@ -1404,7 +1424,8 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
             case nw_connection_state_cancelled: {
                 AWS_LOGF_INFO(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: Apple network framework socket connection state changed to cancelled, nw error "
+                    "nw_socket=%p handle=%p: Apple network framework socket connection state changed to cancelled, nw "
+                    "error "
                     "code : %d",
                     (void *)nw_socket,
                     (void *)nw_socket->os_handle.nw_connection,
@@ -1418,7 +1439,8 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
             case nw_connection_state_ready: {
                 AWS_LOGF_INFO(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: Apple network framework socket connection state changed to ready, nw error "
+                    "nw_socket=%p handle=%p: Apple network framework socket connection state changed to ready, nw "
+                    "error "
                     "code : %d",
                     (void *)nw_socket,
                     (void *)nw_socket->os_handle.nw_connection,
@@ -1437,7 +1459,7 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
             /* any error, including if closed remotely in error */
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_SOCKET,
-                "id=%p handle=%p: socket connection got error: %d",
+                "nw_socket=%p handle=%p: socket connection got error: %d",
                 (void *)nw_socket,
                 (void *)nw_socket->os_handle.nw_connection,
                 crt_error_code);
@@ -1470,13 +1492,13 @@ static void s_handle_connection_state_changed_fn(
     nw_connection_state_t state,
     nw_error_t error) {
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_connection_state_changed_fn start...", (void *)nw_socket);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "nw_socket=%p: s_handle_connection_state_changed_fn start...", (void *)nw_socket);
 
     int crt_error_code = s_convert_nw_error(error);
     if (crt_error_code) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: s_handle_connection_state_changed_fn invoked error code %d : %s.",
+            "nw_socket=%p handle=%p: s_handle_connection_state_changed_fn invoked error code %d : %s.",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             crt_error_code,
@@ -1654,7 +1676,7 @@ static void s_process_write_task(struct aws_task *task, void *args, enum aws_tas
     struct aws_allocator *allocator = task_args->allocator;
     struct nw_socket *nw_socket = task_args->nw_socket;
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: start to process write task.", (void *)nw_socket);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "nw_socket=%p: start to process write task.", (void *)nw_socket);
 
     if (status != AWS_TASK_STATUS_CANCELED) {
         s_lock_base_socket(nw_socket);
@@ -1705,7 +1727,7 @@ static int s_setup_tls_options_from_context(
 
     if (nw_socket->tls_ctx != NULL || nw_socket->host_name != NULL || nw_socket->alpn_list != NULL) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_SOCKET, "id=%p: Socket cannot have TLS options set more than once.", (void *)nw_socket);
+            AWS_LS_IO_SOCKET, "nw_socket=%p: Socket cannot have TLS options set more than once.", (void *)nw_socket);
         return AWS_OP_ERR;
     }
 
@@ -1716,7 +1738,7 @@ static int s_setup_tls_options_from_context(
         if (nw_socket->host_name == NULL) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "id=%p: Error encounterd during setup of host name from tls context.",
+                "nw_socket=%p: Error encounterd during setup of host name from tls context.",
                 (void *)nw_socket);
             return AWS_OP_ERR;
         }
@@ -1741,7 +1763,7 @@ static int s_setup_tls_options_from_context(
             if (nw_socket->alpn_list == NULL) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
-                    "id=%p: Error encounterd during setup of alpn list from tls context.",
+                    "nw_socket=%p: Error encounterd during setup of alpn list from tls context.",
                     (void *)nw_socket);
                 return AWS_OP_ERR;
             }
@@ -2159,7 +2181,7 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: start to process listener state change task.",
+        "nw_socket=%p handle=%p: start to process listener state change task.",
         (void *)nw_socket,
         (void *)nw_listener);
 
@@ -2171,7 +2193,7 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
 
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: listener state changed to %d ",
+            "nw_socket=%p handle=%p: listener state changed to %d ",
             (void *)nw_socket,
             (void *)nw_listener,
             state);
@@ -2180,7 +2202,7 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
             case nw_listener_state_failed: {
                 AWS_LOGF_DEBUG(
                     AWS_LS_IO_SOCKET,
-                    "id=%p handle=%p: listener failed with error %d",
+                    "nw_socket=%p handle=%p: listener failed with error %d",
                     (void *)nw_socket,
                     (void *)nw_listener,
                     crt_error_code);
@@ -2209,7 +2231,7 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
                     }
                     AWS_LOGF_DEBUG(
                         AWS_LS_IO_SOCKET,
-                        "id=%p handle=%p: listener on port %d ready ",
+                        "nw_socket=%p handle=%p: listener on port %d ready ",
                         (void *)nw_socket,
                         (void *)nw_listener,
                         aws_socket->local_endpoint.port);
@@ -2220,7 +2242,10 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
             }
             case nw_listener_state_cancelled: {
                 AWS_LOGF_DEBUG(
-                    AWS_LS_IO_SOCKET, "id=%p handle=%p: listener cancelled.", (void *)nw_socket, (void *)nw_listener);
+                    AWS_LS_IO_SOCKET,
+                    "nw_socket=%p handle=%p: listener cancelled.",
+                    (void *)nw_socket,
+                    (void *)nw_listener);
                 s_lock_socket_synced_data(nw_socket);
                 s_set_socket_state(nw_socket, AWS_NW_SOCKET_STATE_CLOSED);
                 s_unlock_socket_synced_data(nw_socket);
@@ -2242,13 +2267,13 @@ static void s_handle_listener_state_changed_fn(
     nw_listener_state_t state,
     nw_error_t error) {
 
-    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_listener_state_changed_fn start...", (void *)nw_socket);
+    AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "nw_socket=%p: s_handle_listener_state_changed_fn start...", (void *)nw_socket);
 
     int crt_error_code = s_convert_nw_error(error);
     if (crt_error_code) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: s_handle_listener_state_changed_fn invoked error code %d : %s",
+            "nw_socket=%p handle=%p: s_handle_listener_state_changed_fn invoked error code %d : %s",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             crt_error_code,
@@ -2466,14 +2491,14 @@ static void s_handle_nw_connection_receive_completion_fn(
 
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: queued read buffer of size %d",
+            "nw_socket=%p handle=%p: queued read buffer of size %d",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             data ? (int)dispatch_data_get_size(data) : 0);
     } else {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: s_handle_nw_connection_receive_completion_fn invoked error code %d : %s",
+            "nw_socket=%p handle=%p: s_handle_nw_connection_receive_completion_fn invoked error code %d : %s",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             crt_error_code,
@@ -2504,7 +2529,7 @@ static int s_schedule_next_read(struct nw_socket *nw_socket) {
     if (nw_socket->synced_data.read_scheduled) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: there is already read queued, do not queue further read",
+            "nw_socket=%p handle=%p: there is already read queued, do not queue further read",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection);
         s_unlock_socket_synced_data(nw_socket);
@@ -2515,7 +2540,7 @@ static int s_schedule_next_read(struct nw_socket *nw_socket) {
         !(nw_socket->synced_data.state & AWS_NW_SOCKET_STATE_CONNECTED_READ)) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: cannot read to because socket is not connected",
+            "nw_socket=%p handle=%p: cannot read to because socket is not connected",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection);
         s_unlock_socket_synced_data(nw_socket);
@@ -2550,7 +2575,7 @@ static int s_socket_subscribe_to_readable_events_fn(
     if (nw_socket->mode == NWSM_LISTENER) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: Apple Network Framework does not support read/write on a listener. Please use the "
+            "nw_socket=%p handle=%p: Apple Network Framework does not support read/write on a listener. Please use the "
             "incoming socket to track the read/write operation.",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_listener);
@@ -2565,7 +2590,7 @@ static int s_socket_subscribe_to_readable_events_fn(
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: socket_subscribe_to_readable_events: start to schedule read request.",
+        "nw_socket=%p handle=%p: socket_subscribe_to_readable_events: start to schedule read request.",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection);
 
@@ -2688,7 +2713,7 @@ static void s_handle_nw_connection_send_completion_fn(
         nw_socket->last_error = crt_error_code;
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: error during write %d : %s",
+            "nw_socket=%p handle=%p: error during write %d : %s",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             crt_error_code,
@@ -2698,7 +2723,7 @@ static void s_handle_nw_connection_send_completion_fn(
     size_t written_size = dispatch_data_get_size(data);
     AWS_LOGF_TRACE(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: send written size %d",
+        "nw_socket=%p handle=%p: send written size %d",
         (void *)nw_socket,
         (void *)nw_socket->os_handle.nw_connection,
         (int)written_size);
