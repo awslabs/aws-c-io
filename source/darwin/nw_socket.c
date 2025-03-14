@@ -1148,7 +1148,7 @@ int aws_socket_init_apple_nw_socket(
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p nw_socket=%d fd=%d: socket created.",
+        "id=%p nw_socket=%p fd=%d: socket created.",
         (void *)socket,
         (void *)nw_socket,
         socket->io_handle.data.fd);
