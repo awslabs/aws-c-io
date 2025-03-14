@@ -614,10 +614,11 @@ static void s_tls_verification_block(
         int crt_error_code = s_determine_socket_error(CFErrorGetCode(error));
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
-            "id=%p: nw_socket SecTrustEvaluateWithError failed with error code: %d CF error "
+            "id=%p: nw_socket SecTrustEvaluateWithError failed with crt error code: %d : %s translated from CF error "
             "code: %ld : %s",
             (void *)nw_socket,
             crt_error_code,
+            aws_error_name(crt_error_code),
             (long)CFErrorGetCode(error),
             description_buffer);
     }
