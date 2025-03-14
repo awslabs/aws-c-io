@@ -594,14 +594,25 @@ static void s_socket_shutdown_complete_setup_connection_args_fn(void *user_data)
 
     /* if this is the last attempted connection and it failed, notify the user */
     if (connection_args->failed_count == connection_args->addresses_count) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: Connection failed with error_code %d : %s.",
-            (void *)connection_args->bootstrap,
-            shutdown_args->error_code,
-            aws_error_name(shutdown_args->error_code));
-        /* connection_args will be released after setup_callback */
-        s_connection_args_setup_callback(connection_args, shutdown_args->error_code, NULL);
+        if (connection_args->tls_error_code) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: Connection failed with error_code %d : %s.",
+                (void *)connection_args->bootstrap,
+                connection_args->tls_error_code,
+                aws_error_name(connection_args->tls_error_code));
+            /* connection_args will be released after setup_callback */
+            s_connection_args_setup_callback(connection_args, connection_args->tls_error_code, NULL);
+        } else {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: Connection failed with error_code %d : %s.",
+                (void *)connection_args->bootstrap,
+                shutdown_args->error_code,
+                aws_error_name(shutdown_args->error_code));
+            /* connection_args will be released after setup_callback */
+            s_connection_args_setup_callback(connection_args, shutdown_args->error_code, NULL);
+        }
     }
 
     if (shutdown_args->release_connection_args) {
