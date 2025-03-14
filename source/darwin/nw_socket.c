@@ -117,11 +117,6 @@ static int s_determine_socket_error(int error) {
 static int s_convert_nw_error(nw_error_t nw_error) {
     int nw_error_code = nw_error ? nw_error_get_error_code(nw_error) : 0;
     int crt_error_code = nw_error_code ? s_determine_socket_error(nw_error_code) : AWS_OP_SUCCESS;
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET,
-        "s_convert_nw_error invoked with nw_error_code %d, maps to CRT error code %d",
-        nw_error_code,
-        crt_error_code);
     return crt_error_code;
 }
 
@@ -180,7 +175,7 @@ enum aws_nw_socket_state {
 };
 
 static const char *aws_socket_state_to_c_string(enum aws_nw_socket_state state) {
-    switch (state) {
+    switch ((int)state) {
         case INVALID:
             return "INVALID";
         case CONNECTING:
@@ -201,6 +196,12 @@ static const char *aws_socket_state_to_c_string(enum aws_nw_socket_state state) 
             return "CLOSING";
         case CLOSED:
             return "CLOSED";
+        case CONNECTED_WRITE | CONNECTED_READ:
+            return "CONNECTED_WRITE | CONNECTED_READ";
+        case CLOSING | CONNECTED_READ:
+            return "CLOSING | CONNECTED_READ";
+        case ~CONNECTED_READ:
+            return "~CONNECTED_READ";
         default:
             return "UNKNOWN";
     }
@@ -1467,12 +1468,15 @@ static void s_handle_connection_state_changed_fn(
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_connection_state_changed_fn start...", (void *)nw_socket);
 
     int crt_error_code = s_convert_nw_error(error);
-    AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: s_handle_connection_state_changed_fn invoked error code %d.",
-        (void *)nw_socket,
-        (void *)nw_socket->os_handle.nw_connection,
-        crt_error_code);
+    if (crt_error_code) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: s_handle_connection_state_changed_fn invoked error code %d : %s.",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection,
+            crt_error_code,
+            aws_error_name(crt_error_code));
+    }
 
     if (s_validate_event_loop(nw_socket->event_loop)) {
         struct connection_state_change_args *args =
@@ -2239,12 +2243,15 @@ static void s_handle_listener_state_changed_fn(
     AWS_LOGF_TRACE(AWS_LS_IO_SOCKET, "id=%p: s_handle_listener_state_changed_fn start...", (void *)nw_socket);
 
     int crt_error_code = s_convert_nw_error(error);
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: s_handle_listener_state_changed_fn invoked error code %d.",
-        (void *)nw_socket,
-        (void *)nw_socket->os_handle.nw_connection,
-        crt_error_code);
+    if (crt_error_code) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: s_handle_listener_state_changed_fn invoked error code %d : %s",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection,
+            crt_error_code,
+            aws_error_name(crt_error_code));
+    }
 
     if (s_validate_event_loop(nw_socket->event_loop)) {
         struct listener_state_changed_args *args =
@@ -2447,12 +2454,6 @@ static void s_handle_nw_connection_receive_completion_fn(
 
     bool complete = is_complete;
     int crt_error_code = s_convert_nw_error(error);
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: s_handle_nw_connection_receive_completion_fn invoked error code %d.",
-        (void *)nw_socket,
-        (void *)nw_socket->os_handle.nw_connection,
-        crt_error_code);
 
     if (!crt_error_code) {
         /* For protocols such as TCP, `is_complete` will be marked when the entire stream has be closed in the
@@ -2467,6 +2468,14 @@ static void s_handle_nw_connection_receive_completion_fn(
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
             data ? (int)dispatch_data_get_size(data) : 0);
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET,
+            "id=%p handle=%p: s_handle_nw_connection_receive_completion_fn invoked error code %d : %s",
+            (void *)nw_socket,
+            (void *)nw_socket->os_handle.nw_connection,
+            crt_error_code,
+            aws_error_name(crt_error_code));
     }
 
     // The callback should be fired before schedule next read, so that if the socket is closed, we could
@@ -2672,21 +2681,15 @@ static void s_handle_nw_connection_send_completion_fn(
     void *user_data) {
 
     int crt_error_code = s_convert_nw_error(error);
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: s_handle_nw_connection_send_completion_fn invoked error code %d.",
-        (void *)nw_socket,
-        (void *)nw_socket->os_handle.nw_connection,
-        crt_error_code);
-
     if (crt_error_code) {
         nw_socket->last_error = crt_error_code;
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: error during write %d",
+            "id=%p handle=%p: error during write %d : %s",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_connection,
-            crt_error_code);
+            crt_error_code,
+            aws_error_name(crt_error_code));
     }
 
     size_t written_size = dispatch_data_get_size(data);
