@@ -1403,10 +1403,6 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                     (void *)nw_socket,
                     (void *)nw_socket->os_handle.nw_connection,
                     connection_args->error);
-                s_lock_base_socket(nw_socket);
-                struct aws_socket *socket = nw_socket->base_socket_synced_data.base_socket;
-                s_unlock_base_socket(nw_socket);
-
                 s_lock_socket_synced_data(nw_socket);
                 s_set_socket_state(nw_socket, CLOSED);
                 s_unlock_socket_synced_data(nw_socket);
