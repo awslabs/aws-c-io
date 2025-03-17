@@ -336,9 +336,10 @@ static int s_socket_shutdown(
     if (dir == AWS_CHANNEL_DIR_READ) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_SOCKET_HANDLER,
-            "id=%p: shutting down read direction with error_code %d",
+            "id=%p: shutting down read direction with error_code %d : %s",
             (void *)handler,
-            error_code);
+            error_code,
+            aws_error_name(error_code));
         if (free_scarce_resource_immediately && aws_socket_is_open(socket_handler->socket)) {
             struct channel_shutdown_close_args *close_args =
                 aws_mem_calloc(handler->alloc, 1, sizeof(struct channel_shutdown_close_args));
