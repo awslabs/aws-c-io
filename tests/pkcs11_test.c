@@ -79,7 +79,7 @@ static int s_reload_hsm(void) {
         .initialize_finalize_behavior = AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
     };
     s_pkcs11_tester.lib = aws_pkcs11_lib_new(s_pkcs11_tester.allocator, &options);
-    ASSERT_NOT_NULL(s_pkcs11_tester.lib, "Failed to load PKCS#11 lib");
+    ASSERTF_NOT_NULL(s_pkcs11_tester.lib, "Failed to load PKCS#11 lib");
 
     return AWS_OP_SUCCESS;
 }
@@ -1344,13 +1344,13 @@ static int s_test_pkcs11_asn1_bigint(struct aws_allocator *allocator, void *ctx)
 AWS_TEST_CASE(pkcs11_asn1_bigint, s_test_pkcs11_asn1_bigint)
 
 static int s_decode_asn1(struct aws_byte_cursor *src, uint8_t *identifier, struct aws_byte_cursor *split) {
-    ASSERT_TRUE(src->len >= 2, "ASN1 structure too small for header, length=%u", src->len);
+    ASSERTF_TRUE(src->len >= 2, "ASN1 structure too small for header, length=%u", src->len);
     *identifier = src->ptr[0];
     uint8_t small_len = src->ptr[1];
     src->ptr += 2;
     src->len -= 2;
-    ASSERT_TRUE(small_len < 0x80, "ASN1 multi-byte length specified: %u", small_len);
-    ASSERT_TRUE(small_len <= src->len, "ASN1 length too big: %u > %u", small_len, src->len);
+    ASSERTF_TRUE(small_len < 0x80, "ASN1 multi-byte length specified: %u", small_len);
+    ASSERTF_TRUE(small_len <= src->len, "ASN1 length too big: %u > %u", small_len, src->len);
     *split = aws_byte_cursor_from_array(src->ptr, small_len);
     src->ptr += small_len;
     src->len -= small_len;
@@ -1363,7 +1363,7 @@ static int s_write_bigint(struct aws_byte_buf *buf, struct aws_byte_cursor *num,
         num->ptr++;
         num->len--;
     }
-    ASSERT_TRUE(num->len <= len, "ASN1 number is too big: %u > %u", num->len, len);
+    ASSERTF_TRUE(num->len <= len, "ASN1 number is too big: %u > %u", num->len, len);
     if (num->len < len) {
         uint8_t fill = num->ptr[0] & 0x80 ? 0xff : 0x00;
         while (len > num->len) {

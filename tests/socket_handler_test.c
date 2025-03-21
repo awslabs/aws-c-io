@@ -845,7 +845,7 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
         if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
             return AWS_OP_SKIP;
         } else {
-            ASSERT_TRUE(false, "s_local_server_tester_init() failed");
+            ASSERTF_TRUE(false, "s_local_server_tester_init() failed");
         }
     }
 
@@ -916,10 +916,10 @@ static int s_socket_read_to_eof_after_peer_hangup_test_common(
     aws_mutex_lock(&c_tester.mutex);
 
     /* Ensure the client hasn't shut down before reading all the data. */
-    ASSERT_FALSE(client_args.shutdown_invoked, "Client should read all data before shutting down.");
+    ASSERTF_FALSE(client_args.shutdown_invoked, "Client should read all data before shutting down.");
 
     /* Ensure the client hasn't read all data yet */
-    ASSERT_TRUE(
+    ASSERTF_TRUE(
         client_rw_args.amount_read < total_bytes_to_send_from_server,
         "If this fails, then we're not truly reproducing the regression test."
         " The server needs to finish sending data, and close the socket,"

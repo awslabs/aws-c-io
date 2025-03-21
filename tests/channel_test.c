@@ -64,7 +64,7 @@ static int s_test_channel_setup(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERTF_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_channel *channel_1 = NULL;
@@ -102,7 +102,7 @@ static int s_test_channel_single_slot_cleans_up(struct aws_allocator *allocator,
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERTF_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_channel *channel = NULL;
@@ -141,7 +141,7 @@ static int s_test_channel_slots_clean_up(struct aws_allocator *allocator, void *
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERTF_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_channel *channel = NULL;
@@ -480,7 +480,7 @@ static int s_test_channel_rejects_post_shutdown_tasks(struct aws_allocator *allo
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERTF_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_channel *channel = NULL;
@@ -527,7 +527,7 @@ static int s_test_channel_cancels_pending_tasks(struct aws_allocator *allocator,
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERTF_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_channel *channel = NULL;
@@ -578,7 +578,7 @@ static int s_test_channel_duplicate_shutdown(struct aws_allocator *allocator, vo
     (void)ctx;
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERTF_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_channel *channel = NULL;
@@ -714,7 +714,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         }
     }
     ASSERT_NOT_NULL(resolved_s3_address);
-    ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, resolved_s3_address->record_type, "Did not find an A record");
+    ASSERTF_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, resolved_s3_address->record_type, "Did not find an A record");
     addr1_ipv4 = aws_string_new_from_string(allocator, resolved_s3_address->address);
 
     /* resolve black hole */
@@ -731,7 +731,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
         }
     }
     ASSERT_NOT_NULL(resolved_bh_address);
-    ASSERT_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, resolved_bh_address->record_type, "Did not find an A record");
+    ASSERTF_INT_EQUALS(AWS_ADDRESS_RECORD_TYPE_A, resolved_bh_address->record_type, "Did not find an A record");
     addr2_ipv4 = aws_string_new_from_string(allocator, resolved_bh_address->address);
 
     /* create a resolver with 2 addresses: 1 which will always succeed, and 1 which will always timeout */
@@ -809,7 +809,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_setup_complete_pred, &callback_data));
 
-    ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
+    ASSERTF_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
     ASSERT_NOT_NULL(callback_data.channel);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
@@ -819,7 +819,7 @@ static int s_test_channel_connect_some_hosts_timeout(struct aws_allocator *alloc
     ASSERT_SUCCESS(
         aws_condition_variable_wait_pred(&callback_data.cv, &mutex, s_shutdown_complete_pred, &callback_data));
 
-    ASSERT_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
+    ASSERTF_INT_EQUALS(0, callback_data.error_code, aws_error_str(callback_data.error_code));
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     /* clean up */

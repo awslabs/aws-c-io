@@ -213,7 +213,7 @@ static int s_test_socket_ex(
     struct aws_socket_endpoint *endpoint) {
     struct aws_event_loop *event_loop = aws_event_loop_new_default(allocator, aws_high_res_clock_get_ticks);
 
-    ASSERT_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
+    ASSERTF_NOT_NULL(event_loop, "Event loop creation failed with error: %s", aws_error_debug_str(aws_last_error()));
     ASSERT_SUCCESS(aws_event_loop_run(event_loop));
 
     struct aws_mutex mutex = AWS_MUTEX_INIT;
@@ -503,7 +503,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
             return AWS_OP_SKIP;
         }
 #endif
-        ASSERT_TRUE(false, "s_test_socket() failed");
+        ASSERTF_TRUE(false, "s_test_socket() failed");
     }
     options.type = AWS_SOCKET_DGRAM;
     options.domain = AWS_SOCKET_IPV4;
@@ -517,7 +517,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
         if (aws_last_error() == AWS_IO_SOCKET_INVALID_ADDRESS) {
             return AWS_OP_SKIP;
         }
-        ASSERT_TRUE(false, "s_test_socket() failed");
+        ASSERTF_TRUE(false, "s_test_socket() failed");
     }
 
     return AWS_OP_SUCCESS;
