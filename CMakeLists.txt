@@ -182,9 +182,6 @@ foreach(EVENT_LOOP_DEFINE IN LISTS EVENT_LOOP_DEFINES)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
 endforeach()
 
-if (AWS_USE_SECITEM)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
-endif()
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
@@ -206,9 +203,6 @@ if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
 endif()
 
-if (AWS_USE_APPLE_DISPATCH_QUEUE)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
-endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
