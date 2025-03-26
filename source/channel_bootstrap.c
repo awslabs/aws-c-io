@@ -747,17 +747,6 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     }
 }
 
-/* This function is called when TLS options are required during a socket connection attempt or bind operation.
- * It is only used with Apple Network Framework's SecItem implementation, where the socket creation parameters
- * must include TLS options.
- */
-static void s_retrieve_client_tls_options(struct aws_tls_connection_context *context, void *user_data) {
-    struct client_connection_args *connection_args = user_data;
-    context->host_name = connection_args->channel_data.tls_options.server_name;
-    context->alpn_list = connection_args->channel_data.tls_options.alpn_list;
-    context->tls_ctx = connection_args->channel_data.tls_options.ctx;
-}
-
 struct connection_task_data {
     struct aws_task task;
     struct aws_socket_endpoint endpoint;
@@ -834,8 +823,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     struct aws_socket_connect_options connect_options = {
         .remote_endpoint = &task_data->endpoint,
         .event_loop = task_data->connect_loop,
-        .on_connection_result = s_on_client_connection_established,
-        .retrieve_tls_options = s_retrieve_client_tls_options};
+        .on_connection_result = s_on_client_connection_established};
 
     /*
      * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
@@ -1159,8 +1147,16 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         struct aws_socket_connect_options connect_options = {
             .remote_endpoint = &endpoint,
             .event_loop = connect_loop,
-            .on_connection_result = s_on_client_connection_established,
-            .retrieve_tls_options = s_retrieve_client_tls_options};
+            .on_connection_result = s_on_client_connection_established};
+
+        /*
+         * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
+         */
+        if (aws_is_use_secitem()) {
+            if (client_connection_args->channel_data.use_tls) {
+                connect_options.tls_connection_options = &client_connection_args->channel_data.tls_options;
+            }
+        }
 
         if (aws_socket_connect(outgoing_socket, &connect_options, client_connection_args)) {
 
