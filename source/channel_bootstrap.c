@@ -843,9 +843,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     if (aws_is_use_secitem()) {
         struct client_connection_args *connection_args = task_data->args;
         if (connection_args->channel_data.use_tls) {
-            connect_options.host_name = connection_args->channel_data.tls_options.server_name;
-            connect_options.alpn_list = connection_args->channel_data.tls_options.alpn_list;
-            connect_options.tls_ctx = connection_args->channel_data.tls_options.ctx;
+            connect_options.tls_connection_options = &connection_args->channel_data.tls_options;
         }
     }
 

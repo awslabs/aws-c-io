@@ -1792,11 +1792,12 @@ static int s_socket_connect_fn(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    if (socket_connect_options->tls_ctx != NULL) {
+    if (socket_connect_options->tls_connection_options != NULL) {
         /* The host name is needed during the setup of the verification block */
-        if (socket_connect_options->host_name != NULL) {
+        if (socket_connect_options->tls_connection_options->server_name != NULL) {
             nw_socket->host_name = aws_string_new_from_string(
-                socket_connect_options->host_name->allocator, socket_connect_options->host_name);
+                socket_connect_options->tls_connection_options->server_name->allocator,
+                socket_connect_options->tls_connection_options->server_name);
             if (nw_socket->host_name == NULL) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_SOCKET,
@@ -1808,14 +1809,15 @@ static int s_socket_connect_fn(
 
         /* The tls_ctx is needed to setup TLS negotiation options in the Apple Network Framework connection's parameters
          */
-        nw_socket->tls_ctx = socket_connect_options->tls_ctx;
+        nw_socket->tls_ctx = socket_connect_options->tls_connection_options->ctx;
         aws_tls_ctx_acquire(nw_socket->tls_ctx);
 
         /* TLS negotiation needs the alpn list if one is present for use. */
         struct aws_string *alpn_list = NULL;
-        struct secure_transport_ctx *transport_ctx = socket_connect_options->tls_ctx->impl;
-        if (socket_connect_options->alpn_list != NULL) {
-            alpn_list = socket_connect_options->alpn_list;
+        struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
+
+        if (socket_connect_options->tls_connection_options->alpn_list != NULL) {
+            alpn_list = socket_connect_options->tls_connection_options->alpn_list;
         } else if (transport_ctx->alpn_list != NULL) {
             alpn_list = transport_ctx->alpn_list;
         }
