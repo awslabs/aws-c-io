@@ -1808,28 +1808,26 @@ static int s_socket_connect_fn(
 
         /* The tls_ctx is needed to setup TLS negotiation options in the Apple Network Framework connection's parameters
          */
-        if (socket_connect_options->tls_ctx != NULL) {
-            nw_socket->tls_ctx = socket_connect_options->tls_ctx;
-            aws_tls_ctx_acquire(nw_socket->tls_ctx);
+        nw_socket->tls_ctx = socket_connect_options->tls_ctx;
+        aws_tls_ctx_acquire(nw_socket->tls_ctx);
 
-            /* TLS negotiation needs the alpn list if one is present for use. */
-            struct aws_string *alpn_list = NULL;
-            struct secure_transport_ctx *transport_ctx = socket_connect_options->tls_ctx->impl;
-            if (socket_connect_options->alpn_list != NULL) {
-                alpn_list = socket_connect_options->alpn_list;
-            } else if (transport_ctx->alpn_list != NULL) {
-                alpn_list = transport_ctx->alpn_list;
-            }
+        /* TLS negotiation needs the alpn list if one is present for use. */
+        struct aws_string *alpn_list = NULL;
+        struct secure_transport_ctx *transport_ctx = socket_connect_options->tls_ctx->impl;
+        if (socket_connect_options->alpn_list != NULL) {
+            alpn_list = socket_connect_options->alpn_list;
+        } else if (transport_ctx->alpn_list != NULL) {
+            alpn_list = transport_ctx->alpn_list;
+        }
 
-            if (alpn_list != NULL) {
-                nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
-                if (nw_socket->alpn_list == NULL) {
-                    AWS_LOGF_ERROR(
-                        AWS_LS_IO_SOCKET,
-                        "nw_socket=%p: Error encounterd during setup of alpn list from tls context.",
-                        (void *)nw_socket);
-                    return AWS_OP_ERR;
-                }
+        if (alpn_list != NULL) {
+            nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
+            if (nw_socket->alpn_list == NULL) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_SOCKET,
+                    "nw_socket=%p: Error encounterd during setup of alpn list from tls context.",
+                    (void *)nw_socket);
+                return AWS_OP_ERR;
             }
         }
     }
