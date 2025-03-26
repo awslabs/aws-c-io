@@ -1719,12 +1719,11 @@ static void s_handle_write_fn(
 /*
  * Because TLS negotiation is handled by Apple Network Framework connection using its parameters, we need access to a
  * number of items typically not needed until the TLS slot and handler are being initialized. This function along with
- * aws_socket_retrieve_tls_options_fn() are used to gain access to those items.
+ * retrieves the necessary TLS items and stores them in nw_socket.
  */
-static int s_setup_tls_options_from_context(
+static int s_setup_tls_options_from_tls_connection_options(
     struct nw_socket *nw_socket,
-    struct aws_tls_connection_context *tls_connection_context) {
-
+    struct aws_tls_connection_options *tls_connection_options) {
     if (nw_socket->tls_ctx != NULL || nw_socket->host_name != NULL || nw_socket->alpn_list != NULL) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET, "nw_socket=%p: Socket cannot have TLS options set more than once.", (void *)nw_socket);
@@ -1732,28 +1731,28 @@ static int s_setup_tls_options_from_context(
     }
 
     /* The host name is needed during the setup of the verification block */
-    if (tls_connection_context->host_name != NULL) {
-        nw_socket->host_name =
-            aws_string_new_from_string(tls_connection_context->host_name->allocator, tls_connection_context->host_name);
+    if (tls_connection_options->server_name != NULL) {
+        nw_socket->host_name = aws_string_new_from_string(
+            tls_connection_options->server_name->allocator, tls_connection_options->server_name);
         if (nw_socket->host_name == NULL) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "nw_socket=%p: Error encounterd during setup of host name from tls context.",
+                "nw_socket=%p: Error encounterd during setup of host name from tls connection options.",
                 (void *)nw_socket);
             return AWS_OP_ERR;
         }
     }
 
     /* The tls_ctx is needed to setup TLS negotiation options in the Apple Network Framework connection's parameters */
-    if (tls_connection_context->tls_ctx != NULL) {
-        nw_socket->tls_ctx = tls_connection_context->tls_ctx;
+    if (tls_connection_options->ctx != NULL) {
+        nw_socket->tls_ctx = tls_connection_options->ctx;
         aws_tls_ctx_acquire(nw_socket->tls_ctx);
 
         /* TLS negotiation needs the alpn list if one is present for use. */
         struct aws_string *alpn_list = NULL;
-        struct secure_transport_ctx *transport_ctx = tls_connection_context->tls_ctx->impl;
-        if (tls_connection_context->alpn_list != NULL) {
-            alpn_list = tls_connection_context->alpn_list;
+        struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
+        if (tls_connection_options->alpn_list != NULL) {
+            alpn_list = tls_connection_options->alpn_list;
         } else if (transport_ctx->alpn_list != NULL) {
             alpn_list = transport_ctx->alpn_list;
         }
@@ -1793,44 +1792,9 @@ static int s_socket_connect_fn(
     }
 
     if (socket_connect_options->tls_connection_options != NULL) {
-        /* The host name is needed during the setup of the verification block */
-        if (socket_connect_options->tls_connection_options->server_name != NULL) {
-            nw_socket->host_name = aws_string_new_from_string(
-                socket_connect_options->tls_connection_options->server_name->allocator,
-                socket_connect_options->tls_connection_options->server_name);
-            if (nw_socket->host_name == NULL) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "nw_socket=%p: Error encounterd during setup of host name from tls context.",
-                    (void *)nw_socket);
-                return AWS_OP_ERR;
-            }
-        }
-
-        /* The tls_ctx is needed to setup TLS negotiation options in the Apple Network Framework connection's parameters
-         */
-        nw_socket->tls_ctx = socket_connect_options->tls_connection_options->ctx;
-        aws_tls_ctx_acquire(nw_socket->tls_ctx);
-
-        /* TLS negotiation needs the alpn list if one is present for use. */
-        struct aws_string *alpn_list = NULL;
-        struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
-
-        if (socket_connect_options->tls_connection_options->alpn_list != NULL) {
-            alpn_list = socket_connect_options->tls_connection_options->alpn_list;
-        } else if (transport_ctx->alpn_list != NULL) {
-            alpn_list = transport_ctx->alpn_list;
-        }
-
-        if (alpn_list != NULL) {
-            nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
-            if (nw_socket->alpn_list == NULL) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "nw_socket=%p: Error encounterd during setup of alpn list from tls context.",
-                    (void *)nw_socket);
-                return AWS_OP_ERR;
-            }
+        if (s_setup_tls_options_from_tls_connection_options(
+                nw_socket, socket_connect_options->tls_connection_options)) {
+            return AWS_OP_ERR;
         }
     }
 
@@ -2025,10 +1989,10 @@ static int s_socket_bind_fn(
     struct aws_socket *socket,
     struct aws_socket_bind_options *socket_bind_options,
     void *user_data) {
+    (void)user_data;
     struct nw_socket *nw_socket = socket->impl;
 
     const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options = socket_bind_options->retrieve_tls_options;
 
     s_lock_socket_synced_data(nw_socket);
     if (nw_socket->synced_data.state != AWS_NW_SOCKET_STATE_INIT) {
@@ -2045,22 +2009,19 @@ static int s_socket_bind_fn(
         local_endpoint->address,
         (int)local_endpoint->port);
 
-    if (nw_socket->nw_parameters == NULL) {
-
-        if (retrieve_tls_options) {
-            struct aws_tls_connection_context tls_connection_context;
-            AWS_ZERO_STRUCT(tls_connection_context);
-            retrieve_tls_options(&tls_connection_context, user_data);
-
-            if (s_setup_tls_options_from_context(nw_socket, &tls_connection_context)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "id=%p: Error encounterd during setup of tls options from context.",
-                    (void *)socket);
-                return AWS_OP_ERR;
-            }
-            nw_socket->event_loop = tls_connection_context.event_loop;
+    if (nw_socket->nw_parameters == NULL && socket_bind_options->tls_connection_options != NULL) {
+        if (s_setup_tls_options_from_tls_connection_options(nw_socket, socket_bind_options->tls_connection_options)) {
+            return AWS_OP_ERR;
         }
+
+        if (nw_socket->tls_ctx != NULL) {
+            /*
+             * Apple Network's TLS negotiation verify block requires access to an event loop. We temporarily assign it
+             * to the nw_socket for use during the setup of its parameters and then immediately NULL it afterwards.
+             */
+            nw_socket->event_loop = socket_bind_options->event_loop;
+        }
+
         s_setup_socket_params(nw_socket, &socket->options);
         /* Because a refcount wasn't acquired, we NULL the event_loop right after its use in creating socket params. */
         nw_socket->event_loop = NULL;

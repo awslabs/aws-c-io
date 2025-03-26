@@ -182,7 +182,7 @@ struct aws_socket_connect_options {
     aws_socket_on_connection_result_fn *on_connection_result;
 
     /*
-     * This is only set and used when using Apple SecItem for TLS negotiation.
+     * This is only set when using Apple SecItem for TLS negotiation.
      * Apple Network Connections using SecItem require all TLS configuration options at the point of
      * creating the socket slot as it handles both the TCP and TLS negotiation before returning a
      * valid socket for use.
@@ -202,7 +202,16 @@ struct aws_socket_listener_options {
 
 struct aws_socket_bind_options {
     const struct aws_socket_endpoint *local_endpoint;
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+
+    /*
+     * This is only set when using Apple SecItem for TLS negotiation.
+     * Apple Network Connections using SecItem require all TLS configuration options at the point of
+     * creating the socket slot as it handles both the TCP and TLS negotiation before returning a
+     * valid socket for use.
+     * Socket bind also needs an event loop to run its verification block.
+     */
+    struct aws_event_loop *event_loop;
+    struct aws_tls_connection_options *tls_connection_options;
 };
 
 struct aws_byte_buf;

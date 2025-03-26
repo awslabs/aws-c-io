@@ -1249,20 +1249,6 @@ struct server_connection_args {
     struct aws_ref_count ref_count;
 };
 
-/*
- * This function is called when TLS options are required during a server-side socket bind operation.
- * It is only used with Apple Network Framework's SecItem implementation when TLS is being used. The event_loop
- * pulled from the connection_args event_loop_group will not have its refcount increased in this use.
- */
-static void s_retrieve_server_tls_options(struct aws_tls_connection_context *context, void *user_data) {
-    struct server_connection_args *connection_args = user_data;
-    context->host_name = connection_args->tls_options.server_name;
-    context->alpn_list = connection_args->tls_options.alpn_list;
-    context->tls_ctx = connection_args->tls_options.ctx;
-    // verify block in an Apple Network TLS negotiation requires a dispatch loop contained within an event loop.
-    context->event_loop = aws_event_loop_group_get_next_loop(connection_args->bootstrap->event_loop_group);
-}
-
 struct server_channel_data {
     struct aws_channel *channel;
     struct aws_socket *socket;
@@ -1945,10 +1931,12 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
     endpoint.port = bootstrap_options->port;
 
-    struct aws_socket_bind_options socket_bind_options = {
-        .local_endpoint = &endpoint,
-        .retrieve_tls_options = s_retrieve_server_tls_options,
-    };
+    struct aws_socket_bind_options socket_bind_options = {.local_endpoint = &endpoint};
+
+    if (aws_is_use_secitem()) {
+        socket_bind_options.event_loop = connection_loop;
+        socket_bind_options.tls_connection_options = &server_connection_args->tls_options;
+    }
 
     if (aws_socket_bind(&server_connection_args->listener, &socket_bind_options, server_connection_args)) {
         goto cleanup_listener;
