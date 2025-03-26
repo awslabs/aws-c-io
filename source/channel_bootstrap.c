@@ -837,6 +837,13 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         .on_connection_result = s_on_client_connection_established,
         .retrieve_tls_options = s_retrieve_client_tls_options};
 
+    struct client_connection_args *connection_args = task_data->args;
+    if (connection_args->channel_data.tls_options) {
+        connect_options.host_name = connection_args->channel_data.tls_options.server_name,
+        connect_options.alpn_list = connection_args->channel_data.tls_options.alpn_list,
+        connect_options.tls_ctx = connection_args->channel_data.tls_options.ctx
+    }
+
     if (aws_socket_connect(outgoing_socket, &connect_options, task_data->args)) {
         goto socket_connect_failed;
     }
