@@ -187,12 +187,8 @@ static void s_dispatch_event_loop_final_destroy(struct aws_event_loop *event_loo
 
     aws_mutex_clean_up(&dispatch_loop->synced_data.synced_data_lock);
     aws_condition_variable_clean_up(&dispatch_loop->synced_data.signal);
-    // scheduled_iterations should be cleaned up before destroy.
-    while(!aws_linked_list_empty(&dispatch_loop->synced_data.scheduled_iterations)){
-        struct aws_linked_list_node *node = aws_linked_list_pop_front(&dispatch_loop->synced_data.scheduled_iterations);
-        struct scheduled_iteration_entry *entry = AWS_CONTAINER_OF(node, struct scheduled_iteration_entry, scheduled_entry_node);
-        s_scheduled_iteration_entry_destroy(entry);
-    }
+    // We don't need to clean up the dispatch_loop->synced_data.scheduled_iterations, as all scheduling entries should
+    // have cleaned up before destroy call.
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
@@ -590,9 +586,10 @@ static bool s_should_schedule_iteration(
         return true;
     }
 
-    struct aws_linked_list_node* entry_node = aws_linked_list_front(scheduled_iterations);
+    struct aws_linked_list_node *entry_node = aws_linked_list_front(scheduled_iterations);
     AWS_FATAL_ASSERT(entry_node != NULL);
-    struct scheduled_iteration_entry *entry = AWS_CONTAINER_OF(entry_node, struct scheduled_iteration_entry, scheduled_entry_node);
+    struct scheduled_iteration_entry *entry =
+        AWS_CONTAINER_OF(entry_node, struct scheduled_iteration_entry, scheduled_entry_node);
     AWS_FATAL_ASSERT(entry != NULL);
 
     /* is the next scheduled iteration later than what we require? */
@@ -632,8 +629,7 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
     }
 
     struct scheduled_iteration_entry *entry = s_scheduled_iteration_entry_new(dispatch_loop, clamped_timestamp);
-    aws_linked_list_push_front(
-        &dispatch_loop->synced_data.scheduled_iterations, &entry->scheduled_entry_node);
+    aws_linked_list_push_front(&dispatch_loop->synced_data.scheduled_iterations, &entry->scheduled_entry_node);
 
     if (delta == 0) {
         /*
