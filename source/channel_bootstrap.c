@@ -488,7 +488,7 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         }
 
         if (connection_args->channel_data.use_tls) {
-            if (aws_is_use_secitem()) {
+            if (aws_is_using_secitem()) {
                 /*
                  * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
                  * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
@@ -666,7 +666,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 (void *)socket,
                 error_code,
                 aws_error_name(error_code));
-            if (aws_is_use_secitem()) {
+            if (aws_is_using_secitem()) {
                 /*
                  * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful
                  * TCP connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a
@@ -828,7 +828,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     /*
      * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
      */
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
         struct client_connection_args *connection_args = task_data->args;
         if (connection_args->channel_data.use_tls) {
             connect_options.tls_connection_options = &connection_args->channel_data.tls_options;
@@ -1152,7 +1152,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         /*
          * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
          */
-        if (aws_is_use_secitem()) {
+        if (aws_is_using_secitem()) {
             if (client_connection_args->channel_data.use_tls) {
                 connect_options.tls_connection_options = &client_connection_args->channel_data.tls_options;
             }
@@ -1569,7 +1569,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
     if (channel_data->server_connection_args->use_tls) {
-        if (aws_is_use_secitem()) {
+        if (aws_is_using_secitem()) {
             /*
              * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
              * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
@@ -1932,7 +1932,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
 
     struct aws_socket_bind_options socket_bind_options = {.local_endpoint = &endpoint};
 
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
         socket_bind_options.event_loop = connection_loop;
         socket_bind_options.tls_connection_options = &server_connection_args->tls_options;
     }

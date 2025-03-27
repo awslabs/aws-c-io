@@ -27,7 +27,7 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
 
 #ifdef __APPLE__
 
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
         options->secitem_options.cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
         options->secitem_options.key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
     }
@@ -252,7 +252,7 @@ int aws_tls_ctx_options_set_keychain_path(
 
 #if defined(__APPLE__)
 
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path cannot be set when using Secitem.");
         return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     }
@@ -278,7 +278,7 @@ int aws_tls_ctx_options_set_keychain_path(
 int aws_tls_ctx_options_set_secitem_options(
     struct aws_tls_ctx_options *tls_ctx_options,
     const struct aws_secitem_options *secitem_options) {
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
 
         if (secitem_options->cert_label != NULL) {
             aws_string_destroy(tls_ctx_options->secitem_options.cert_label);
