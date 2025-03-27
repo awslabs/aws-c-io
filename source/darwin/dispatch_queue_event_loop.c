@@ -100,12 +100,12 @@ static struct aws_event_loop_vtable s_vtable = {
  * queue to insure the tasks scheduled on the event loop task scheduler are executed in the correct order.
  *
  * Data Structures ******
- * `scheduled_iteration_entry `: Each entry maps to an iteration we scheduled on Apple's dispatch queue. We lose control
- * of the submitted block once scheduled to Apple's dispatch queue. Apple will keep its dispatch queue alive and
- * increase its refcount on the dispatch queue for every entry we schedule an entry. Blocks scheduled for future
- * execution on a dispatch queue will obtain a refcount to the Apple dispatch queue to insure the dispatch queue is not
- * released until the block is run but the block itself will not be enqued until the provided amount of time has
- * elapsed.
+ * `scheduled_iteration_entry `: Each entry maps to an execution block submitted to Apple's dispatch queue. Since Apple
+ * ensures the dispatch queue remains active until all scheduled blocks have been executed, it is necessary to keep the
+ * aws_dispatch_loop alive accordingly. This is achieved by holding a reference to aws_dispatch_loop within each entry.
+ * An entry is created upon block submission and is destroyed once the block has been executed, preventing premature
+ * deallocation of the dispatch loop.
+ *
  * `dispatch_loop`: Implementation of the event loop for dispatch queue.
  *
  * Functions ************
@@ -144,21 +144,9 @@ static void s_dispatch_loop_release(struct aws_dispatch_loop *dispatch_loop) {
 struct scheduled_iteration_entry {
     struct aws_allocator *allocator;
     uint64_t timestamp;
-    struct aws_priority_queue_node priority_queue_node;
+    struct aws_linked_list_node scheduled_entry_node;
     struct aws_dispatch_loop *dispatch_loop;
 };
-
-/*
- * This is used to determine the dynamic queue size containing scheduled iteration events. Expectation is for there to
- * be one scheduled for now, and one or two scheduled for various times in the future. It is unlikely for there to be
- * more but if needed, the queue will double in size when it needs to.
- */
-static const size_t DEFAULT_QUEUE_SIZE = 4;
-static int s_compare_timestamps(const void *a, const void *b) {
-    uint64_t a_time = (*(struct scheduled_iteration_entry **)a)->timestamp;
-    uint64_t b_time = (*(struct scheduled_iteration_entry **)b)->timestamp;
-    return a_time > b_time; /* min-heap */
-}
 
 /*
  * Allocates and returns a new memory alocated `scheduled_iteration_entry` struct
@@ -173,7 +161,6 @@ static struct scheduled_iteration_entry *s_scheduled_iteration_entry_new(
     entry->allocator = dispatch_loop->allocator;
     entry->timestamp = timestamp;
     entry->dispatch_loop = s_dispatch_loop_acquire(dispatch_loop);
-    aws_priority_queue_node_init(&entry->priority_queue_node);
 
     return entry;
 }
@@ -200,7 +187,8 @@ static void s_dispatch_event_loop_final_destroy(struct aws_event_loop *event_loo
 
     aws_mutex_clean_up(&dispatch_loop->synced_data.synced_data_lock);
     aws_condition_variable_clean_up(&dispatch_loop->synced_data.signal);
-    aws_priority_queue_clean_up(&dispatch_loop->synced_data.scheduled_iterations);
+    // We don't need to clean up the dispatch_loop->synced_data.scheduled_iterations, as all scheduling entries should
+    // have cleaned up before destroy call.
     aws_mem_release(dispatch_loop->allocator, dispatch_loop);
     aws_event_loop_clean_up_base(event_loop);
     aws_mem_release(event_loop->alloc, event_loop);
@@ -313,19 +301,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     }
 
     aws_linked_list_init(&dispatch_loop->synced_data.cross_thread_tasks);
-    if (aws_priority_queue_init_dynamic(
-            &dispatch_loop->synced_data.scheduled_iterations,
-            alloc,
-            DEFAULT_QUEUE_SIZE,
-            sizeof(struct scheduled_iteration_entry *),
-            &s_compare_timestamps)) {
-        AWS_LOGF_ERROR(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p: Priority queue creation failed, cleaning up the dispatch queue: %s",
-            (void *)loop,
-            dispatch_queue_id);
-        goto clean_up;
-    }
+    aws_linked_list_init(&dispatch_loop->synced_data.scheduled_iterations);
 
     return loop;
 
@@ -514,8 +490,8 @@ static void s_run_iteration(void *service_entry) {
 
     s_lock_synced_data(dispatch_loop);
 
-    AWS_FATAL_ASSERT(aws_priority_queue_node_is_in_queue(&entry->priority_queue_node));
-    aws_priority_queue_remove(&dispatch_loop->synced_data.scheduled_iterations, &entry, &entry->priority_queue_node);
+    AWS_FATAL_ASSERT(aws_linked_list_node_is_in_list(&entry->scheduled_entry_node));
+    aws_linked_list_remove(&entry->scheduled_entry_node);
 
     /*
      * If we're shutting down, then don't do anything.  The destroy task handles purging and canceling tasks.
@@ -604,16 +580,16 @@ done:
  * The function should be wrapped with the synced_data_lock to safely access the scheduled_iterations list
  */
 static bool s_should_schedule_iteration(
-    struct aws_priority_queue *scheduled_iterations,
+    struct aws_linked_list *scheduled_iterations,
     uint64_t proposed_iteration_time) {
-    if (aws_priority_queue_size(scheduled_iterations) == 0) {
+    if (aws_linked_list_empty(scheduled_iterations)) {
         return true;
     }
 
-    struct scheduled_iteration_entry **entry_ptr = NULL;
-    aws_priority_queue_top(scheduled_iterations, (void **)&entry_ptr);
-    AWS_FATAL_ASSERT(entry_ptr != NULL);
-    struct scheduled_iteration_entry *entry = *entry_ptr;
+    struct aws_linked_list_node *entry_node = aws_linked_list_front(scheduled_iterations);
+    AWS_FATAL_ASSERT(entry_node != NULL);
+    struct scheduled_iteration_entry *entry =
+        AWS_CONTAINER_OF(entry_node, struct scheduled_iteration_entry, scheduled_entry_node);
     AWS_FATAL_ASSERT(entry != NULL);
 
     /* is the next scheduled iteration later than what we require? */
@@ -653,8 +629,7 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
     }
 
     struct scheduled_iteration_entry *entry = s_scheduled_iteration_entry_new(dispatch_loop, clamped_timestamp);
-    aws_priority_queue_push_ref(
-        &dispatch_loop->synced_data.scheduled_iterations, (void *)&entry, &entry->priority_queue_node);
+    aws_linked_list_push_front(&dispatch_loop->synced_data.scheduled_iterations, &entry->scheduled_entry_node);
 
     if (delta == 0) {
         /*

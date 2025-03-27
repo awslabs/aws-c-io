@@ -81,8 +81,7 @@ struct aws_dispatch_loop {
          * When we schedule a new run iteration, scheduled_iterations is checked to see if the scheduling attempt is
          * redundant.
          */
-        // TODO: this can be a linked list
-        struct aws_priority_queue scheduled_iterations;
+        struct aws_linked_list scheduled_iterations;
     } synced_data;
 };
 

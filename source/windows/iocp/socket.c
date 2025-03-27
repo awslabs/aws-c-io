@@ -537,7 +537,7 @@ static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect
     return socket_impl->winsock_vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
-static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options, ) {
+static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options) {
     const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;
     if (socket->state != INIT) {
         socket->state = ERRORED;
