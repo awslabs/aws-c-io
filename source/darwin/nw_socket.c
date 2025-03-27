@@ -2009,17 +2009,21 @@ static int s_socket_bind_fn(
         local_endpoint->address,
         (int)local_endpoint->port);
 
-    if (nw_socket->nw_parameters == NULL && socket_bind_options->tls_connection_options != NULL) {
-        if (s_setup_tls_options_from_tls_connection_options(nw_socket, socket_bind_options->tls_connection_options)) {
-            return AWS_OP_ERR;
-        }
+    if (nw_socket->nw_parameters == NULL) {
+        if (socket_bind_options->tls_connection_options != NULL) {
+            if (s_setup_tls_options_from_tls_connection_options(
+                    nw_socket, socket_bind_options->tls_connection_options)) {
+                return AWS_OP_ERR;
+            }
 
-        if (nw_socket->tls_ctx != NULL) {
-            /*
-             * Apple Network's TLS negotiation verify block requires access to an event loop. We temporarily assign it
-             * to the nw_socket for use during the setup of its parameters and then immediately NULL it afterwards.
-             */
-            nw_socket->event_loop = socket_bind_options->event_loop;
+            if (nw_socket->tls_ctx != NULL) {
+                /*
+                 * Apple Network's TLS negotiation verify block requires access to an event loop. We temporarily assign
+                 * it to the nw_socket for use during the setup of its parameters and then immediately NULL it
+                 * afterwards.
+                 */
+                nw_socket->event_loop = socket_bind_options->event_loop;
+            }
         }
 
         s_setup_socket_params(nw_socket, &socket->options);
