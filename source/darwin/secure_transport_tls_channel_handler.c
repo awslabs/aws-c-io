@@ -1054,9 +1054,7 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
         CFRelease(secure_transport_ctx->ca_cert);
     }
 
-    if (secure_transport_ctx->alpn_list) {
-        aws_string_destroy(secure_transport_ctx->alpn_list);
-    }
+    aws_string_destroy(secure_transport_ctx->alpn_list);
 
     CFRelease(secure_transport_ctx->wrapped_allocator);
     aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
