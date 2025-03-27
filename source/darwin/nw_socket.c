@@ -1730,6 +1730,11 @@ static int s_setup_tls_options_from_tls_connection_options(
         return AWS_OP_ERR;
     }
 
+    /* This check allows us to safely call this function whether or not TLS related options have been set. */
+    if (tls_connection_options == NULL) {
+        return AWS_OP_SUCCESS;
+    }
+
     /* The host name is needed during the setup of the verification block */
     if (tls_connection_options->server_name != NULL) {
         nw_socket->host_name = aws_string_new_from_string(
@@ -1743,29 +1748,33 @@ static int s_setup_tls_options_from_tls_connection_options(
         }
     }
 
+    /* TLS negotiation needs the alpn list if one is present for use. */
+    struct aws_string *alpn_list = NULL;
+    if (tls_connection_options->alpn_list != NULL) {
+        alpn_list = tls_connection_options->alpn_list;
+    }
+
     /* The tls_ctx is needed to setup TLS negotiation options in the Apple Network Framework connection's parameters */
     if (tls_connection_options->ctx != NULL) {
         nw_socket->tls_ctx = tls_connection_options->ctx;
         aws_tls_ctx_acquire(nw_socket->tls_ctx);
 
-        /* TLS negotiation needs the alpn list if one is present for use. */
-        struct aws_string *alpn_list = NULL;
-        struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
-        if (tls_connection_options->alpn_list != NULL) {
-            alpn_list = tls_connection_options->alpn_list;
-        } else if (transport_ctx->alpn_list != NULL) {
+        /* If alpn_list hasn't been set, try assigning it from the transport_ctx. It's fine if it's also NULL. */
+        if (alpn_list == NULL) {
+            struct secure_transport_ctx *transport_ctx = nw_socket->tls_ctx->impl;
             alpn_list = transport_ctx->alpn_list;
         }
+    }
 
-        if (alpn_list != NULL) {
-            nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
-            if (nw_socket->alpn_list == NULL) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_SOCKET,
-                    "nw_socket=%p: Error encounterd during setup of alpn list from tls context.",
-                    (void *)nw_socket);
-                return AWS_OP_ERR;
-            }
+    /* If an alpn_list was found, we store it for use in nw_socket for the setup of TLS parameters */
+    if (alpn_list != NULL) {
+        nw_socket->alpn_list = aws_string_new_from_string(alpn_list->allocator, alpn_list);
+        if (nw_socket->alpn_list == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "nw_socket=%p: Error encounterd during setup of alpn list from tls context.",
+                (void *)nw_socket);
+            return AWS_OP_ERR;
         }
     }
 
@@ -1791,11 +1800,9 @@ static int s_socket_connect_fn(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    if (socket_connect_options->tls_connection_options != NULL) {
-        if (s_setup_tls_options_from_tls_connection_options(
-                nw_socket, socket_connect_options->tls_connection_options)) {
-            return AWS_OP_ERR;
-        }
+    /* We take what we need for TLS negotiation from the tls_connection_options */
+    if (s_setup_tls_options_from_tls_connection_options(nw_socket, socket_connect_options->tls_connection_options)) {
+        return AWS_OP_ERR;
     }
 
     /* event_loop must be set prior to setup of socket parameters. */
@@ -2010,24 +2017,24 @@ static int s_socket_bind_fn(
         (int)local_endpoint->port);
 
     if (nw_socket->nw_parameters == NULL) {
-        if (socket_bind_options->tls_connection_options != NULL) {
-            if (s_setup_tls_options_from_tls_connection_options(
-                    nw_socket, socket_bind_options->tls_connection_options)) {
-                return AWS_OP_ERR;
-            }
 
-            if (nw_socket->tls_ctx != NULL) {
-                /*
-                 * Apple Network's TLS negotiation verify block requires access to an event loop. We temporarily assign
-                 * it to the nw_socket for use during the setup of its parameters and then immediately NULL it
-                 * afterwards.
-                 */
-                nw_socket->event_loop = socket_bind_options->event_loop;
-            }
+        /* We take what we need for TLS negotiation from the tls_connection_options */
+        if (s_setup_tls_options_from_tls_connection_options(nw_socket, socket_bind_options->tls_connection_options)) {
+            return AWS_OP_ERR;
+        }
+
+        if (nw_socket->tls_ctx != NULL) {
+            /*
+             * Apple Network's TLS negotiation verify block requires access to an event loop. We temporarily
+             * assign it to the nw_socket for use during the setup of its parameters and then immediately NULL
+             * it afterwards.
+             */
+            nw_socket->event_loop = socket_bind_options->event_loop;
         }
 
         s_setup_socket_params(nw_socket, &socket->options);
-        /* Because a refcount wasn't acquired, we NULL the event_loop right after its use in creating socket params. */
+        /* Because a refcount wasn't acquired, we NULL the event_loop right after its use in creating socket params.
+         */
         nw_socket->event_loop = NULL;
     }
 
@@ -2179,9 +2186,9 @@ static void s_process_listener_state_changed_task(struct aws_task *task, void *a
         (void *)nw_socket,
         (void *)nw_listener);
 
-    /* Ideally we should not have a task with AWS_TASK_STATUS_CANCELED here, as the event loop should never be destroyed
-     * before the nw_socket get destroyed. If we manually cancel the task, we should make sure we carefully handled the
-     * state change eventually, as the socket relies on this task to release and cleanup.
+    /* Ideally we should not have a task with AWS_TASK_STATUS_CANCELED here, as the event loop should never be
+     * destroyed before the nw_socket get destroyed. If we manually cancel the task, we should make sure we
+     * carefully handled the state change eventually, as the socket relies on this task to release and cleanup.
      */
     if (status != AWS_TASK_STATUS_CANCELED) {
 
@@ -2569,7 +2576,8 @@ static int s_socket_subscribe_to_readable_events_fn(
     if (nw_socket->mode == NWSM_LISTENER) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "nw_socket=%p handle=%p: Apple Network Framework does not support read/write on a listener. Please use the "
+            "nw_socket=%p handle=%p: Apple Network Framework does not support read/write on a listener. Please use "
+            "the "
             "incoming socket to track the read/write operation.",
             (void *)nw_socket,
             (void *)nw_socket->os_handle.nw_listener);
