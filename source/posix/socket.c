@@ -196,14 +196,8 @@ struct posix_socket {
 };
 
 static void s_socket_clean_up(struct aws_socket *socket);
-static int s_socket_connect(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data);
-static int s_socket_bind(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data);
+static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options);
+static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options);
 static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
     struct aws_socket *socket,
@@ -682,14 +676,12 @@ static int parse_cid(const char *cid_str, unsigned int *value) {
 }
 #endif
 
-static int s_socket_connect(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data) {
+static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options) {
 
     const struct aws_socket_endpoint *remote_endpoint = socket_connect_options->remote_endpoint;
     struct aws_event_loop *event_loop = socket_connect_options->event_loop;
     aws_socket_on_connection_result_fn *on_connection_result = socket_connect_options->on_connection_result;
+    void *user_data = socket_connect_options->user_data;
 
     AWS_ASSERT(event_loop);
     AWS_ASSERT(!socket->event_loop);
@@ -870,11 +862,7 @@ err_clean_up:
     return AWS_OP_ERR;
 }
 
-static int s_socket_bind(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data) {
-    (void)user_data;
+static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options) {
     const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;
     if (socket->state != INIT) {
         AWS_LOGF_ERROR(

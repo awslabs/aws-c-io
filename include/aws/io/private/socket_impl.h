@@ -51,14 +51,8 @@ int aws_socket_init_apple_nw_socket(
 
 struct aws_socket_vtable {
     void (*socket_cleanup_fn)(struct aws_socket *socket);
-    int (*socket_connect_fn)(
-        struct aws_socket *socket,
-        struct aws_socket_connect_options *socket_connect_options,
-        void *user_data);
-    int (*socket_bind_fn)(
-        struct aws_socket *socket,
-        struct aws_socket_bind_options *socket_bind_options,
-        void *user_data);
+    int (*socket_connect_fn)(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options);
+    int (*socket_bind_fn)(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options);
     int (*socket_listen_fn)(struct aws_socket *socket, int backlog_size);
     int (*socket_start_accept_fn)(
         struct aws_socket *socket,

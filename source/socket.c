@@ -14,17 +14,14 @@ void aws_socket_clean_up(struct aws_socket *socket) {
     socket->vtable->socket_cleanup_fn(socket);
 }
 
-int aws_socket_connect(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data) {
+int aws_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_connect_fn);
-    return socket->vtable->socket_connect_fn(socket, socket_connect_options, user_data);
+    return socket->vtable->socket_connect_fn(socket, socket_connect_options);
 }
 
-int aws_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options, void *user_data) {
+int aws_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_bind_fn);
-    return socket->vtable->socket_bind_fn(socket, socket_bind_options, user_data);
+    return socket->vtable->socket_bind_fn(socket, socket_bind_options);
 }
 
 int aws_socket_listen(struct aws_socket *socket, int backlog_size) {

@@ -851,14 +851,8 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
 }
 
 static void s_socket_cleanup_fn(struct aws_socket *socket);
-static int s_socket_connect_fn(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data);
-static int s_socket_bind_fn(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data);
+static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options);
+static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options);
 static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept_fn(
     struct aws_socket *socket,
@@ -1781,15 +1775,13 @@ static int s_setup_tls_options_from_tls_connection_options(
     return AWS_OP_SUCCESS;
 }
 
-static int s_socket_connect_fn(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data) {
+static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options) {
     struct nw_socket *nw_socket = socket->impl;
 
     const struct aws_socket_endpoint *remote_endpoint = socket_connect_options->remote_endpoint;
     struct aws_event_loop *event_loop = socket_connect_options->event_loop;
     aws_socket_on_connection_result_fn *on_connection_result = socket_connect_options->on_connection_result;
+    void *user_data = socket_connect_options->user_data;
 
     AWS_ASSERT(event_loop);
     AWS_FATAL_ASSERT(on_connection_result);
@@ -1992,11 +1984,7 @@ error:
     return AWS_OP_ERR;
 }
 
-static int s_socket_bind_fn(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data) {
-    (void)user_data;
+static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options) {
     struct nw_socket *nw_socket = socket->impl;
 
     const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;

@@ -823,7 +823,8 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     struct aws_socket_connect_options connect_options = {
         .remote_endpoint = &task_data->endpoint,
         .event_loop = task_data->connect_loop,
-        .on_connection_result = s_on_client_connection_established};
+        .on_connection_result = s_on_client_connection_established,
+        .user_data = task_data->args};
 
     /*
      * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
@@ -835,7 +836,7 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         }
     }
 
-    if (aws_socket_connect(outgoing_socket, &connect_options, task_data->args)) {
+    if (aws_socket_connect(outgoing_socket, &connect_options)) {
         goto socket_connect_failed;
     }
 
@@ -1147,7 +1148,8 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         struct aws_socket_connect_options connect_options = {
             .remote_endpoint = &endpoint,
             .event_loop = connect_loop,
-            .on_connection_result = s_on_client_connection_established};
+            .on_connection_result = s_on_client_connection_established,
+            .user_data = client_connection_args};
 
         /*
          * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
@@ -1158,7 +1160,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
             }
         }
 
-        if (aws_socket_connect(outgoing_socket, &connect_options, client_connection_args)) {
+        if (aws_socket_connect(outgoing_socket, &connect_options)) {
 
             aws_socket_set_cleanup_complete_callback(
                 outgoing_socket, s_socket_shutdown_complete_release_client_connection_fn, client_connection_args);
@@ -1930,14 +1932,15 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
     endpoint.port = bootstrap_options->port;
 
-    struct aws_socket_bind_options socket_bind_options = {.local_endpoint = &endpoint};
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint, .user_data = server_connection_args};
 
     if (aws_is_using_secitem()) {
         socket_bind_options.event_loop = connection_loop;
         socket_bind_options.tls_connection_options = &server_connection_args->tls_options;
     }
 
-    if (aws_socket_bind(&server_connection_args->listener, &socket_bind_options, server_connection_args)) {
+    if (aws_socket_bind(&server_connection_args->listener, &socket_bind_options)) {
         goto cleanup_listener;
     }
 

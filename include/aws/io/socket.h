@@ -171,6 +171,7 @@ struct aws_socket_connect_options {
     const struct aws_socket_endpoint *remote_endpoint;
     struct aws_event_loop *event_loop;
     aws_socket_on_connection_result_fn *on_connection_result;
+    void *user_data;
 
     /*
      * This is only set when using Apple SecItem for TLS negotiation.
@@ -193,6 +194,7 @@ struct aws_socket_listener_options {
 
 struct aws_socket_bind_options {
     const struct aws_socket_endpoint *local_endpoint;
+    void *user_data;
 
     /*
      * This is only set when using Apple SecItem for TLS negotiation.
@@ -240,20 +242,14 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
  */
-AWS_IO_API int aws_socket_connect(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data);
+AWS_IO_API int aws_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options);
 
 /**
  * Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In
  * connection oriented modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()` before using the
  * socket. local_endpoint is copied.
  */
-AWS_IO_API int aws_socket_bind(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data);
+AWS_IO_API int aws_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options);
 
 /**
  * Get the local address which the socket is bound to.
