@@ -710,7 +710,7 @@ static int resolver_record_connection_failure(
  */
 
 struct aws_host_address_cache_entry_lookup {
-    struct aws_host_address_cache_entry *found;
+    struct aws_host_address_cache_entry *entry; /* if lookup succeeds, this is non-NULL */
     bool is_fallback;
 };
 
@@ -729,7 +729,7 @@ static struct aws_host_address_cache_entry_lookup s_find_cached_address_entry_au
         }
     }
 
-    return (struct aws_host_address_cache_entry_lookup){.found = found, .is_fallback = is_fallback};
+    return (struct aws_host_address_cache_entry_lookup){.entry = found, .is_fallback = is_fallback};
 }
 
 /*
@@ -748,7 +748,7 @@ static struct aws_host_address_cache_entry_lookup s_find_cached_address_entry(
             return s_find_cached_address_entry_aux(entry->a_records, entry->failed_connection_a_records, address);
 
         default:
-            return (struct aws_host_address_cache_entry_lookup){.found = NULL};
+            return (struct aws_host_address_cache_entry_lookup){.entry = NULL};
     }
 }
 
@@ -797,8 +797,8 @@ static void s_update_address_cache(
         struct aws_host_address_cache_entry_lookup cache_lookup = s_find_cached_address_entry(
             host_entry, fresh_resolved_address->address, fresh_resolved_address->record_type);
 
-        if (cache_lookup.found) {
-            struct aws_host_address_cache_entry *address_to_cache_entry = cache_lookup.found;
+        if (cache_lookup.entry) {
+            struct aws_host_address_cache_entry *address_to_cache_entry = cache_lookup.entry;
             if (cache_lookup.is_fallback) {
                 AWS_LOGF_TRACE(
                     AWS_LS_IO_DNS,
