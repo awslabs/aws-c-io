@@ -520,16 +520,22 @@ static inline void process_records(
     AWS_LOGF_TRACE(AWS_LS_IO_DNS, "static: remaining record count for host %d", (int)record_count);
 
     /* if we don't have any known good addresses, take the least recently used, but not expired address with a history
-     * of spotty behavior and upgrade it for reuse. If it's expired, leave it and let the resolve fail. Better to fail
-     * than accidentally give a kids' app an IP address to somebody's adult website when the IP address gets rebound to
-     * a different endpoint. The moral of the story here is to not disable SSL verification! */
-    if (!record_count) {
-        size_t failed_count = aws_cache_get_element_count(failed_records);
-        for (size_t index = 0; index < failed_count; ++index) {
-            struct aws_host_address_cache_entry *lru_element_entry = aws_lru_cache_use_lru_element(failed_records);
-            if (timestamp >= lru_element_entry->address.expiry) {
-                continue;
-            }
+     * of spotty behavior and upgrade it for reuse. */
+    bool should_promote = (record_count == 0);
+    size_t failed_count = aws_cache_get_element_count(failed_records);
+    for (size_t index = 0; index < failed_count; ++index) {
+        struct aws_host_address_cache_entry *lru_element_entry = aws_lru_cache_use_lru_element(failed_records);
+
+        /* remove expired entries */
+        if (timestamp >= lru_element_entry->address.expiry) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_DNS,
+                "static: purging expired bad record %s for %s",
+                lru_element_entry->address.address->bytes,
+                lru_element_entry->address.host->bytes);
+            aws_cache_remove(failed_records, lru_element_entry->address.address);
+
+        } else if (should_promote) {
 
             struct aws_host_address_cache_entry *to_add =
                 aws_mem_calloc(host_entry->allocator, 1, sizeof(struct aws_host_address_cache_entry));
@@ -558,7 +564,7 @@ static inline void process_records(
             aws_cache_remove(failed_records, lru_element_entry->address.address);
 
             /* we only want to promote one per process run.*/
-            break;
+            should_promote = false;
         }
     }
 }
@@ -703,24 +709,33 @@ static int resolver_record_connection_failure(
  * A bunch of convenience functions for the host resolver background thread function
  */
 
-static struct aws_host_address_cache_entry *s_find_cached_address_entry_aux(
+struct aws_host_address_cache_entry_lookup {
+    struct aws_host_address_cache_entry *entry; /* if lookup succeeds, this is non-NULL */
+    bool is_fallback;
+};
+
+static struct aws_host_address_cache_entry_lookup s_find_cached_address_entry_aux(
     struct aws_cache *primary_records,
     struct aws_cache *fallback_records,
     const struct aws_string *address) {
 
     struct aws_host_address_cache_entry *found = NULL;
+    bool is_fallback = false;
     aws_cache_find(primary_records, address, (void **)&found);
     if (found == NULL) {
         aws_cache_find(fallback_records, address, (void **)&found);
+        if (found != NULL) {
+            is_fallback = true;
+        }
     }
 
-    return found;
+    return (struct aws_host_address_cache_entry_lookup){.entry = found, .is_fallback = is_fallback};
 }
 
 /*
  * Looks in both the good and failed connection record sets for a given host record
  */
-static struct aws_host_address_cache_entry *s_find_cached_address_entry(
+static struct aws_host_address_cache_entry_lookup s_find_cached_address_entry(
     struct host_entry *entry,
     const struct aws_string *address,
     enum aws_address_record_type record_type) {
@@ -733,7 +748,7 @@ static struct aws_host_address_cache_entry *s_find_cached_address_entry(
             return s_find_cached_address_entry_aux(entry->a_records, entry->failed_connection_a_records, address);
 
         default:
-            return NULL;
+            return (struct aws_host_address_cache_entry_lookup){.entry = NULL};
     }
 }
 
@@ -779,19 +794,30 @@ static void s_update_address_cache(
         struct aws_host_address *fresh_resolved_address = NULL;
         aws_array_list_get_at_ptr(address_list, (void **)&fresh_resolved_address, i);
 
-        struct aws_host_address_cache_entry *address_to_cache_entry = s_find_cached_address_entry(
+        struct aws_host_address_cache_entry_lookup cache_lookup = s_find_cached_address_entry(
             host_entry, fresh_resolved_address->address, fresh_resolved_address->record_type);
 
-        if (address_to_cache_entry) {
-            address_to_cache_entry->address.expiry = new_expiration;
-            AWS_LOGF_TRACE(
-                AWS_LS_IO_DNS,
-                "static: updating expiry for %s for host %s to %llu",
-                address_to_cache_entry->address.address->bytes,
-                host_entry->host_name->bytes,
-                (unsigned long long)new_expiration);
+        if (cache_lookup.entry) {
+            struct aws_host_address_cache_entry *address_to_cache_entry = cache_lookup.entry;
+            if (cache_lookup.is_fallback) {
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_DNS,
+                    "static: NOT updating expiry for %s for host %s because it's in bad list."
+                    " Keeping old expiry of %" PRIu64,
+                    aws_string_c_str(address_to_cache_entry->address.address),
+                    aws_string_c_str(host_entry->host_name),
+                    address_to_cache_entry->address.expiry);
+            } else {
+                address_to_cache_entry->address.expiry = new_expiration;
+                AWS_LOGF_TRACE(
+                    AWS_LS_IO_DNS,
+                    "static: updating expiry for %s for host %s to %" PRIu64,
+                    aws_string_c_str(address_to_cache_entry->address.address),
+                    aws_string_c_str(host_entry->host_name),
+                    new_expiration);
+            }
         } else {
-            address_to_cache_entry =
+            struct aws_host_address_cache_entry *address_to_cache_entry =
                 aws_mem_calloc(host_entry->allocator, 1, sizeof(struct aws_host_address_cache_entry));
 
             aws_host_address_move(fresh_resolved_address, &address_to_cache_entry->address);

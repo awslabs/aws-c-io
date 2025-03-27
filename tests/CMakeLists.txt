@@ -113,6 +113,7 @@ add_net_test_case(test_default_with_ipv4_only_lookup)
 add_test_case(test_resolver_ttls)
 add_test_case(test_resolver_connect_failure_recording)
 add_test_case(test_resolver_ttl_refreshes_on_resolve)
+add_test_case(test_resolver_bad_list_expires_eventually)
 add_test_case(test_resolver_low_frequency_starvation)
 
 add_test_case(test_pem_single_cert_parse)
