@@ -1234,7 +1234,6 @@ struct server_connection_args {
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
     aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
     aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
     aws_server_bootstrap_on_listener_setup_fn *setup_callback;
     struct aws_tls_connection_options tls_options;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
