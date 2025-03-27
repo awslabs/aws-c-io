@@ -387,8 +387,8 @@ static int s_aws_secitem_add_certificate_to_keychain(
 
     // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
-        switch ((int)status) {
-            case -34018:
+        switch (status) {
+            case errSecMissingEntitlement:
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
                     "SecItemAdd certificate failed with OSStatus %d : errSecMissingEntitlement. The process attempting "
@@ -489,8 +489,8 @@ static int s_aws_secitem_add_private_key_to_keychain(
 
     // A duplicate item is handled. All other errors are unhandled.
     if (status != errSecSuccess && status != errSecDuplicateItem) {
-        switch ((int)status) {
-            case -34018:
+        switch (status) {
+            case errSecMissingEntitlement:
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
                     "SecItemAdd private key failed with OSStatus %d : errSecMissingEntitlement. The process attempting "
