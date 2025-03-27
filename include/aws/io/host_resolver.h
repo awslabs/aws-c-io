@@ -75,10 +75,6 @@ struct aws_host_resolution_config {
     uint64_t resolve_frequency_ns; /* 0 defaults to 1 second interval */
 };
 
-struct aws_host_listener;
-
-struct aws_host_listener_options;
-
 struct aws_host_resolver_purge_host_options {
     /* the host to purge the cache for */
     const struct aws_string *host;
