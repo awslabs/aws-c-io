@@ -78,7 +78,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     s_SSLSetALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
     s_SSLCopyALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef *))dlsym(RTLD_DEFAULT, "SSLCopyALPNProtocols");
 
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
         AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: initializing TLS implementation as Apple SecItem.");
     } else {
         AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: initializing TLS implementation as Apple SecureTransport.");
@@ -829,7 +829,7 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
         /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
          * using it does not have a TLS. The negotiated protocol is stored in the nw_socket and must be retrieved from
          * the socket rather than a secure_transport_handler. */
@@ -842,7 +842,7 @@ struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct aws_string *server_name = NULL;
-    if (aws_is_use_secitem()) {
+    if (aws_is_using_secitem()) {
         /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
          * using it does not have a TLS slot. The server_name is stored in the nw_socket and must be retrieved from the
          * socket rather than a secure_transport_handler. */
@@ -1054,9 +1054,7 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
         CFRelease(secure_transport_ctx->ca_cert);
     }
 
-    if (secure_transport_ctx->alpn_list) {
-        aws_string_destroy(secure_transport_ctx->alpn_list);
-    }
+    aws_string_destroy(secure_transport_ctx->alpn_list);
 
     CFRelease(secure_transport_ctx->wrapped_allocator);
     aws_mem_release(secure_transport_ctx->ctx.alloc, secure_transport_ctx);
@@ -1114,7 +1112,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
-        if (aws_is_use_secitem()) {
+        if (aws_is_using_secitem()) {
             if (aws_secitem_import_cert_and_key(
                     alloc,
                     secure_transport_ctx->wrapped_allocator,
@@ -1147,7 +1145,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
         struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);
-        if (aws_is_use_secitem()) {
+        if (aws_is_using_secitem()) {
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting up for secitem now.");
             if (aws_secitem_import_pkcs12(

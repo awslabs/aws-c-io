@@ -13,7 +13,7 @@ static bool s_is_use_secitem = true;
 #else
 static bool s_is_use_secitem = false;
 #endif
-bool aws_is_use_secitem(void) {
+bool aws_is_using_secitem(void) {
     return s_is_use_secitem;
 }
 

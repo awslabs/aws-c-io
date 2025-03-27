@@ -142,14 +142,8 @@ static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_
 static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
 static void s_socket_clean_up(struct aws_socket *socket);
-static int s_socket_connect(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data);
-static int s_socket_bind(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data);
+static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options);
+static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options);
 static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
     struct aws_socket *socket,
@@ -514,14 +508,12 @@ static void s_socket_clean_up(struct aws_socket *socket) {
     }
 }
 
-static int s_socket_connect(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data) {
+static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options) {
 
     const struct aws_socket_endpoint *remote_endpoint = socket_connect_options->remote_endpoint;
     struct aws_event_loop *event_loop = socket_connect_options->event_loop;
     aws_socket_on_connection_result_fn *on_connection_result = socket_connect_options->on_connection_result;
+    void *user_data = socket_connect_options->user_data;
 
     struct iocp_socket *socket_impl = socket->impl;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
@@ -545,12 +537,8 @@ static int s_socket_connect(
     return socket_impl->winsock_vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
-static int s_socket_bind(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data) {
+static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options, ) {
     const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;
-    (void)user_data;
     if (socket->state != INIT) {
         socket->state = ERRORED;
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);

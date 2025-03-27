@@ -81,7 +81,6 @@ struct aws_socket_options {
 };
 
 struct aws_socket;
-struct aws_tls_connection_context;
 
 /**
  * Called in client mode when an outgoing connection has succeeded or an error has occurred.
@@ -91,14 +90,6 @@ struct aws_tls_connection_context;
  * If an error occurred error_code will be non-zero.
  */
 typedef void(aws_socket_on_connection_result_fn)(struct aws_socket *socket, int error_code, void *user_data);
-
-/**
- * Retrieves TLS-related options for both socket initialization and listener binding.
- * Apple Network Framework deviates from our other channel setup patterns where the TLS handshake occurs in a TLS slot
- * after the socket slot is connected, the Apple Network Framework requires TLS parameters to be configured during
- * the socket slot creation, since it handles both the socket connection and TLS handshake.
- */
-typedef void(aws_socket_retrieve_tls_options_fn)(struct aws_tls_connection_context *context, void *user_data);
 
 /**
  * Called by a listening socket when a listener accept has successfully initialized or an error has occurred.
@@ -180,7 +171,15 @@ struct aws_socket_connect_options {
     const struct aws_socket_endpoint *remote_endpoint;
     struct aws_event_loop *event_loop;
     aws_socket_on_connection_result_fn *on_connection_result;
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+    void *user_data;
+
+    /*
+     * This is only set when using Apple SecItem for TLS negotiation.
+     * Apple Network Connections using SecItem require all TLS configuration options at the point of
+     * creating the socket slot as it handles both the TCP and TLS negotiation before returning a
+     * valid socket for use.
+     */
+    struct aws_tls_connection_options *tls_connection_options;
 };
 
 struct aws_socket_listener_options {
@@ -195,7 +194,17 @@ struct aws_socket_listener_options {
 
 struct aws_socket_bind_options {
     const struct aws_socket_endpoint *local_endpoint;
-    aws_socket_retrieve_tls_options_fn *retrieve_tls_options;
+    void *user_data;
+
+    /*
+     * This is only set when using Apple SecItem for TLS negotiation.
+     * Apple Network Connections using SecItem require all TLS configuration options at the point of
+     * creating the socket slot as it handles both the TCP and TLS negotiation before returning a
+     * valid socket for use.
+     * Socket bind also needs an event loop to run its verification block.
+     */
+    struct aws_event_loop *event_loop;
+    struct aws_tls_connection_options *tls_connection_options;
 };
 
 struct aws_byte_buf;
@@ -233,20 +242,14 @@ AWS_IO_API void aws_socket_clean_up(struct aws_socket *socket);
  * an event loop. If NULL is passed for UDP, it will immediately return upon success, but you must call
  * aws_socket_assign_to_event_loop before use.
  */
-AWS_IO_API int aws_socket_connect(
-    struct aws_socket *socket,
-    struct aws_socket_connect_options *socket_connect_options,
-    void *user_data);
+AWS_IO_API int aws_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options);
 
 /**
  * Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In
  * connection oriented modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()` before using the
  * socket. local_endpoint is copied.
  */
-AWS_IO_API int aws_socket_bind(
-    struct aws_socket *socket,
-    struct aws_socket_bind_options *socket_bind_options,
-    void *user_data);
+AWS_IO_API int aws_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options);
 
 /**
  * Get the local address which the socket is bound to.
