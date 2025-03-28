@@ -128,15 +128,6 @@ struct default_host_resolver {
     /* host_name (aws_string*) -> host_entry* */
     struct aws_hash_table host_entry_table;
 
-    /* Hash table of listener entries per host name. We keep this decoupled from the host entry table to allow for
-     * listeners to be added/removed regardless of whether or not a corresponding host entry exists.
-     *
-     * Any time the listener list in the listener entry becomes empty, we remove the entry from the table.  This
-     * includes when a resolver thread moves all of the available listeners to its local list.
-     */
-    /* host_name (aws_string*) -> host_listener_entry* */
-    struct aws_hash_table listener_entry_table;
-
     enum default_resolver_state state;
 
     /*
@@ -329,7 +320,6 @@ static void s_cleanup_default_resolver(struct aws_host_resolver *resolver) {
 
     aws_event_loop_group_release(default_host_resolver->event_loop_group);
     aws_hash_table_clean_up(&default_host_resolver->host_entry_table);
-    aws_hash_table_clean_up(&default_host_resolver->listener_entry_table);
 
     aws_mutex_clean_up(&default_host_resolver->resolver_lock);
 
@@ -922,12 +912,6 @@ static void aws_host_resolver_thread(void *arg) {
     if (wait_between_resolves_interval > shutdown_only_wait_time) {
         request_interruptible_wait_time = wait_between_resolves_interval - shutdown_only_wait_time;
     }
-
-    struct aws_linked_list listener_list;
-    aws_linked_list_init(&listener_list);
-
-    struct aws_linked_list listener_destroy_list;
-    aws_linked_list_init(&listener_destroy_list);
 
     bool keep_going = true;
 
