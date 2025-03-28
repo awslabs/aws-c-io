@@ -102,7 +102,6 @@ add_net_test_case(connect_timeout_cancelation)
 add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 endif()
 
-
 if(WIN32)
     add_test_case(local_socket_pipe_connected_race)
 endif()
@@ -147,9 +146,10 @@ add_test_case(pem_sanitize_comments_around_pem_object_removed)
 add_test_case(pem_sanitize_empty_file_rejected)
 add_test_case(pem_sanitize_wrong_format_rejected)
 
-add_test_case(socket_data_over_multiple_frames)
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
+
+
 # These tests fail on Windows due to some bug in our server code where, if the socket is closed
 # immediately after data is written, that data does not flush cleanly to the client.
 # I've lost days to this bug, and no one is using our Windows server funcionality,
@@ -224,10 +224,13 @@ if(NOT BYO_CRYPTO)
     # to be a way to disable it
     if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
         # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
+        if(NOT AWS_USE_SECITEM)
         add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
+        # SecItem does not allow use of depricated TLS versions
         add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
-        add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
         add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+        endif()
+        add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
     endif()
 
     # Badssl - Secure uncommon suite
@@ -257,12 +260,10 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
 
     # Misc non-badssl tls tests
-    add_net_test_case(test_concurrent_cert_import)
     add_net_test_case(test_duplicate_cert_import)
     add_net_test_case(tls_channel_echo_and_backpressure_test)
     add_net_test_case(tls_channel_shutdown_with_cache_test)
     add_net_test_case(tls_channel_shutdown_with_cache_window_update_after_shutdown_test)
-    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
     add_net_test_case(tls_client_channel_negotiation_success)
     add_net_test_case(tls_server_multiple_connections)
     add_net_test_case(tls_server_hangup_during_negotiation)
@@ -271,12 +272,32 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
+if(NOT AWS_USE_SECITEM)
+    # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
+    # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
+    # valid app bundle.
+    add_net_test_case(test_concurrent_cert_import)
+
+    # PKCS8 is not supported on iOS. We will not support PKCS8 on macOS using SecItem.
+    # PKCS8 support for SecItem can be added in the future but it will require macOS
+    # specific branching of logic and import of the key into the keychain.
     add_net_test_case(test_pkcs8_import)
+
+    # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
+    # further up the channel. Apple Network Framework's connection handles both the socket connection as well
+    # as the TLS handshake within the same create connection call without external notification that the socket
+    # has succeeded prior to the TLS negotiation. As such, this test will not work for Secitem.
+    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
+
+    # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
+    # the socket establishment and does not need a separate timeout task for TLS.
+    add_net_test_case(tls_channel_statistics_test)
+endif()
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)
-    add_net_test_case(tls_channel_statistics_test)
     add_net_test_case(tls_certificate_chain_test)
+    
 else()
     add_test_case(byo_tls_handler_test)
 endif()

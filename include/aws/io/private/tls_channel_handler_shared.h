@@ -27,6 +27,8 @@ enum aws_tls_handler_read_state {
 
 AWS_EXTERN_C_BEGIN
 
+AWS_IO_API bool aws_is_using_secitem(void);
+
 AWS_IO_API void aws_tls_channel_handler_shared_init(
     struct aws_tls_channel_handler_shared *tls_handler_shared,
     struct aws_channel_handler *handler,

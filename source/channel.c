@@ -884,12 +884,13 @@ int aws_channel_slot_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: shutting down slot %p, with handler %p "
-        "in %s direction with error code %d",
+        "in %s direction with error code %d : %s",
         (void *)slot->channel,
         (void *)slot,
         (void *)slot->handler,
         (dir == AWS_CHANNEL_DIR_READ) ? "read" : "write",
-        err_code);
+        err_code,
+        aws_error_name(err_code));
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
 

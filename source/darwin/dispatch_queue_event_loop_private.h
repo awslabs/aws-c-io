@@ -12,6 +12,17 @@
 #include <aws/io/tls_channel_handler.h>
 #include <dispatch/dispatch.h>
 
+struct secure_transport_ctx {
+    struct aws_tls_ctx ctx;
+    CFAllocatorRef wrapped_allocator;
+    CFArrayRef certs;
+    sec_identity_t secitem_identity;
+    CFArrayRef ca_cert;
+    enum aws_tls_versions minimum_tls_version;
+    struct aws_string *alpn_list;
+    bool verify_peer;
+};
+
 enum aws_dispatch_loop_execution_state {
     AWS_DLES_SUSPENDED,
     AWS_DLES_RUNNING,

@@ -14,19 +14,14 @@ void aws_socket_clean_up(struct aws_socket *socket) {
     socket->vtable->socket_cleanup_fn(socket);
 }
 
-int aws_socket_connect(
-    struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    void *user_data) {
+int aws_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_connect_fn);
-    return socket->vtable->socket_connect_fn(socket, remote_endpoint, event_loop, on_connection_result, user_data);
+    return socket->vtable->socket_connect_fn(socket, socket_connect_options);
 }
 
-int aws_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
+int aws_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options) {
     AWS_PRECONDITION(socket->vtable && socket->vtable->socket_bind_fn);
-    return socket->vtable->socket_bind_fn(socket, local_endpoint);
+    return socket->vtable->socket_bind_fn(socket, socket_bind_options);
 }
 
 int aws_socket_listen(struct aws_socket *socket, int backlog_size) {
@@ -246,7 +241,7 @@ int aws_socket_init_posix(
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
-#endif
+#endif // !AWS_ENABLE_EPOLL && !AWS_ENABLE_KQUEUE
 
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
 int aws_socket_init_winsock(
