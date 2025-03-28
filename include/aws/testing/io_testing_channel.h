@@ -57,7 +57,11 @@ static bool s_testing_loop_is_on_callers_thread(struct aws_event_loop *event_loo
     return testing_loop->mock_on_callers_thread;
 }
 
-static void s_testing_loop_destroy(struct aws_event_loop *event_loop) {
+static void s_testing_loop_start_destroy(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+}
+
+static void s_testing_loop_complete_destroy(struct aws_event_loop *event_loop) {
     struct testing_loop *testing_loop = (struct testing_loop *)aws_event_loop_get_impl(event_loop);
     struct aws_allocator *allocator = testing_loop->allocator;
     aws_task_scheduler_clean_up(&testing_loop->scheduler);
@@ -67,7 +71,8 @@ static void s_testing_loop_destroy(struct aws_event_loop *event_loop) {
 }
 
 static struct aws_event_loop_vtable s_testing_loop_vtable = {
-    .destroy = s_testing_loop_destroy,
+    .start_destroy = s_testing_loop_start_destroy,
+    .complete_destroy = s_testing_loop_complete_destroy,
     .is_on_callers_thread = s_testing_loop_is_on_callers_thread,
     .run = s_testing_loop_run,
     .schedule_task_now = s_testing_loop_schedule_task_now,

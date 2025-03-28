@@ -91,6 +91,9 @@ struct aws_tls_ctx {
 /**
  * Invoked upon completion of the TLS handshake. If successful error_code will be AWS_OP_SUCCESS, otherwise
  * the negotiation failed and immediately after this function is invoked, the channel will be shutting down.
+ *
+ * NOTE: When using SecItem the handler and slot arguments will be pointers to the socket slot and socket handler. This
+ * is due to TLS negotiaion being handled by the Apple Network Framework connection in the socket slot/handler.
  */
 typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,
@@ -148,6 +151,26 @@ struct aws_tls_connection_options {
  * to be operated on, like performing a sign operation or a decrypt operation.
  */
 struct aws_tls_key_operation;
+
+/**
+ * A struct containing parameters used during import of Certificate and Private Key into a
+ * data protection keychain using Apple's SecItem API.
+ */
+struct aws_secitem_options {
+    /**
+     * Human-Readable identifier tag for certificate being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *cert_label;
+
+    /**
+     * Human-Readable identifier tag for private key being used in keychain.
+     * Value will be used with kSecAttrLabel Key in SecItem functions.
+     * If one is not provided, we generate it ourselves.
+     */
+    struct aws_string *key_label;
+};
 
 struct aws_tls_ctx_options {
     struct aws_allocator *allocator;
@@ -217,15 +240,19 @@ struct aws_tls_ctx_options {
      */
     struct aws_byte_buf pkcs12_password;
 
-#    if !defined(AWS_OS_IOS)
     /**
-     * On Apple OS you can also use a custom keychain instead of
-     * the default keychain of the account.
+     * On iOS/tvOS the available settings when adding items to the keychain using
+     * SecItem are contained within this struct. This is NOT supported on MacOS.
+     */
+    struct aws_secitem_options secitem_options;
+
+    /**
+     * On MacOS you can also use a custom keychain instead of
+     * the default keychain of the account. This is NOT supported on iOS.
      */
     struct aws_string *keychain_path;
-#    endif
 
-#endif
+#endif /* __APPLE__ */
 
     /** max tls fragment size. Default is the value of g_aws_channel_max_fragment_size. */
     size_t max_fragment_size;
@@ -321,8 +348,6 @@ AWS_IO_API void aws_tls_ctx_options_clean_up(struct aws_tls_ctx_options *options
  * cert_path and pkey_path are paths to files on disk. cert_path
  * and pkey_path are treated as PKCS#7 PEM armored. They are loaded
  * from disk and stored in buffers internally.
- *
- * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
     struct aws_tls_ctx_options *options,
@@ -334,8 +359,6 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_path(
  * Initializes options for use with mutual tls in client mode.
  * cert and pkey are copied. cert and pkey are treated as PKCS#7 PEM
  * armored.
- *
- * NOTE: This is unsupported on iOS.
  */
 AWS_IO_API int aws_tls_ctx_options_init_client_mtls(
     struct aws_tls_ctx_options *options,
@@ -511,6 +534,24 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_with_pkcs11(
 AWS_IO_API int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor);
+
+/**
+ * Applies provided SecItem options to certificate and private key being
+ * added to the iOS/tvOS KeyChain.
+ *
+ * NOTE: Currently only supported on iOS and tvOS using SecItem.
+ *
+ * @param options           aws_tls_ctx_options to be modified.
+ * @param secitem_options   Options for SecItems
+ */
+AWS_IO_API int aws_tls_ctx_options_set_secitem_options(
+    struct aws_tls_ctx_options *tls_ctx_options,
+    const struct aws_secitem_options *secitem_options);
+
+/**
+ * Cleans up resources in secitem_options.
+ */
+AWS_IO_API void aws_tls_secitem_options_clean_up(struct aws_secitem_options *secitem_options);
 
 /**
  * Initializes options for use with in server mode.
@@ -905,6 +946,11 @@ const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm sig
  */
 AWS_IO_API
 const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);
+
+/**
+ * Returns true if error_code is a TLS Negotiation related error.
+ */
+AWS_IO_API bool aws_error_code_is_tls(int error_code);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
