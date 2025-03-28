@@ -913,12 +913,6 @@ static void aws_host_resolver_thread(void *arg) {
         request_interruptible_wait_time = wait_between_resolves_interval - shutdown_only_wait_time;
     }
 
-    struct aws_linked_list listener_list;
-    aws_linked_list_init(&listener_list);
-
-    struct aws_linked_list listener_destroy_list;
-    aws_linked_list_init(&listener_destroy_list);
-
     bool keep_going = true;
 
     struct aws_array_list address_list;
