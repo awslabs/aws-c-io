@@ -827,7 +827,20 @@ struct aws_event_loop *aws_event_loop_new_with_epoll(
         \fresh(c_mutex) && \wrapped0(c_mutex) && \claims_object(c_mutex, &(epoll_loop_of(\result)->task_pre_queue_mutex))))
 ;
 
-static void s_destroy(struct aws_event_loop *event_loop
+static void s_start_destroy(struct aws_event_loop *event_loop
+    _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
+)
+    _(requires \malloc_root(event_loop))
+    _(requires \malloc_root(epoll_loop_of(event_loop)))
+    _(requires c_event_loop != c_mutex)
+    _(requires \wrapped0(c_event_loop) && \claims_object(c_event_loop, event_loop))
+    _(requires \wrapped0(c_mutex) && \claims_object(c_mutex, &epoll_loop_of(event_loop)->task_pre_queue_mutex))
+    _(requires \wrapped(&epoll_loop_of(event_loop)->scheduler))
+    _(requires \wrapped(epoll_loop_of(event_loop)::status))
+    _(requires \wrapped(&epoll_loop_of(event_loop)->stop_task))
+;
+
+static void s_complete_destroy(struct aws_event_loop *event_loop
     _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
 )
     _(requires \malloc_root(event_loop))

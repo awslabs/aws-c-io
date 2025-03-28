@@ -70,8 +70,7 @@ struct winsock_vtable {
     int (*start_accept)(
         struct aws_socket *socket,
         struct aws_event_loop *accept_loop,
-        aws_socket_on_accept_result_fn *on_accept_result,
-        void *user_data);
+        struct aws_socket_listener_options options);
     int (*stop_accept)(struct aws_socket *socket);
     int (*bind)(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
     int (*listen)(struct aws_socket *socket, int backlog_size);
@@ -116,19 +115,16 @@ static int s_local_connect(
 static int s_tcp_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_local_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_stream_stop_accept(struct aws_socket *socket);
 static int s_dgram_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_dgram_stop_accept(struct aws_socket *socket);
 
 static int s_tcp_listen(struct aws_socket *socket, int backlog_size);
@@ -146,19 +142,13 @@ static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_
 static int s_local_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
 
 static void s_socket_clean_up(struct aws_socket *socket);
-static int s_socket_connect(
-    struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    void *user_data);
-static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint);
+static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options);
+static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options);
 static int s_socket_listen(struct aws_socket *socket, int backlog_size);
 static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data);
+    struct aws_socket_listener_options options);
 static int s_socket_stop_accept(struct aws_socket *socket);
 static int s_socket_set_options(struct aws_socket *socket, const struct aws_socket_options *options);
 static int s_socket_close(struct aws_socket *socket);
@@ -176,6 +166,10 @@ static int s_socket_write(
     void *user_data);
 static int s_socket_get_error(struct aws_socket *socket);
 static bool s_socket_is_open(struct aws_socket *socket);
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket);
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket);
 
 static int s_stream_subscribe_to_read(
     struct aws_socket *socket,
@@ -287,6 +281,10 @@ struct aws_socket_vtable s_winsock_vtable = {
     .socket_write_fn = s_socket_write,
     .socket_get_error_fn = s_socket_get_error,
     .socket_is_open_fn = s_socket_is_open,
+    .socket_set_close_callback = s_set_close_callback,
+    .socket_set_cleanup_callback = s_set_cleanup_callback,
+    .socket_get_protocol_fn = s_socket_get_protocol_fn,
+    .socket_get_server_name_fn = s_socket_get_server_name_fn,
 };
 
 /* When socket is connected, any of the CONNECT_*** flags might be set.
@@ -355,7 +353,25 @@ struct iocp_socket {
     struct socket_connect_args *connect_args;
     struct aws_linked_list pending_io_operations;
     bool stop_accept;
+    aws_socket_on_shutdown_complete_fn *on_close_complete;
+    void *close_user_data;
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete;
+    void *cleanup_user_data;
 };
+
+static int s_set_close_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct iocp_socket *socket_impl = socket->impl;
+    socket_impl->close_user_data = user_data;
+    socket_impl->on_close_complete = fn;
+    return 0;
+}
+
+static int s_set_cleanup_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data) {
+    struct iocp_socket *socket_impl = socket->impl;
+    socket_impl->cleanup_user_data = user_data;
+    socket_impl->on_cleanup_complete = fn;
+    return 0;
+}
 
 static int s_create_socket(struct aws_socket *sock, const struct aws_socket_options *options) {
     SOCKET handle = socket(s_convert_domain(options->domain), s_convert_type(options->type), 0);
@@ -480,17 +496,25 @@ static void s_socket_clean_up(struct aws_socket *socket) {
         aws_mem_release(socket->allocator, socket_impl->read_io_data);
     }
 
+    aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
+    void *cleanup_user_data = socket_impl->cleanup_user_data;
+
     aws_mem_release(socket->allocator, socket->impl);
     AWS_ZERO_STRUCT(*socket);
     socket->io_handle.data.handle = INVALID_HANDLE_VALUE;
+
+    if (on_cleanup_complete) {
+        on_cleanup_complete(cleanup_user_data);
+    }
 }
 
-static int s_socket_connect(
-    struct aws_socket *socket,
-    const struct aws_socket_endpoint *remote_endpoint,
-    struct aws_event_loop *event_loop,
-    aws_socket_on_connection_result_fn *on_connection_result,
-    void *user_data) {
+static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect_options *socket_connect_options) {
+
+    const struct aws_socket_endpoint *remote_endpoint = socket_connect_options->remote_endpoint;
+    struct aws_event_loop *event_loop = socket_connect_options->event_loop;
+    aws_socket_on_connection_result_fn *on_connection_result = socket_connect_options->on_connection_result;
+    void *user_data = socket_connect_options->user_data;
+
     struct iocp_socket *socket_impl = socket->impl;
     if (socket->options.type != AWS_SOCKET_DGRAM) {
         AWS_ASSERT(on_connection_result);
@@ -513,7 +537,8 @@ static int s_socket_connect(
     return socket_impl->winsock_vtable->connect(socket, remote_endpoint, event_loop, on_connection_result, user_data);
 }
 
-static int s_socket_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
+static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_options *socket_bind_options) {
+    const struct aws_socket_endpoint *local_endpoint = socket_bind_options->local_endpoint;
     if (socket->state != INIT) {
         socket->state = ERRORED;
         return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
@@ -592,10 +617,9 @@ static int s_socket_listen(struct aws_socket *socket, int backlog_size) {
 static int s_socket_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->winsock_vtable->start_accept(socket, accept_loop, on_accept_result, user_data);
+    return socket_impl->winsock_vtable->start_accept(socket, accept_loop, options);
 }
 
 static int s_socket_stop_accept(struct aws_socket *socket) {
@@ -605,7 +629,11 @@ static int s_socket_stop_accept(struct aws_socket *socket) {
 
 static int s_socket_close(struct aws_socket *socket) {
     struct iocp_socket *socket_impl = socket->impl;
-    return socket_impl->winsock_vtable->close(socket);
+    int result = socket_impl->winsock_vtable->close(socket);
+    if (socket_impl->on_close_complete) {
+        socket_impl->on_close_complete(socket_impl->close_user_data);
+    }
+    return result;
 }
 
 static int s_socket_shutdown_dir(struct aws_socket *socket, enum aws_channel_direction dir) {
@@ -2015,13 +2043,46 @@ static void s_tcp_accept_event(
     }
 }
 
+static void s_process_invoke_on_accept_start(struct aws_task *task, void *args, enum aws_task_status status) {
+    (void)task;
+    struct on_start_accept_result_args *on_accept_args = args;
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_socket *socket = on_accept_args->socket;
+
+        if (on_accept_args->on_accept_start) {
+            // socket should not be cleaned up until on_accept_result callback is invoked.
+            AWS_FATAL_ASSERT(socket);
+            on_accept_args->on_accept_start(socket, on_accept_args->error, on_accept_args->on_accept_start_user_data);
+        }
+    }
+    aws_mem_release(on_accept_args->allocator, args);
+}
+
+static void s_invoke_on_accept_start(
+    struct aws_allocator *allocator,
+    struct aws_event_loop *loop,
+    struct aws_socket *socket,
+    int error,
+    aws_socket_on_accept_started_fn *on_accept_start,
+    void *on_accept_start_user_data) {
+    struct on_start_accept_result_args *args = aws_mem_calloc(allocator, 1, sizeof(struct on_start_accept_result_args));
+
+    args->allocator = allocator;
+    args->socket = socket;
+    args->error = error;
+    args->on_accept_start = on_accept_start;
+    args->on_accept_start_user_data = on_accept_start_user_data;
+
+    aws_task_init(&args->task, s_process_invoke_on_accept_start, args, "SocketOnAcceptStartResultTask");
+    aws_event_loop_schedule_task_now(loop, &args->task);
+}
+
 static int s_tcp_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     AWS_ASSERT(accept_loop);
-    AWS_ASSERT(on_accept_result);
+    AWS_ASSERT(options.on_accept_result);
 
     if (AWS_UNLIKELY(socket->state != LISTENING)) {
         AWS_LOGF_ERROR(
@@ -2055,14 +2116,21 @@ static int s_tcp_start_accept(
         socket_impl->read_io_data->socket = socket;
     }
 
-    socket->accept_result_fn = on_accept_result;
-    socket->connect_accept_user_data = user_data;
+    socket->accept_result_fn = options.on_accept_result;
+    socket->connect_accept_user_data = options.on_accept_result_user_data;
     socket_impl->stop_accept = false;
 
     struct aws_event_loop *el_to_use = !socket->event_loop ? accept_loop : NULL;
     int err = s_socket_setup_accept(socket, el_to_use);
 
     if (!err || aws_last_error() == AWS_IO_READ_WOULD_BLOCK) {
+        s_invoke_on_accept_start(
+            socket->allocator,
+            accept_loop,
+            socket,
+            AWS_OP_SUCCESS,
+            options.on_accept_start,
+            options.on_accept_start_user_data);
         return AWS_OP_SUCCESS;
     }
 
@@ -2179,10 +2247,9 @@ static void s_named_pipe_is_ridiculous_task(struct aws_task *task, void *args, e
 static int s_local_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     AWS_ASSERT(accept_loop);
-    AWS_ASSERT(on_accept_result);
+    AWS_ASSERT(options.on_accept_result);
 
     if (AWS_UNLIKELY(socket->state != LISTENING)) {
         AWS_LOGF_ERROR(
@@ -2221,8 +2288,8 @@ static int s_local_start_accept(
         socket_impl->read_io_data->socket = socket;
     }
 
-    socket->accept_result_fn = on_accept_result;
-    socket->connect_accept_user_data = user_data;
+    socket->accept_result_fn = options.on_accept_result;
+    socket->connect_accept_user_data = options.on_accept_result_user_data;
     socket_impl->stop_accept = false;
     aws_overlapped_init(&socket_impl->read_io_data->signal, s_incoming_pipe_connection_event, socket);
     socket_impl->read_io_data->in_use = true;
@@ -2264,18 +2331,24 @@ static int s_local_start_accept(
         }
     }
 
+    s_invoke_on_accept_start(
+        socket->allocator,
+        accept_loop,
+        socket,
+        AWS_OP_SUCCESS,
+        options.on_accept_start,
+        options.on_accept_start_user_data);
+
     return AWS_OP_SUCCESS;
 }
 
 static int s_dgram_start_accept(
     struct aws_socket *socket,
     struct aws_event_loop *accept_loop,
-    aws_socket_on_accept_result_fn *on_accept_result,
-    void *user_data) {
+    struct aws_socket_listener_options options) {
     (void)socket;
     (void)accept_loop;
-    (void)on_accept_result;
-    (void)user_data;
+    (void)options;
     return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
 }
 
@@ -2380,7 +2453,8 @@ static int s_socket_set_options(struct aws_socket *socket, const struct aws_sock
     if (aws_secure_strlen(options->network_interface_name, AWS_NETWORK_INTERFACE_NAME_MAX, &network_interface_length)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: network_interface_name max length must be %d length and NULL terminated",
+            "id=%p fd=%d: network_interface_name max length must be less or equal than %d bytes including NULL "
+            "terminated",
             (void *)socket,
             socket->io_handle.data.fd,
             AWS_NETWORK_INTERFACE_NAME_MAX);
@@ -3299,6 +3373,24 @@ static int s_socket_get_error(struct aws_socket *socket) {
 
 static bool s_socket_is_open(struct aws_socket *socket) {
     return socket->io_handle.data.handle != INVALID_HANDLE_VALUE;
+}
+
+static struct aws_byte_buf s_socket_get_protocol_fn(const struct aws_socket *socket) {
+    struct aws_byte_buf empty;
+    AWS_ZERO_STRUCT(empty);
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p socket_get_protocol_fn should only be called on a socket using secitem.",
+        (void *)socket);
+    return empty;
+}
+
+static struct aws_string *s_socket_get_server_name_fn(const struct aws_socket *socket) {
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKET,
+        "id=%p socket_get_server_name_fn should only be called on a socket using secitem.",
+        (void *)socket);
+    return NULL;
 }
 
 bool aws_is_network_interface_name_valid(const char *interface_name) {

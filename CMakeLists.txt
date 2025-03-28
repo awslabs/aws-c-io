@@ -110,8 +110,10 @@ elseif (APPLE)
         list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
     endif ()
 
-   # Enable KQUEUE on APPLE platforms
-    list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
+    # Enable KQUEUE on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
+    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
+        list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
+    endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
@@ -182,6 +184,10 @@ foreach(EVENT_LOOP_DEFINE IN LISTS EVENT_LOOP_DEFINES)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
 endforeach()
 
+if (AWS_USE_SECITEM)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
+endif()
+
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
 endif()
@@ -200,6 +206,10 @@ endif()
 
 if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
+endif()
+
+if (AWS_USE_APPLE_DISPATCH_QUEUE)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
