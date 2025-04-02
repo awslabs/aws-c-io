@@ -179,7 +179,7 @@ enum aws_pem_object_type s_map_type_cur_to_type(struct aws_byte_cursor type_cur)
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_evp_pkey_cur)) {
         return AWS_PEM_TYPE_EVP_PKEY;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_public_pkcs8_cur)) {
-        return AWS_PEM_TYPE_PUBLIC_PKCS8;
+        return AWS_PEM_TYPE_PUBLIC_KEY;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_private_rsa_pkcs1_cur)) {
         return AWS_PEM_TYPE_PRIVATE_RSA_PKCS1;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_public_rsa_pkcs1_cur)) {
