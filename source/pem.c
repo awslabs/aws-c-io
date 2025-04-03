@@ -114,7 +114,7 @@ static struct aws_byte_cursor s_pem_type_x509_req_old_cur =
 static struct aws_byte_cursor s_pem_type_x509_req_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("CERTIFICATE REQUEST");
 static struct aws_byte_cursor s_pem_type_x509_crl_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("X509 CRL");
 static struct aws_byte_cursor s_pem_type_evp_pkey_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("ANY PRIVATE KEY");
-static struct aws_byte_cursor s_pem_type_public_pkcs8_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PUBLIC KEY");
+static struct aws_byte_cursor s_pem_type_public_key_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PUBLIC KEY");
 static struct aws_byte_cursor s_pem_type_private_rsa_pkcs1_cur =
     AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PRIVATE KEY");
 static struct aws_byte_cursor s_pem_type_public_rsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PUBLIC KEY");
@@ -178,8 +178,8 @@ enum aws_pem_object_type s_map_type_cur_to_type(struct aws_byte_cursor type_cur)
         return AWS_PEM_TYPE_X509_CRL;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_evp_pkey_cur)) {
         return AWS_PEM_TYPE_EVP_PKEY;
-    } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_public_pkcs8_cur)) {
-        return AWS_PEM_TYPE_PUBLIC_PKCS8;
+    } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_public_key_cur)) {
+        return AWS_PEM_TYPE_PUBLIC_KEY;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_private_rsa_pkcs1_cur)) {
         return AWS_PEM_TYPE_PRIVATE_RSA_PKCS1;
     } else if (aws_byte_cursor_eq(&type_cur, &s_pem_type_public_rsa_pkcs1_cur)) {
