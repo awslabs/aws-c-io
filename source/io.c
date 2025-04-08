@@ -349,7 +349,7 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN,
         "Channel shutdown due to invalid certificate chain."),
     AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_HOST_NAME_MISSMATCH,
+        AWS_IO_TLS_HOST_NAME_MISMATCH,
         "Channel shutdown due to certificate's host name does not match the endpoint host name."),
 };
 /* clang-format on */
