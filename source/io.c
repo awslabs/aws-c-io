@@ -33,6 +33,30 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_EVENT_LOOP_SHUTDOWN,
         "Event loop has shutdown and a resource was still using it, the resource has been removed from the loop."),
     AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
+        "TLS (SSL) negotiation failed"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ERROR_NOT_NEGOTIATED,
+        "Attempt to read/write, but TLS (SSL) hasn't been negotiated"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ERROR_WRITE_FAILURE,
+        "Failed to write to TLS handler"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ERROR_ALERT_RECEIVED,
+        "Fatal TLS Alert was received"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CTX_ERROR,
+        "Failed to create tls context"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_VERSION_UNSUPPORTED,
+        "A TLS version was specified that is currently not supported. Consider using AWS_IO_TLS_VER_SYS_DEFAULTS, "
+        " and when this lib or the operating system is updated, it will automatically be used."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED,
+        "A TLS Cipher Preference was specified that is currently not supported by the current platform. Consider "
+        " using AWS_IO_TLS_CIPHER_SYSTEM_DEFAULT, and when this lib or the operating system is updated, it will "
+        "automatically be used."),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_MISSING_ALPN_MESSAGE,
         "An ALPN message was expected but not received"),
     AWS_DEFINE_ERROR_INFO_IO(
@@ -98,9 +122,6 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKET_CONNECT_ABORTED,
         "Incoming connection was aborted."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_SOCKET_MISSING_EVENT_LOOP,
-        "Socket is missing its event loop."),
     AWS_DEFINE_ERROR_INFO_IO (
         AWS_IO_DNS_QUERY_FAILED,
         "A query to dns failed to resolve."),
@@ -129,92 +150,23 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_SHARED_LIBRARY_FIND_SYMBOL_FAILURE,
         "System call error during attempt to find shared library symbol"),
     AWS_DEFINE_ERROR_INFO_IO(
-       AWS_IO_MAX_RETRIES_EXCEEDED,
-       "Retry cannot be attempted because the maximum number of retries has been exceeded."),
-    AWS_DEFINE_ERROR_INFO_IO(
-       AWS_IO_RETRY_PERMISSION_DENIED,
-       "Retry cannot be attempted because the retry strategy has prevented the operation."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE,
-        "TLS (SSL) negotiation failed"),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_ERROR_NOT_NEGOTIATED,
-        "Attempt to read/write, but TLS (SSL) hasn't been negotiated"),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_ERROR_WRITE_FAILURE,
-        "Failed to write to TLS handler"),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_ERROR_ALERT_RECEIVED,
-        "Fatal TLS Alert was received"),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_CTX_ERROR,
-        "Failed to create tls context"),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_VERSION_UNSUPPORTED,
-        "A TLS version was specified that is currently not supported. Consider using AWS_IO_TLS_VER_SYS_DEFAULTS, "
-        " and when this lib or the operating system is updated, it will automatically be used."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED,
-        "A TLS Cipher Preference was specified that is currently not supported by the current platform. Consider "
-        " using AWS_IO_TLS_CIPHER_SYSTEM_DEFAULT, and when this lib or the operating system is updated, it will "
-        "automatically be used."),
-    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_NEGOTIATION_TIMEOUT,
         "Channel shutdown due to tls negotiation timeout"),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_ALERT_NOT_GRACEFUL,
        "Channel shutdown due to tls alert. The alert was not for a graceful shutdown."),
     AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_MAX_RETRIES_EXCEEDED,
+       "Retry cannot be attempted because the maximum number of retries has been exceeded."),
+    AWS_DEFINE_ERROR_INFO_IO(
+       AWS_IO_RETRY_PERMISSION_DENIED,
+       "Retry cannot be attempted because the retry strategy has prevented the operation."),
+    AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_DIGEST_ALGORITHM_UNSUPPORTED,
         "TLS digest was created with an unsupported algorithm"),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_SIGNATURE_ALGORITHM_UNSUPPORTED,
         "TLS signature algorithm is currently unsupported."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_ERROR_READ_FAILURE,
-        "Failure during TLS read."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE,
-        "Channel shutdown due to tls unknown root certificate."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND,
-        "Channel shutdown due to tls no root certificate found."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_CERTIFICATE_EXPIRED,
-        "Channel shutdown due to tls certificate expired."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID,
-        "Channel shutdown due to tls certificate not yet valid."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_BAD_CERTIFICATE,
-        "Channel shutdown due to tls certificate is malformed or not correctly formatted."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED,
-        "Channel shutdown due to peer tls certificate is malformed or not correctly formatted."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_BAD_PEER_CERTIFICATE,
-        "Channel shutdown due to peer tls certificate is malformed or not correctly formatted."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_PEER_CERTIFICATE_REVOKED,
-        "Channel shutdown due to peer tls certificate has been revoked."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN,
-        "Channel shutdown due to peer tls certificate is unknown."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_INTERNAL_ERROR,
-        "Channel shutdown due to internal SSL error."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_CLOSED_GRACEFUL,
-        "Channel shutdown due to connection closed gracefully."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_CLOSED_ABORT,
-        "Channel shutdown due to connection closed due to an error."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN,
-        "Channel shutdown due to invalid certificate chain."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_TLS_HOST_NAME_MISSMATCH,
-        "Channel shutdown due to certificate's host name does not match the endpoint host name."),
 
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_ERROR_PKCS11_VERSION_UNSUPPORTED,
@@ -350,7 +302,55 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_STREAM_GET_LENGTH_UNSUPPORTED,
         "Get length is not supported in the underlying I/O source."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_ERROR_READ_FAILURE,
+        "Failure during TLS read."),
     AWS_DEFINE_ERROR_INFO_IO(AWS_ERROR_PEM_MALFORMED, "Malformed PEM object encountered."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKET_MISSING_EVENT_LOOP,
+        "Socket is missing its event loop."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE,
+        "Channel shutdown due to tls unknown root certificate."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND,
+        "Channel shutdown due to tls no root certificate found."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CERTIFICATE_EXPIRED,
+        "Channel shutdown due to tls certificate expired."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID,
+        "Channel shutdown due to tls certificate not yet valid."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_BAD_CERTIFICATE,
+        "Channel shutdown due to tls certificate is malformed or not correctly formatted."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED,
+        "Channel shutdown due to peer tls certificate is malformed or not correctly formatted."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_BAD_PEER_CERTIFICATE,
+        "Channel shutdown due to peer tls certificate is malformed or not correctly formatted."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_PEER_CERTIFICATE_REVOKED,
+        "Channel shutdown due to peer tls certificate has been revoked."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN,
+        "Channel shutdown due to peer tls certificate is unknown."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_INTERNAL_ERROR,
+        "Channel shutdown due to internal SSL error."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CLOSED_GRACEFUL,
+        "Channel shutdown due to connection closed gracefully."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_CLOSED_ABORT,
+        "Channel shutdown due to connection closed due to an error."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN,
+        "Channel shutdown due to invalid certificate chain."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_TLS_HOST_NAME_MISSMATCH,
+        "Channel shutdown due to certificate's host name does not match the endpoint host name."),
 };
 /* clang-format on */
 
