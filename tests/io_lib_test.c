@@ -35,3 +35,24 @@ static int s_test_io_library_init_cleanup_init_cleanup(struct aws_allocator *all
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(io_library_init_cleanup_init_cleanup, s_test_io_library_init_cleanup_init_cleanup)
+
+/* Make sure that new error codes are being added to the end instead of in the middle. */
+static int s_test_io_library_error_order(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+    // Checking against expected int values of the error codes.
+    // The checked error codes are the first, somewhere in the middle, and last as of this commit.
+    int error_code_initial = 1024;
+    int error_code_mid = 1067;
+    int error_code_end = 1194;
+
+    ASSERT_TRUE(error_code_initial == AWS_IO_CHANNEL_ERROR_ERROR_CANT_ACCEPT_INPUT);
+    ASSERT_TRUE(error_code_mid == AWS_IO_TLS_NEGOTIATION_TIMEOUT);
+    ASSERT_TRUE(error_code_end == AWS_IO_TLS_HOST_NAME_MISMATCH);
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(io_library_error_order, s_test_io_library_error_order)
