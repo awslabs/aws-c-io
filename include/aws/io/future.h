@@ -8,31 +8,34 @@
 
 /*
 
-// THIS IS AN EXPERIMENTAL AND UNSTABLE API
-//
-// An aws_future is used to deliver the result of an asynchronous function.
-//
-// When an async function is called, it creates a future and returns it to the caller.
-// When the async work is finished, it completes the future by setting an error or result value.
-// The caller waits until the future is done, checks for error, and then gets
-// the result if everything was OK. Typically, the caller waits by registering
-// a callback that the future invokes when it's done.
-//
-// If result type T has a "destructor" (clean_up(), destroy(), or release() function),
-// then the future has set_result_by_move() and get_result_by_move() functions
-// that explicitly transfer ownership to and from the future.
-// If the future dies, and still "owns" the resource, it calls the destructor.
-// If T has no destructor, then the future has set_result() and get_result()
-// functions that simply copy T by value.
-//
-// Macros are used to define a type-safe API for each result type T,
-// similar to C++ templates. This makes the API hard to browse, so functions
-// are documented in comments below. The result setter/getter functions
-// are mildly different based on T's destructor type, and are documented later.
+--------------------------------------------------------------------------------
+INTRO
+--------------------------------------------------------------------------------
+An aws_future is used to deliver the result of an asynchronous function.
 
-//
-// --- API (common to all aws_future<T>) ---
-//
+When an async function is called, it creates a future and returns it to the caller.
+When the async work is finished, it completes the future by setting an error or result value.
+The caller waits until the future is done, checks for error, and then gets
+the result if everything was OK. Typically, the caller waits by registering
+a callback that the future invokes when it's done. There are many different
+ways to register callbacks, depending on what thread you want it to fire on.
+
+If result type T has a "destructor" (clean_up(), destroy(), or release() function),
+then the future has set_result_by_move() and get_result_by_move() functions
+that explicitly transfer ownership to and from the future.
+If the future dies, and still "owns" the resource, it calls the destructor.
+If T has no destructor, then the future has set_result() and get_result()
+functions that simply copy T by value.
+
+Macros are used to define a type-safe API for each result type T,
+similar to C++ templates. This makes the API hard to browse, so functions
+are documented in comments below.
+
+--------------------------------------------------------------------------------
+API (common to all aws_future<T>)
+    The set/get result functions are mildly different based on T's
+    destructor type, and are documented later.
+--------------------------------------------------------------------------------
 
 // Create a new future, with refcount of 1.
 struct aws_future_T *aws_future_T_new(struct aws_allocator *alloc);
@@ -81,8 +84,7 @@ void aws_future_T_register_callback(struct aws_future_T *future, aws_future_call
 // Or if you are holding a non-recursive mutex, and the callback also
 // needs the mutex, and an immediate callback would deadlock.
 //
-// WARNING: If a callback is registered, you MUST NOT call this again until
-// the callback has been invoked.
+// WARNING: You MUST NOT register more than one callback.
 bool aws_future_T_register_callback_if_not_done(
     struct aws_future_T *future,
     aws_future_callback_fn *on_done,
@@ -118,67 +120,202 @@ void aws_future_T_register_channel_callback(
 
 // Wait (up to timeout_ns) for future to complete.
 // Returns true if future completes in this time.
-// This blocks the current thread, and is probably only useful for tests and sample programs.
+// This blocks the current thread. It is dangerous to use anywhere except
+// the main thread of simple programs or tests.
 bool aws_future_T_wait(struct aws_future_T *future, uint64_t timeout_ns);
 
-//
-// --- Defining new aws_future types ---
-// TODO UPDATE THESE DOCS
-// To define new types of aws_future<T>, add the appropriate macro to the appropriate header.
-// The macros are:
-//
-// AWS_DECLARE_FUTURE_T_BY_VALUE(FUTURE, T)
-// For T stored by value, with no destructor.
-// Use with types like bool, size_t, etc
-//
-// AWS_DECLARE_FUTURE_T_BY_VALUE_WITH_CLEAN_UP(FUTURE, T, CLEAN_UP_FN)
-// For T stored by value, with destructor like: void aws_T_clean_up(T*)
-// Use with types like `struct aws_byte_buf`
-//
-// AWS_DECLARE_FUTURE_T_POINTER_WITH_DESTROY(FUTURE, T, DESTROY_FN)
-// For T stored by pointer, with destructor like: void aws_T_destroy(T*)
-// Use with types like `struct aws_string *`
-//
-// AWS_DECLARE_FUTURE_T_POINTER_WITH_RELEASE(FUTURE, T, RELEASE_FN)
-// For T stored by pointer, with destructor like: T* aws_T_release(T*)
-// Use with types like `struct aws_http_message *`
-// Note: if T's release() function doesn't return a pointer, use _WITH_DESTROY instead of _WITH_RELEASE.
-//
-// This file declares several common types: aws_future<size_t>, aws_future<void>, etc.
-// But new future types should be declared in the header where that type's API is declared.
-// For example: AWS_DECLARE_FUTURE_T_POINTER_WITH_RELEASE(aws_future_http_message, struct aws_http_message)
-// would go in: aws-c-http/include/aws/http/request_response.h
-//
-// The APIs generated by these macros are identical except for the "setter" and "getter" functions.
+--------------------------------------------------------------------------------
+AWS_FUTURE_T_BY_VALUE set/get API
+    Where T is stored by value, with no destructor.
+    Use with simple types like bool, size_t, enums, etc.
+--------------------------------------------------------------------------------
 
+// Set the result.
 //
-// --- Design (if you're curious) ---
+// If the future is already done this call is ignored.
+void aws_future_T_set_result(const struct aws_future_T *future, T result);
+
+// Get the result of a completed future.
 //
-// This class was developed to give the user more control over how the completion
-// callback is invoked. In the past, we passed completion callbacks to the async
-// function. But this could lead to issues when an async function "sometimes"
-// completed synchronously and "sometimes" completed async. The async function
-// would need to stress about how to schedule the callback so it was always async,
-// or more typically just invoke it whenever and leave the caller to figure it out.
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+T aws_future_T_get_result(const struct aws_future_T *future);
+
+--------------------------------------------------------------------------------
+AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP set/get API
+    Where T is stored by value, with destructor like: void aws_T_clean_up(T*)
+    Use with types like aws_byte_buf.
+--------------------------------------------------------------------------------
+
+// Set the result, transferring ownership.
 //
-// This class is also an experiment with "templates/generics in C".
-// In order to make the class type-safe, we use macros to define a unique
-// API for each result type T we need to store in a future.
-// If we refer to aws_future<struct aws_byte_buf>, we mean a struct named
-// aws_future_byte_buf, which stores an aws_byte_buf by value.
-// This could lead to code bloat, but the type-safety seems worth it.
+// The memory at `value_address` is memcpy'd into the future,
+// and then zeroed out to help prevent accidental reuse.
+// It is safe to call this multiple times. If the future is already done,
+// the new result is destroyed instead of saved.
+void aws_future_T_set_result_by_move(struct aws_future_T *future, T *value_address);
+
+// Get the result, transferring ownership.
 //
-// future is defined in aws-c-io, instead of aws-c-common, so it can
-// easily integrate with aws_event_loop and aws_channel.
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+// WARNING: You MUST NOT call this multiple times.
+T aws_future_T_get_result_by_move(struct aws_future_T *future);
+
+// Get the result, without transferring ownership.
 //
-// It's legal to call set_error() or set_result() multiple times.
-// If the future is already done, it ignores the call.
-// If result T has a destructor, the new result is immediately freed instead of saved.
-// This design lets us deal with ambiguity where it's not 100% certain whether a handoff occurred.
-// For example: if we call from C->Java and an exception is thrown,
-// it's not clear whether Java got the handoff. In this case, we can safely
-// call set_error(), completing the future if necessary,
-// or being ignored if the future was already done.
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+// WARNING: You MUST NOT call this multiple times.
+T* aws_future_T_peek_result(const struct aws_future_T *future);
+
+--------------------------------------------------------------------------------
+AWS_FUTURE_T_POINTER_WITH_DESTROY set/get API
+    Where T is stored by pointer, with destructor like: void aws_T_destroy(T*)
+    Use with types like aws_string.
+--------------------------------------------------------------------------------
+
+// Set the result, transferring ownership.
+//
+// The value at `pointer_address` is copied into the future,
+// and then set NULL to prevent accidental reuse.
+// If the future is already done, this new result is destroyed instead of saved.
+void aws_future_T_set_result_by_move(struct aws_future_T *future, T **pointer_address);
+
+// Get the result, transferring ownership.
+//
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+// WARNING: You MUST NOT call this multiple times.
+T* aws_future_T_get_result_by_move(struct aws_future_T *future);
+
+// Get the result, without transferring ownership.
+//
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+// WARNING: You MUST NOT call this multiple times.
+T* aws_future_T_peek_result(const struct aws_future_T *future);
+
+--------------------------------------------------------------------------------
+AWS_FUTURE_T_POINTER_WITH_RELEASE set/get API
+    Where T is stored by pointer, with destructor like: T* aws_T_release(T*)
+    Use with types like aws_http_message
+--------------------------------------------------------------------------------
+
+// Set the result, transferring ownership.
+//
+// The value at `pointer_address` is copied into the future,
+// and then set NULL to prevent accidental reuse.
+// If the future is already done, this new result is destroyed instead of saved.
+void aws_future_T_set_result_by_move(struct aws_future_T *future, T **pointer_address);
+
+// Get the result, transferring ownership.
+//
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+// WARNING: You MUST NOT call this multiple times.
+T* aws_future_T_get_result_by_move(struct aws_future_T *future);
+
+// Get the result, without transferring ownership.
+//
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+// WARNING: You MUST NOT call this multiple times.
+T* aws_future_T_peek_result(const struct aws_future_T *future);
+
+--------------------------------------------------------------------------------
+AWS_FUTURE_T_POINTER set/get API
+    Where T is stored by pointer, with no destructor.
+    No known use cases, but it's here for completeness.
+--------------------------------------------------------------------------------
+
+// Set the result.
+//
+// If the future is already done this call is ignored.
+void aws_future_T_set_result(const struct aws_future_T *future, T *result);
+
+// Get the result of a completed future.
+//
+// WARNING: You MUST NOT call this until the future is done.
+// WARNING: You MUST NOT call this unless get_error() returned 0.
+T* aws_future_T_get_result(const struct aws_future_T *future);
+
+--------------------------------------------------------------------------------
+DEFINING NEW aws_future<T>
+--------------------------------------------------------------------------------
+
+Macros are used to define a type-safe API for each result type T, similar to C++ templates.
+
+Use the _DECLARATION() macro in the same header where T's API is declared.
+Use the _IMPLEMENTATION() macro in the corresponding .c file.
+The macros can only be used once for each type T,
+so it makes sense to put it where T is declared.
+If T lives in a single .c file and has no header, you can simply use the
+_IMPLEMENTATION() macro without a _DECLARATION().
+
+You must pick the right macros for your particular T, based on whether T is stored
+by value or by pointer, and which type of "destructor" function it has:
+
+- AWS_FUTURE_T_BY_VALUE: A future that holds a simple T by value, that needs no destructor.
+    Use with types like bool, size_t, enums, etc.
+    Example:
+         AWS_FUTURE_T_BY_VALUE_DECLARATION(aws_future_size, size_t, AWS_IO_API)
+         AWS_FUTURE_T_BY_VALUE_IMPLEMENTATION(aws_future_size, size_t)
+
+- AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP: A future that holds T by value, with destructor like: void aws_T_clean_up(T*)
+    Use with types like aws_byte_buf.
+    Example:
+        AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP_DECLARATION(aws_future_byte_buf, aws_byte_buf, AWS_IO_API)
+        AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP_IMPLEMENTATION(aws_future_byte_buf, aws_byte_buf,
+                                                           aws_byte_buf_clean_up);
+- AWS_FUTURE_T_POINTER_WITH_DESTROY: A future that holds T*, with destructor like: void aws_T_destroy(T*)
+    Use with types like aws_string.
+    Example:
+        AWS_FUTURE_T_POINTER_WITH_DESTROY_DECLARATION(aws_future_string, aws_string, AWS_IO_API)
+        AWS_FUTURE_T_POINTER_WITH_DESTROY_DECLARATION(aws_future_string, aws_string, AWS_IO_API)
+
+- AWS_FUTURE_T_POINTER_WITH_RELEASE: A future that holds T*, with destructor like: T* aws_T_release(T*)
+    Use with types like aws_http_message
+    Example:
+        AWS_FUTURE_T_POINTER_WITH_RELEASE_DECLARATION(aws_future_http_message, struct aws_http_message,
+                                                      AWS_HTTP_API)
+        AWS_FUTURE_T_POINTER_WITH_RELEASE_IMPLEMENTATION(aws_future_http_message, struct aws_http_message,
+                                                        aws_http_message_release)
+
+- AWS_FUTURE_T_POINTER: A future that holds T*, with no destructor.
+     No known use cases, but it's here for completeness.
+     Example:
+         AWS_FUTURE_T_POINTER_DECLARATION(aws_future_file. FILE, AWS_IO_API)
+         AWS_FUTURE_T_POINTER_IMPLEMENTATION(aws_future_file. FILE)
+
+--------------------------------------------------------------------------------
+DESIGN (if you're curious)
+--------------------------------------------------------------------------------
+This class was developed to give the user more control over how the completion
+callback is invoked. In the past, we passed completion callbacks to the async
+function. But this could lead to issues when an async function "sometimes"
+completed synchronously and "sometimes" completed async. The async function
+would need to stress about how to schedule the callback so it was always async,
+or more typically just invoke it whenever and leave the caller to figure it out.
+
+This class is also an experiment with "templates/generics in C".
+In order to make the class type-safe, we use macros to define a unique
+API for each result type T we need to store in a future.
+If we refer to aws_future<struct aws_byte_buf>, we mean a struct named
+aws_future_byte_buf, which stores an aws_byte_buf by value.
+This could lead to code bloat, but the type-safety seems worth it.
+
+future is defined in aws-c-io, instead of aws-c-common, so it can
+easily integrate with aws_event_loop and aws_channel.
+
+It's legal to call set_error() or set_result() multiple times.
+If the future is already done, it ignores the call.
+If result T has a destructor, the new result is immediately freed instead of saved.
+This design lets us deal with ambiguity where it's not 100% certain whether a handoff occurred.
+For example: if we call from C->Java and an exception is thrown,
+it's not clear whether Java got the handoff. In this case, we can safely
+call set_error(), completing the future if necessary,
+or being ignored if the future was already done.
 
 */
 
@@ -349,21 +486,8 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
  * Declare a future that holds a simple T by value, that needs no destructor.
  * Use with types like bool, size_t, etc.
  *
- * See top of future.h for most API docs.
- * The result setters and getters are:
-
-// Set the result.
-//
-// If the future is already done this call is ignored.
-void aws_future_T_set_result(const struct aws_future_T *future, T result);
-
-// Get the result of a completed future.
-//
-// WARNING: You MUST NOT call this until the future is done.
-// WARNING: You MUST NOT call this unless get_error() returned 0.
-T aws_future_T_get_result(const struct aws_future_T *future);
-
-*/
+ * See top of future.h for docs.
+ */
 #define AWS_FUTURE_T_BY_VALUE_DECLARATION(FUTURE, T, API)                                                              \
     AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE, API)                                                                        \
     API struct FUTURE *FUTURE##_new(struct aws_allocator *alloc);                                                      \
@@ -390,31 +514,7 @@ T aws_future_T_get_result(const struct aws_future_T *future);
  * Declares a future that holds T by value, with destructor like: void aws_T_clean_up(T*)
  * Use with types like aws_byte_buf.
  *
- * See top of future.h for most API docs.
- * The result setters and getters are:
-
-// Set the result, transferring ownership.
-//
-// The memory at `value_address` is memcpy'd into the future,
-// and then zeroed out to help prevent accidental reuse.
-// It is safe to call this multiple times. If the future is already done,
-// the new result is destroyed instead of saved.
-void aws_future_T_set_result_by_move(struct aws_future_T *future, T *value_address);
-
-// Get the result, transferring ownership.
-//
-// WARNING: You MUST NOT call this until the future is done.
-// WARNING: You MUST NOT call this unless get_error() returned 0.
-// WARNING: You MUST NOT call this multiple times.
-T aws_future_T_get_result_by_move(struct aws_future_T *future);
-
-// Get the result, without transferring ownership.
-//
-// WARNING: You MUST NOT call this until the future is done.
-// WARNING: You MUST NOT call this unless get_error() returned 0.
-// WARNING: You MUST NOT call this multiple times.
-T* aws_future_T_peek_result(const struct aws_future_T *future);
-
+ * See top of future.h for docs.
  */
 #define AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP_DECLARATION(FUTURE, T, API)                                                \
     AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE, API)                                                                        \
@@ -451,6 +551,8 @@ T* aws_future_T_peek_result(const struct aws_future_T *future);
 
 /**
  * Declares a future that holds T*, with no destructor.
+ *
+ * See top of future.h for docs.
  */
 #define AWS_FUTURE_T_POINTER_DECLARATION(FUTURE, T, API)                                                               \
     AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE, API)                                                                        \
@@ -480,30 +582,7 @@ T* aws_future_T_peek_result(const struct aws_future_T *future);
  * Declares a future that holds T*, with destructor like: void aws_T_destroy(T*)
  * Use with types like aws_string.
  *
- * See top of future.h for most API docs.
- * The result setters and getters are:
-
-// Set the result, transferring ownership.
-//
-// The value at `pointer_address` is copied into the future,
-// and then set NULL to prevent accidental reuse.
-// If the future is already done, this new result is destroyed instead of saved.
-void aws_future_T_set_result_by_move(struct aws_future_T *future, T **pointer_address);
-
-// Get the result, transferring ownership.
-//
-// WARNING: You MUST NOT call this until the future is done.
-// WARNING: You MUST NOT call this unless get_error() returned 0.
-// WARNING: You MUST NOT call this multiple times.
-T* aws_future_T_get_result_by_move(struct aws_future_T *future);
-
-// Get the result, without transferring ownership.
-//
-// WARNING: You MUST NOT call this until the future is done.
-// WARNING: You MUST NOT call this unless get_error() returned 0.
-// WARNING: You MUST NOT call this multiple times.
-T* aws_future_T_peek_result(const struct aws_future_T *future);
-
+ * See top of future.h for docs.
  */
 #define AWS_FUTURE_T_POINTER_WITH_DESTROY_DECLARATION(FUTURE, T, API)                                                  \
     AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE, API)                                                                        \
@@ -542,30 +621,7 @@ T* aws_future_T_peek_result(const struct aws_future_T *future);
  * Declares a future that holds T*, with destructor like: T* aws_T_release(T*)
  * Use with types like aws_http_message
  *
- * See top of future.h for most API docs.
- * The result setters and getters are:
-
-// Set the result, transferring ownership.
-//
-// The value at `pointer_address` is copied into the future,
-// and then set NULL to prevent accidental reuse.
-// If the future is already done, this new result is destroyed instead of saved.
-void aws_future_T_set_result_by_move(struct aws_future_T *future, T **pointer_address);
-
-// Get the result, transferring ownership.
-//
-// WARNING: You MUST NOT call this until the future is done.
-// WARNING: You MUST NOT call this unless get_error() returned 0.
-// WARNING: You MUST NOT call this multiple times.
-T* aws_future_T_get_result_by_move(struct aws_future_T *future);
-
-// Get the result, without transferring ownership.
-//
-// WARNING: You MUST NOT call this until the future is done.
-// WARNING: You MUST NOT call this unless get_error() returned 0.
-// WARNING: You MUST NOT call this multiple times.
-T* aws_future_T_peek_result(const struct aws_future_T *future);
-
+ * See top of future.h for docs.
  */
 #define AWS_FUTURE_T_POINTER_WITH_RELEASE_DECLARATION(FUTURE, T, API)                                                  \
     AWS_FUTURE_T_DECLARATION_BEGIN(FUTURE, API)                                                                        \
@@ -602,16 +658,19 @@ T* aws_future_T_peek_result(const struct aws_future_T *future);
 
 /**
  * aws_future<size_t>
+ * See top of future.h for docs.
  */
 AWS_FUTURE_T_BY_VALUE_DECLARATION(aws_future_size, size_t, AWS_IO_API)
 
 /**
  * aws_future<bool>
+ * See top of future.h for docs.
  */
 AWS_FUTURE_T_BY_VALUE_DECLARATION(aws_future_bool, bool, AWS_IO_API)
 
 /**
  * aws_future<void>
+ * See top of future.h for docs.
  */
 AWS_FUTURE_T_DECLARATION_BEGIN(aws_future_void, AWS_IO_API)
 
