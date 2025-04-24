@@ -655,14 +655,15 @@ void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, s
     event_loop->vtable->free_io_event_resources(handle->additional_data);
 }
 
-void aws_event_loop_acquire(struct aws_event_loop *event_loop) {
+struct aws_event_loop *aws_event_loop_acquire(struct aws_event_loop *event_loop) {
     AWS_ASSERT(event_loop->base_elg);
-    return aws_event_loop_group_acquire(event_loop->base_elg);
+    aws_event_loop_group_acquire(event_loop->base_elg);
+    return event_loop;
 }
 
 void aws_event_loop_release(struct aws_event_loop *event_loop) {
     AWS_ASSERT(event_loop->base_elg);
-    return aws_event_loop_group_release(event_loop->base_elg);
+    aws_event_loop_group_release(event_loop->base_elg);
 }
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {
