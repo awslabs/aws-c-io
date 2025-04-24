@@ -655,9 +655,8 @@ void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, s
     event_loop->vtable->free_io_event_resources(handle->additional_data);
 }
 
-void *get_base_event_loop_group(struct aws_event_loop *event_loop) {
-    AWS_ASSERT(event_loop && event_loop->vtable->get_base_event_loop_group);
-    return event_loop->vtable->get_base_event_loop_group(event_loop);
+void aws_event_loop_get_base_event_loop_group(struct aws_event_loop *event_loop) {
+    return event_loop->base_elg;
 }
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {

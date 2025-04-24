@@ -424,7 +424,7 @@ static void s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loo
         "id=%p nw_socket=%p: s_set_event_loop: socket acquire event loop group.",
         (void *)aws_socket,
         (void *)nw_socket);
-    aws_event_loop_group_acquire(get_base_event_loop_group(event_loop));
+    aws_event_loop_group_acquire(aws_event_loop_get_base_event_loop_group(event_loop));
 }
 
 static void s_release_event_loop(struct nw_socket *nw_socket) {
@@ -433,7 +433,7 @@ static void s_release_event_loop(struct nw_socket *nw_socket) {
             AWS_LS_IO_SOCKET, "nw_socket=%p: s_release_event_loop: socket has not event loop.", (void *)nw_socket);
         return;
     }
-    aws_event_loop_group_release(get_base_event_loop_group(nw_socket->event_loop));
+    aws_event_loop_group_release(aws_event_loop_get_base_event_loop_group(nw_socket->event_loop));
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "nw_socket=%p: s_release_event_loop: socket release event loop group.", (void *)nw_socket);
     nw_socket->event_loop = NULL;
