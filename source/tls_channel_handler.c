@@ -957,7 +957,7 @@ bool aws_error_code_is_tls(int error_code) {
         case AWS_IO_TLS_CLOSED_GRACEFUL:
         case AWS_IO_TLS_CLOSED_ABORT:
         case AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN:
-        case AWS_IO_TLS_HOST_NAME_MISSMATCH:
+        case AWS_IO_TLS_HOST_NAME_MISMATCH:
             return true;
         default:
             return false;

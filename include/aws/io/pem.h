@@ -22,7 +22,7 @@ enum aws_pem_object_type {
     AWS_PEM_TYPE_X509_REQ,                /* CERTIFICATE REQUEST */
     AWS_PEM_TYPE_X509_CRL,                /* X509 CRL */
     AWS_PEM_TYPE_EVP_PKEY,                /* ANY PRIVATE KEY */
-    AWS_PEM_TYPE_PUBLIC_PKCS8,            /* PUBLIC KEY */
+    AWS_PEM_TYPE_PUBLIC_KEY,              /* PUBLIC KEY */
     AWS_PEM_TYPE_PRIVATE_RSA_PKCS1,       /* RSA PRIVATE KEY */
     AWS_PEM_TYPE_PUBLIC_RSA_PKCS1,        /* RSA PUBLIC KEY */
     AWS_PEM_TYPE_PRIVATE_DSA_PKCS1,       /* RSA PRIVATE KEY */
