@@ -262,7 +262,6 @@ struct aws_event_loop *aws_event_loop_new_with_iocp(
     event_loop->impl_data = impl;
 
     event_loop->vtable = &s_iocp_vtable;
-
     event_loop->base_elg = options->parent_elg;
 
     return event_loop;

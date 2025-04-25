@@ -247,12 +247,12 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
     }
 
     loop->vtable = &s_vtable;
+    loop->base_elg = options->parent_elg;
 
     dispatch_loop = aws_mem_calloc(alloc, 1, sizeof(struct aws_dispatch_loop));
     dispatch_loop->allocator = alloc;
     loop->impl_data = dispatch_loop;
     dispatch_loop->base_loop = loop;
-    dispatch_loop->base_loop->base_elg = options->parent_elg;
     dispatch_loop->synced_data.execution_state = AWS_DLES_SUSPENDED;
     aws_ref_count_init(&dispatch_loop->ref_count, dispatch_loop, s_dispatch_event_loop_on_zero_ref_count);
 
