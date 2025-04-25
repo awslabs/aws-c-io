@@ -322,20 +322,6 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
 AWS_IO_API
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
-/**
- * "acquire a reference to the event loop" by acquiring a reference to the base event loop group it belongs to.
- * This is used to ensure that the event loop alive. Return null if the event loop does not belong to a group,
- * otherwise, return the event loop.
- */
-AWS_IO_API
-struct aws_event_loop *aws_event_loop_acquire(struct aws_event_loop *event_loop);
-
-/**
- * "release a reference to the event loop" by releasing a reference to the base event loop group it belongs to.
- */
-AWS_IO_API
-void aws_event_loop_release(struct aws_event_loop *event_loop);
-
 AWS_IO_API
 struct aws_event_loop_group *aws_event_loop_group_new_internal(
     struct aws_allocator *allocator,

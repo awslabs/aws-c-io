@@ -422,7 +422,7 @@ static void s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loo
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p nw_socket=%p: nw_socket set event loop.", (void *)aws_socket, (void *)nw_socket);
 
-    if (!aws_event_loop_acquire(event_loop)) {
+    if (!aws_event_loop_group_acquire_from_event_loop(event_loop)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p nw_socket=%p: failed to acquire event loop group.",
@@ -438,7 +438,7 @@ static void s_release_event_loop(struct nw_socket *nw_socket) {
             AWS_LS_IO_SOCKET, "nw_socket=%p: s_release_event_loop: socket has not event loop.", (void *)nw_socket);
         return;
     }
-    aws_event_loop_release(nw_socket->event_loop);
+    aws_event_loop_group_release_from_event_loop(nw_socket->event_loop);
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "nw_socket=%p: s_release_event_loop: socket release event loop group.", (void *)nw_socket);
     nw_socket->event_loop = NULL;
