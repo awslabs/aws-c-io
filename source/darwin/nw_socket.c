@@ -1807,7 +1807,7 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
     }
 
     /* event_loop must be set prior to setup of socket parameters. */
-    if (!s_set_event_loop(nw_socket, event_loop)) {
+    if (!s_set_event_loop(socket, event_loop)) {
         goto error;
     }
 
