@@ -412,7 +412,7 @@ static bool s_validate_event_loop(struct aws_event_loop *event_loop) {
     return event_loop && event_loop->vtable && event_loop->impl_data;
 }
 
-static bool s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loop *event_loop) {
+static int s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loop *event_loop) {
     aws_socket->event_loop = event_loop;
     struct nw_socket *nw_socket = aws_socket->impl;
     // Never re-assign an event loop
@@ -426,14 +426,14 @@ static bool s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loo
             "id=%p nw_socket=%p: failed to acquire event loop group.",
             (void *)aws_socket,
             (void *)nw_socket);
-        return false;
+        return AWS_OP_ERR;
     }
 
     nw_socket->event_loop = event_loop;
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET, "id=%p nw_socket=%p: nw_socket set event loop.", (void *)aws_socket, (void *)nw_socket);
 
-    return true;
+    return AWS_OP_SUCCESS;
 }
 
 static void s_release_event_loop(struct nw_socket *nw_socket) {
@@ -1807,7 +1807,7 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
     }
 
     /* event_loop must be set prior to setup of socket parameters. */
-    if (!s_set_event_loop(socket, event_loop)) {
+    if (s_set_event_loop(socket, event_loop)) {
         goto error;
     }
 
@@ -2328,7 +2328,7 @@ static int s_socket_start_accept_fn(
         return aws_raise_error(AWS_IO_EVENT_LOOP_ALREADY_ASSIGNED);
     }
 
-    if (!s_set_event_loop(socket, accept_loop)) {
+    if (s_set_event_loop(socket, accept_loop)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to set event loop %p, invalid event loop. It is most likely the event loop does "
@@ -2455,7 +2455,7 @@ static int s_socket_assign_to_event_loop_fn(struct aws_socket *socket, struct aw
             socket->io_handle.data.handle,
             (void *)event_loop);
 
-        if (!s_set_event_loop(socket, event_loop)) {
+        if (s_set_event_loop(socket, event_loop)) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: assigning event loop %p failed. Invalid event loop. It is likely the event loop "
