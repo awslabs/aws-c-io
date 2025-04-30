@@ -49,8 +49,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     if (s_is_on_callers_thread(event_loop _(ghost c_event_loop))) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: scheduling task %p in-thread for timestamp %llu",
+            "id=%p: scheduling %s task %p in-thread for timestamp %llu",
             (void *)event_loop,
+            task->type_tag,
             (void *)task,
             (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
@@ -64,8 +65,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Scheduling task %p cross-thread for timestamp %llu",
+        "id=%p: Scheduling %s task %p cross-thread for timestamp %llu",
         (void *)event_loop,
+        task->type_tag,
         (void *)task,
         (unsigned long long)run_at_nanos);
     _(unwrap task)
