@@ -580,8 +580,9 @@ static void s_run_iteration(void *service_entry) {
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: s_run_iteration: should schedule at %llu.",
+        "id=%p: s_run_iteration: should schedule %d at %llu.",
         (void *)dispatch_loop->base_loop,
+        (int)should_schedule,
         should_schedule_at_time);
 
     if (should_schedule) {
