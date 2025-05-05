@@ -458,8 +458,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     if (s_is_event_thread(event_loop)) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: scheduling task %p in-thread for timestamp %llu",
+            "id=%p: scheduling %s task %p in-thread for timestamp %llu",
             (void *)event_loop,
+            task->type_tag,
             (void *)task,
             (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
@@ -472,8 +473,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Scheduling task %p cross-thread for timestamp %llu",
+        "id=%p: Scheduling %s task %p cross-thread for timestamp %llu",
         (void *)event_loop,
+        task->type_tag,
         (void *)task,
         (unsigned long long)run_at_nanos);
     /* Otherwise, add it to synced_data.tasks_to_schedule and signal the event-thread to process it */
@@ -510,7 +512,8 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 }
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling %s task %p", (void *)event_loop, task->type_tag, (void *)task);
     struct iocp_loop *iocp_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&iocp_loop->thread_data.scheduler, task);
 }
