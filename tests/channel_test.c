@@ -21,9 +21,9 @@
 struct channel_setup_test_args {
     struct aws_mutex mutex;
     struct aws_condition_variable condition_variable;
-    bool setup_completed;    /* protected by mutex */
-    bool shutdown_completed; /* protected by mutex */
-    int error_code;          /* protected by mutex */
+    bool setup_completed;                     /* protected by mutex */
+    bool shutdown_completed;                  /* protected by mutex */
+    int error_code;                           /* protected by mutex */
     bool event_loop_group_shutdown_completed; /* protected by mutex (not used by all tests) */
     enum aws_task_status task_status;
 };
