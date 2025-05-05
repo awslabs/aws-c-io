@@ -381,13 +381,16 @@ void aws_event_loop_group_release(struct aws_event_loop_group *el_group) {
 }
 
 struct aws_event_loop_group *aws_event_loop_group_acquire_from_event_loop(struct aws_event_loop *event_loop) {
-    AWS_ASSERT(event_loop);
-    return aws_event_loop_group_acquire(event_loop->base_elg);
+    if (event_loop != NULL) {
+        return aws_event_loop_group_acquire(event_loop->base_elg);
+    }
+    return NULL;
 }
 
 void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_loop) {
-    AWS_ASSERT(event_loop);
-    aws_event_loop_group_release(event_loop->base_elg);
+    if (event_loop != NULL) {
+        aws_event_loop_group_release(event_loop->base_elg);
+    }
 }
 
 size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group) {
