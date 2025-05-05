@@ -550,7 +550,7 @@ static void s_run_iteration(void *service_entry) {
     // uint64_t now_ns = 0;
     // aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
     AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks at %llu.", (void *)dispatch_loop->base_loop, now_ns);
+        AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks at %llu, thread id %lu.", (void *)dispatch_loop->base_loop, now_ns, (unsigned long)aws_thread_current_thread_id());
     aws_task_scheduler_run_all(&dispatch_loop->scheduler, now_ns);
     aws_event_loop_register_tick_end(dispatch_loop->base_loop);
 
@@ -580,10 +580,11 @@ static void s_run_iteration(void *service_entry) {
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: s_run_iteration: should schedule %d at %llu.",
+        "id=%p: s_run_iteration: should schedule %d at %llu, with thread id %lu.",
         (void *)dispatch_loop->base_loop,
         (int)should_schedule,
-        should_schedule_at_time);
+        should_schedule_at_time,
+        (unsigned long)aws_thread_current_thread_id());
 
     if (should_schedule) {
         s_try_schedule_new_iteration(dispatch_loop, should_schedule_at_time);
