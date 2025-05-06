@@ -25,8 +25,8 @@ typedef void(aws_event_loop_on_completion_fn)(
     size_t num_bytes_transferred);
 
 /**
- * The aws_win32_OVERLAPPED struct is layout-compatible with OVERLAPPED as defined in <Windows.h>. It is used
- * here to avoid pulling in a dependency on <Windows.h> which would also bring along a lot of bad macros, such
+ * The aws_win32_OVERLAPPED struct is layout-compatible with OVERLAPPED as defined in <windows.h>. It is used
+ * here to avoid pulling in a dependency on <windows.h> which would also bring along a lot of bad macros, such
  * as redefinitions of GetMessage and GetObject. Note that the OVERLAPPED struct layout in the Windows SDK can
  * never be altered without breaking binary compatibility for every existing third-party executable, so there
  * is no need to worry about keeping this definition in sync.
