@@ -525,13 +525,26 @@ static void s_run_iteration(void *service_entry) {
     struct aws_linked_list local_cross_thread_tasks;
     aws_linked_list_init(&local_cross_thread_tasks);
     aws_linked_list_swap_contents(&dispatch_loop->synced_data.cross_thread_tasks, &local_cross_thread_tasks);
-
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: s_run_iteration swap cross thread data, cross thread task size %d, with thread id %lu, entry %llu.",
+        (void *)dispatch_loop->base_loop,
+        (int)aws_linked_list_empty(&dispatch_loop->synced_data.cross_thread_tasks),
+        (unsigned long)aws_thread_current_thread_id(),
+        entry->run_index);
     s_unlock_synced_data(dispatch_loop);
 
     // run the full iteration here: local cross-thread tasks
     while (!aws_linked_list_empty(&local_cross_thread_tasks)) {
         struct aws_linked_list_node *node = aws_linked_list_pop_front(&local_cross_thread_tasks);
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
+
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: s_run_iteration push cross thread task to scheduler, task: %p, task name: %s.",
+            (void *)dispatch_loop->base_loop,
+            (void*)task,
+            task->type_tag);
 
         /*
          * Timestamp 0 is used to denote "now" tasks
@@ -550,7 +563,11 @@ static void s_run_iteration(void *service_entry) {
     // uint64_t now_ns = 0;
     // aws_event_loop_current_clock_time(dispatch_loop->base_loop, &now_ns);
     AWS_LOGF_TRACE(
-        AWS_LS_IO_EVENT_LOOP, "id=%p: running scheduled tasks at %llu, thread id %lu.", (void *)dispatch_loop->base_loop, now_ns, (unsigned long)aws_thread_current_thread_id());
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: running scheduled tasks at %llu, thread id %lu.",
+        (void *)dispatch_loop->base_loop,
+        now_ns,
+        (unsigned long)aws_thread_current_thread_id());
     aws_task_scheduler_run_all(&dispatch_loop->scheduler, now_ns);
     aws_event_loop_register_tick_end(dispatch_loop->base_loop);
 
