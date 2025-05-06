@@ -648,7 +648,7 @@ static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop
          * requested time. Any blocks scheduled using `dispatch_async_f()` or `dispatch_after_f()` with a closer
          * dispatch time will be placed on the dispatch queue and execute in order.
          */
-        dispatch_time_t when = dispatch_time(DISPATCH_TIME_NOW, delta);
+        dispatch_time_t when = dispatch_walltime(DISPATCH_WALLTIME_NOW, delta);
         dispatch_after_f(when, dispatch_loop->dispatch_queue, entry, s_run_iteration);
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
