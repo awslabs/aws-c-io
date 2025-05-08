@@ -10,9 +10,9 @@
 
 #include <aws/io/logging.h>
 
-#include <windows.h>
 #include <stdio.h>
 #include <string.h>
+#include <windows.h>
 
 #ifdef _MSC_VER
 #    pragma warning(disable : 4221) /* aggregate initializer using local variable addresses */
