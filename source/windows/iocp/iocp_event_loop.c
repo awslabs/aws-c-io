@@ -13,7 +13,7 @@
 #include <aws/io/logging.h>
 #include <aws/io/private/event_loop_impl.h>
 
-#include <Windows.h>
+#include <windows.h>
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
