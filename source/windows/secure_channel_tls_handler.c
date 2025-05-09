@@ -18,7 +18,7 @@
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/statistics.h>
 
-#include <Windows.h>
+#include <windows.h>
 
 #include <schannel.h>
 #include <security.h>

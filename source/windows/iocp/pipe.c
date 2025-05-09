@@ -12,7 +12,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include <Windows.h>
+#include <windows.h>
 
 enum read_end_state {
     /* Pipe is open. */

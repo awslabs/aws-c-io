@@ -4,7 +4,7 @@
  */
 
 // clang-format off
-#include <Windows.h>
+#include <windows.h>
 #include <libloaderapi.h>
 // clang-format on
 

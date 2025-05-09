@@ -9,9 +9,9 @@ keep the bellow includes where they are. Also, sorry about the C++ style comment
 below, clang-format doesn't work (at least on my version) with the c-style comments.*/
 
 // clang-format off
-#include <WS2tcpip.h>
-#include <MSWSock.h>
-#include <Mstcpip.h>
+#include <ws2tcpip.h>
+#include <mswsock.h>
+#include <mstcpip.h>
 // clang-format on
 
 #include <aws/io/private/socket_impl.h>

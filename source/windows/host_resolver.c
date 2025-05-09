@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-/* don't move this below the Windows.h include!!!!*/
+/* don't move this below the windows.h include!!!!*/
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
