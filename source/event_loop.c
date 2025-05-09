@@ -380,6 +380,19 @@ void aws_event_loop_group_release(struct aws_event_loop_group *el_group) {
     }
 }
 
+struct aws_event_loop_group *aws_event_loop_group_acquire_from_event_loop(struct aws_event_loop *event_loop) {
+    if (event_loop != NULL) {
+        return aws_event_loop_group_acquire(event_loop->base_elg);
+    }
+    return NULL;
+}
+
+void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_loop) {
+    if (event_loop != NULL) {
+        aws_event_loop_group_release(event_loop->base_elg);
+    }
+}
+
 size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group) {
     return aws_array_list_length(&el_group->event_loops);
 }
@@ -653,11 +666,6 @@ int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop,
 void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
     AWS_ASSERT(event_loop && event_loop->vtable->free_io_event_resources);
     event_loop->vtable->free_io_event_resources(handle->additional_data);
-}
-
-void *get_base_event_loop_group(struct aws_event_loop *event_loop) {
-    AWS_ASSERT(event_loop && event_loop->vtable->get_base_event_loop_group);
-    return event_loop->vtable->get_base_event_loop_group(event_loop);
 }
 
 bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop) {

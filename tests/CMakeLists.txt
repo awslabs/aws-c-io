@@ -116,6 +116,7 @@ add_test_case(channel_tasks_serialized_run)
 add_test_case(channel_rejects_post_shutdown_tasks)
 add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
+add_test_case(channel_keeps_event_loop_group_alive)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
 add_net_test_case(test_default_with_ipv6_lookup)

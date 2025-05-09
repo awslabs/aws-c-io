@@ -184,6 +184,7 @@ struct aws_event_loop *aws_event_loop_new_with_epoll(
 
     loop->impl_data = epoll_loop;
     loop->vtable = &s_vtable;
+    loop->base_elg = options->parent_elg;
 
     _(wrap(&epoll_loop->task_pre_queue.head))
     _(wrap(&epoll_loop->task_pre_queue.tail))

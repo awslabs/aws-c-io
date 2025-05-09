@@ -46,7 +46,6 @@ struct aws_event_loop_vtable {
         void *user_data);
     int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
     void (*free_io_event_resources)(void *user_data);
-    void *(*get_base_event_loop_group)(struct aws_event_loop *event_loop);
     bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
 };
 
@@ -174,6 +173,22 @@ struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_
  */
 AWS_IO_API
 void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
+
+/**
+ * Increments the reference count on the event loop group from event loop, allowing the caller to take a reference to
+ * it.
+ *
+ * Returns the base event loop group of the event loop, or null if the event loop does not belong to a group.
+ */
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_acquire_from_event_loop(struct aws_event_loop *event_loop);
+
+/**
+ * Decrements the ref count of the event loop's base event loop group.  When the ref count drops to zero, the event loop
+ * group will be destroyed.
+ */
+AWS_IO_API
+void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_loop);
 
 /**
  * Returns the event loop at a particular index.  If the index is out of bounds, null is returned.
