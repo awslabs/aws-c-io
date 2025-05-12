@@ -35,7 +35,6 @@ struct aws_dispatch_loop {
     dispatch_queue_t dispatch_queue;
     struct aws_task_scheduler scheduler;
     struct aws_event_loop *base_loop;
-    struct aws_event_loop_group *base_elg;
 
     struct aws_ref_count ref_count;
 

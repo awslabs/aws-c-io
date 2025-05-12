@@ -257,6 +257,10 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
     setup_args->on_setup_completed = creation_args->on_setup_completed;
     setup_args->user_data = creation_args->setup_user_data;
 
+    /* keep loop alive until channel is destroyed */
+    channel->loop = creation_args->event_loop;
+    aws_event_loop_group_acquire_from_event_loop(channel->loop);
+
     aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args, "on_channel_setup_complete");
     aws_event_loop_schedule_task_now(creation_args->event_loop, &setup_args->task);
 
@@ -307,6 +311,8 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
     aws_array_list_clean_up(&channel->statistic_list);
 
     aws_channel_set_statistics_handler(channel, NULL);
+
+    aws_event_loop_group_release_from_event_loop(channel->loop);
 
     aws_mem_release(channel->alloc, channel);
 }
