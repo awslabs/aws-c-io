@@ -526,7 +526,7 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
     }
 
     if (g_aws_channel_max_fragment_size < KB_16) {
-        nw_tcp_options_set_maximum_segment_size(tcp_options, g_aws_channel_max_fragment_size);
+        nw_tcp_options_set_maximum_segment_size(tcp_options, (uint32_t) g_aws_channel_max_fragment_size);
     }
 }
 
@@ -625,7 +625,7 @@ static void s_tls_verification_block(
     } else {
         char description_buffer[256];
         s_get_error_description(error, description_buffer, sizeof(description_buffer));
-        int crt_error_code = s_determine_socket_error(CFErrorGetCode(error));
+        int crt_error_code = s_determine_socket_error((int) CFErrorGetCode(error));
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
             "nw_socket=%p: nw_socket SecTrustEvaluateWithError failed with crt error code: %d : %s translated from CF "
