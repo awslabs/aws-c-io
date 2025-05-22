@@ -17,6 +17,10 @@
         "linux": {
             "_comment": "set up SoftHSM2 for PKCS#11 tests (see: ./builder/actions/pkcs11_test_setup.py)",
             "+pre_build_steps": ["pkcs11-test-setup"]
+        },
+        "windows": {
+            "+pre_build_steps": ["tls-server-setup"]
+
         }
     },
     "build_env": {
