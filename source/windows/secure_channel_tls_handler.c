@@ -45,7 +45,7 @@
 #define READ_OUT_SIZE (16 * KB_1)
 #define READ_IN_SIZE READ_OUT_SIZE
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
-#define WINDOWS_BUILD_1809 1809
+#define WINDOWS_BUILD_20348 20348
 
 #define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
 
@@ -142,20 +142,21 @@ static size_t s_message_overhead(struct aws_channel_handler *handler) {
     return sc_handler->stream_sizes.cbTrailer + sc_handler->stream_sizes.cbHeader;
 }
 
-/* Checks whether current system is running Windows 10 version `build_number` or later. This check is used
-   to determin availability of TLS 1.3. This will continue to be a valid check in Windows 11 and later as the
-   build number continues to increment upwards. e.g. Windows 11 starts at version 21H2 (build 22_000) */
-static bool s_is_windows_equal_or_above_version(DWORD build_number) {
-    ULONGLONG dwlConditionMask = 0;
-    BYTE op = VER_GREATER_EQUAL;
-    OSVERSIONINFOEX osvi;
-
+/* Checks whether the current system is running Windows of a specific build number or later.
+ *
+ * This will continue to be a valid check in the future versions of Windows as the build number continues to increment
+ * upwards. E.g., Windows 10 last build number is 19045, and Windows 11 starts at 22000. */
+static bool s_is_windows_equal_or_above_build_number(DWORD build_number) {
     NTSTATUS status = STATUS_DLL_NOT_FOUND;
 
+    OSVERSIONINFOEX osvi;
     ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
+
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
     osvi.dwBuildNumber = build_number;
 
+    ULONGLONG dwlConditionMask = 0;
+    BYTE op = VER_GREATER_EQUAL;
     dwlConditionMask = VerSetConditionMask(dwlConditionMask, VER_BUILDNUMBER, op);
     typedef NTSTATUS(WINAPI * pRtlGetVersionInfo)(
         OSVERSIONINFOEX * lpVersionInformation, ULONG TypeMask, ULONGLONG ConditionMask);
@@ -2142,8 +2143,10 @@ static DWORD s_get_enabled_protocols(enum aws_tls_versions minimum_tls_version, 
     return bit_enabled_protocols;
 }
 
-static struct aws_channel_handler *s_tls_handler_sch_credentials_new(
+#if NTDDI_VERSION >= 0x0A000006 /* Windows SDK 10.1.17763.0 or later */
 
+/* The SCH_CREDENTIALS and few other structures became available starting with Windows SDK 10.1.17763.0. */
+static struct aws_channel_handler *s_tls_handler_sch_credentials_new(
     struct aws_allocator *alloc,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot,
@@ -2193,7 +2196,7 @@ static struct aws_channel_handler *s_tls_handler_sch_credentials_new(
         &sc_handler->sspi_timestamp);
 
     if (status != SEC_E_OK) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is %d", (int)status);
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Error on AcquireCredentialsHandle. SECURITY_STATUS is 0x%X", (int)status);
         int aws_error = s_determine_sspi_error(status);
         aws_raise_error(aws_error);
         goto on_error;
@@ -2207,6 +2210,8 @@ on_error:
 
     return NULL;
 }
+
+#endif /* NTDDI_VERSION >= 0x0A000006 */
 
 static struct aws_channel_handler *s_tls_handler_schannel_cred_new(
     struct aws_allocator *alloc,
@@ -2281,10 +2286,20 @@ static struct aws_channel_handler *s_tls_handler_new(
     struct aws_channel_slot *slot,
     bool is_client_mode) {
 
-    /* check if run on Windows 10 build 1809, (build 17_763) */
-    if (s_is_windows_equal_or_above_version(WINDOWS_BUILD_1809) && !s_use_schannel_creds) {
+#if NTDDI_VERSION >= 0x0A000006 /* Windows SDK 10.1.17763.0 or later */
+    /* This check is used to determine the availability of TLS 1.3. According to Microsoft documentation
+     * (https://learn.microsoft.com/en-us/windows/win32/secauthn/protocols-in-tls-ssl--schannel-ssp-), TLS 1.3 became
+     * available in Windows Server 2022 (build number 20348) and Windows 11, version 21H2 (build number 22000).
+     *
+     * For more information see also the following links with Windows releases:
+     * - https://learn.microsoft.com/en-us/windows/release-health/release-information
+     * - https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information
+     * - https://learn.microsoft.com/en-us/windows/release-health/windows-server-release-info
+     */
+    if (s_is_windows_equal_or_above_build_number(WINDOWS_BUILD_20348) && !s_use_schannel_creds) {
         return s_tls_handler_sch_credentials_new(alloc, options, slot, is_client_mode);
     }
+#endif
     return s_tls_handler_schannel_cred_new(alloc, options, slot, is_client_mode);
 }
 

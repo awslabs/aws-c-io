@@ -1494,12 +1494,12 @@ static int s_verify_good_host_mqtt_connect(
     aws_tls_ctx_options_set_verify_peer(&tls_options, false);
     aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
 
-    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
-    ASSERT_NOT_NULL(tls_context);
-
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&tls_options);
     }
+
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
 
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, tls_context);
@@ -1621,10 +1621,14 @@ AWS_TEST_CASE(
     s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
 #    endif
 
+static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
+}
+
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
 static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, NULL);
+    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
