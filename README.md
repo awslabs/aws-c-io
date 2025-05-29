@@ -18,7 +18,7 @@ This library is licensed under the Apache 2.0 License.
 
 ### Building
 
-CMake 3.1+ is required to build.
+CMake 3.9+ is required to build.
 
 `<install-path>` must be an absolute path in the following instructions.
 
@@ -151,7 +151,8 @@ Core to Async-IO is the event-loop. We provide an implementation for most platfo
 Platform | Implementation
 --- | ---
 Linux | Edge-Triggered Epoll
-BSD Variants and Apple Devices | KQueue
+BSD Variants | KQueue
+Apple Devices | KQueue or Apple Dispatch Queue
 Windows | IOCP (IO Completion Ports)
 
 Also, you can always implement your own as well.
@@ -645,7 +646,7 @@ All exported functions, simply shim into the v-table and return.
 
 We include a cross-platform API for sockets. We support TCP and UDP using IPv4 and IPv6, and Unix Domain sockets. On Windows,
 we use Named Pipes to support the functionality of Unix Domain sockets. On Windows, this is implemented with winsock2, and on
-all unix platforms we use the posix API.
+all unix platforms we use the posix API. We also provides options to use Apple Network Framework on Apple.
 
 Upon a connection being established, the new socket (either as the result of a `connect()` or `start_accept()` call)
 will not be attached to any event loops. It is your responsibility to register it with an event loop to begin receiving
@@ -715,38 +716,45 @@ upon completion of asynchronous operations. If you are using UDP or LOCAL, `conn
 
 Shuts down any pending operations on the socket, and cleans up state. The socket object can be re initialized after this operation.
 
-    int aws_socket_connect(struct aws_socket *socket, struct aws_socket_endpoint *remote_endpoint);
+    int aws_socket_set_cleanup_complete_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
 
-Connects to a remote endpoint. In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`,
-and if the operation is successful, the socket can immediately be used for write operations.
+Sets the clean up completion callback. The callback will be invoked if `aws_socket_clean_up()` finish to clean up the socket resources. It is safe to release the socket memory after this callback is invoked.
 
-In TCP, this will function will not block. If the return value is successful, then you must wait on the `on_connection_established()`
-callback to be invoked before using the socket.
+    int aws_socket_connect(struct aws_socket *socket, const struct aws_socket_endpoint *remote_endpoint, struct aws_event_loop *event_loop, aws_socket_on_connection_result_fn *on_connection_result, void *user_data);
+
+Connects to a remote endpoint. In TCP and all Apple Network Framework connections (regardless it is UDP, TCP or LOCAL), when the connection succeed, you still must wait on  the `on_connection_result()` callback to be invoked before using the socket.
+
+In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`, and if the operation is successful, 
+the socket can immediately be used for write operations.
 
 For LOCAL (Unix Domain Sockets or Named Pipes), the socket will be immediately ready for use upon a successful return.
 
     int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
 
-Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In connection oriented
-modes, you still must call `aws_socket_listen()` and `aws_socket_start_accept()` before using the socket.
+Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In connection oriented 
+modes or if you are using Apple Network Framework (regardless it is UDP or TCP), you still must call `aws_socket_listen()` and 
+`aws_socket_start_accept()` before using the socket.
 
     int aws_socket_listen(struct aws_socket *socket, int backlog_size);
 
-TCP and LOCAL only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
+TCP, LOCAL, and Apple Network Framework only. Sets up the socket to listen on the address bound to in `aws_socket_bind()`.
 
-    int aws_socket_start_accept(struct aws_socket *socket);
+    int aws_socket_start_accept(struct aws_socket *socket, struct aws_event_loop *accept_loop, struct aws_socket_listener_options options);
 
-TCP and LOCAL only. The socket will begin accepting new connections. This is an asynchronous operation. New connections will
-arrive via the `on_incoming_connection()` callback.
+TCP, LOCAL, and Apple Network Framework only. The socket will begin accepting new connections. This is an asynchronous operation. `on_accept_start()` will be invoked when the listener is ready to accept new connection. New connections will arrive via the `on_accept_result()` callback. 
 
     int aws_socket_stop_accept(struct aws_socket *socket);
 
-TCP and LOCAL only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` again after this
-operation.
+TCP, LOCAL, and Apple Network Framework only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` 
+again after this operation.
 
     int aws_socket_close(struct aws_socket *socket);
 
 Calls `close()` on the socket and unregisters all io operations from the event loop.
+
+    int aws_socket_set_close_complete_callback(struct aws_socket *socket, aws_socket_on_shutdown_complete_fn fn, void *user_data);
+
+Sets the close completion callback. The callback will be invoked if `aws_socket_close()` finish to process all the I/O events and close the socket.
 
     struct aws_io_handle *aws_socket_get_io_handle(struct aws_socket *socket);
 
@@ -754,8 +762,7 @@ Fetches the underlying io handle for use in event loop registrations and channel
 
     int aws_socket_set_options(struct aws_socket *socket, struct aws_socket_options *options);
 
-Sets new socket options on the underlying socket. This is mainly useful in context of accepting a new connection via:
-`on_incoming_connection()`.
+Sets new socket options on the underlying socket.
 
     int aws_socket_read(struct aws_socket *socket, struct aws_byte_buf *buffer, size_t *amount_read);
 

@@ -14,12 +14,17 @@ AWS_PUSH_SANE_WARNING_LEVEL
 
 #define AWS_C_IO_PACKAGE_ID 1
 
+struct aws_io_handle;
+typedef void aws_io_set_queue_on_handle_fn(struct aws_io_handle *handle, void *queue);
+
 struct aws_io_handle {
     union {
         int fd;
+        /* on Apple systems, handle is of type nw_connection_t. On Windows, it's a SOCKET handle. */
         void *handle;
     } data;
     void *additional_data;
+    aws_io_set_queue_on_handle_fn *set_queue;
 };
 
 enum aws_io_message_type {
@@ -249,10 +254,25 @@ enum aws_io_errors {
     AWS_IO_STREAM_GET_LENGTH_FAILED,
     AWS_IO_STREAM_SEEK_UNSUPPORTED,
     AWS_IO_STREAM_GET_LENGTH_UNSUPPORTED,
-
     AWS_IO_TLS_ERROR_READ_FAILURE,
 
     AWS_ERROR_PEM_MALFORMED,
+
+    AWS_IO_SOCKET_MISSING_EVENT_LOOP,
+    AWS_IO_TLS_UNKNOWN_ROOT_CERTIFICATE,
+    AWS_IO_TLS_NO_ROOT_CERTIFICATE_FOUND,
+    AWS_IO_TLS_CERTIFICATE_EXPIRED,
+    AWS_IO_TLS_CERTIFICATE_NOT_YET_VALID,
+    AWS_IO_TLS_BAD_CERTIFICATE,
+    AWS_IO_TLS_PEER_CERTIFICATE_EXPIRED,
+    AWS_IO_TLS_BAD_PEER_CERTIFICATE,
+    AWS_IO_TLS_PEER_CERTIFICATE_REVOKED,
+    AWS_IO_TLS_PEER_CERTIFICATE_UNKNOWN,
+    AWS_IO_TLS_INTERNAL_ERROR,
+    AWS_IO_TLS_CLOSED_GRACEFUL,
+    AWS_IO_TLS_CLOSED_ABORT,
+    AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN,
+    AWS_IO_TLS_HOST_NAME_MISMATCH,
 
     AWS_IO_ERROR_END_RANGE = AWS_ERROR_ENUM_END_RANGE(AWS_C_IO_PACKAGE_ID),
     AWS_IO_INVALID_FILE_HANDLE = AWS_ERROR_INVALID_FILE_HANDLE,

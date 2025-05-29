@@ -7,11 +7,12 @@
 
 #include <aws/common/task_scheduler.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/private/event_loop_impl.h>
 
 #include <stdbool.h>
 #include <stdio.h>
 
-#include <Windows.h>
+#include <windows.h>
 
 enum read_end_state {
     /* Pipe is open. */

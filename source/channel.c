@@ -12,6 +12,7 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
 #include <aws/io/message_pool.h>
+#include <aws/io/private/event_loop_impl.h>
 #include <aws/io/statistics.h>
 
 #ifdef _MSC_VER
@@ -256,6 +257,10 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
     setup_args->on_setup_completed = creation_args->on_setup_completed;
     setup_args->user_data = creation_args->setup_user_data;
 
+    /* keep loop alive until channel is destroyed */
+    channel->loop = creation_args->event_loop;
+    aws_event_loop_group_acquire_from_event_loop(channel->loop);
+
     aws_task_init(&setup_args->task, s_on_channel_setup_complete, setup_args, "on_channel_setup_complete");
     aws_event_loop_schedule_task_now(creation_args->event_loop, &setup_args->task);
 
@@ -306,6 +311,8 @@ static void s_final_channel_deletion_task(struct aws_task *task, void *arg, enum
     aws_array_list_clean_up(&channel->statistic_list);
 
     aws_channel_set_statistics_handler(channel, NULL);
+
+    aws_event_loop_group_release_from_event_loop(channel->loop);
 
     aws_mem_release(channel->alloc, channel);
 }
@@ -883,12 +890,13 @@ int aws_channel_slot_shutdown(
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL,
         "id=%p: shutting down slot %p, with handler %p "
-        "in %s direction with error code %d",
+        "in %s direction with error code %d : %s",
         (void *)slot->channel,
         (void *)slot,
         (void *)slot->handler,
         (dir == AWS_CHANNEL_DIR_READ) ? "read" : "write",
-        err_code);
+        err_code,
+        aws_error_name(err_code));
     return aws_channel_handler_shutdown(slot->handler, slot, dir, err_code, free_scarce_resources_immediately);
 }
 

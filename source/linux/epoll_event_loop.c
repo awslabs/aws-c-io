@@ -3,17 +3,16 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/event_loop.h>
-
 #include <aws/cal/cal.h>
 #include <aws/common/atomics.h>
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/task_scheduler.h>
 #include <aws/common/thread.h>
-#include <aws/io/private/tracing.h>
-
+#include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
+#include <aws/io/private/tracing.h>
 
 #include <sys/epoll.h>
 
@@ -45,13 +44,22 @@
 #    define EPOLLRDHUP 0x2000
 #endif
 
-static void s_destroy(struct aws_event_loop *event_loop);
+static void s_start_destroy(struct aws_event_loop *event_loop);
+static void s_complete_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
+static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
+    (void)handle;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: connect_to_io_completion_port() is not supported using Epoll Event Loops",
+        (void *)event_loop);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
 static int s_subscribe_to_io_events(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -65,13 +73,15 @@ static bool s_is_on_callers_thread(struct aws_event_loop *event_loop);
 static void aws_event_loop_thread(void *args);
 
 static struct aws_event_loop_vtable s_vtable = {
-    .destroy = s_destroy,
+    .start_destroy = s_start_destroy,
+    .complete_destroy = s_complete_destroy,
     .run = s_run,
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
     .schedule_task_now = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
+    .connect_to_io_completion_port = s_connect_to_io_completion_port,
     .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
@@ -113,7 +123,7 @@ enum {
 int aws_open_nonblocking_posix_pipe(int pipe_fds[2]);
 
 /* Setup edge triggered epoll with a scheduler. */
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_with_epoll(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_PRECONDITION(options);
@@ -198,6 +208,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
 
     loop->impl_data = epoll_loop;
     loop->vtable = &s_vtable;
+    loop->base_elg = options->parent_elg;
 
     return loop;
 
@@ -230,7 +241,11 @@ clean_up_loop:
     return NULL;
 }
 
-static void s_destroy(struct aws_event_loop *event_loop) {
+static void s_start_destroy(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+}
+
+static void s_complete_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying event_loop", (void *)event_loop);
 
     struct epoll_loop *epoll_loop = event_loop->impl_data;
@@ -333,8 +348,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     if (s_is_on_callers_thread(event_loop)) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: scheduling task %p in-thread for timestamp %llu",
+            "id=%p: scheduling %s task %p in-thread for timestamp %llu",
             (void *)event_loop,
+            task->type_tag,
             (void *)task,
             (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
@@ -348,8 +364,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Scheduling task %p cross-thread for timestamp %llu",
+        "id=%p: Scheduling %s task %p cross-thread for timestamp %llu",
         (void *)event_loop,
+        task->type_tag,
         (void *)task,
         (unsigned long long)run_at_nanos);
     task->timestamp = run_at_nanos;
@@ -383,7 +400,8 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 }
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling %s task %p", (void *)event_loop, task->type_tag, (void *)task);
     struct epoll_loop *epoll_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&epoll_loop->scheduler, task);
 }
@@ -539,8 +557,9 @@ static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
         struct aws_task *task = AWS_CONTAINER_OF(node, struct aws_task, node);
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: task %p pulled to event-loop, scheduling now.",
+            "id=%p: task %s %p pulled to event-loop, scheduling now.",
             (void *)event_loop,
+            task->type_tag,
             (void *)task);
         /* Timestamp 0 is used to denote "now" tasks */
         if (task->timestamp == 0) {

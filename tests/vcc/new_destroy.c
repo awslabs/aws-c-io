@@ -78,15 +78,15 @@ struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, a
 
     /* VCC change: rewrite return to allow for unwrap */
 #if 0
-    return aws_event_loop_new_default_with_options(alloc, &options);
+    return aws_event_loop_new_with_epoll(alloc, &options);
 #else
-    struct aws_event_loop *r = aws_event_loop_new_default_with_options(alloc, &options, _(out c_mutex));
+    struct aws_event_loop *r = aws_event_loop_new_with_epoll(alloc, &options, _(out c_mutex));
     _(unwrap(&options))
     return r;
 #endif
 }
 
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_with_epoll(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options
     _(out \claim(c_mutex))
@@ -184,6 +184,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
 
     loop->impl_data = epoll_loop;
     loop->vtable = &s_vtable;
+    loop->base_elg = options->parent_elg;
 
     _(wrap(&epoll_loop->task_pre_queue.head))
     _(wrap(&epoll_loop->task_pre_queue.tail))
@@ -249,11 +250,17 @@ clean_up_loop:
     return NULL;
 }
 
+static void s_start_destroy(struct aws_event_loop *event_loop
+    _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
+) {
+    (void)event_loop;
+}
+
 /* Fake-up call to s_stop since this is just a vtable lookup */
 #define aws_event_loop_stop(event_loop) \
     s_stop(event_loop _(ghost c_event_loop) _(ghost c_mutex));
 
-static void s_destroy(struct aws_event_loop *event_loop
+static void s_complete_destroy(struct aws_event_loop *event_loop
     _(ghost \claim(c_event_loop)) _(ghost \claim(c_mutex))
 ) {
     AWS_LOGF_INFO(AWS_LS_IO_EVENT_LOOP, "id=%p: Destroying event_loop", (void *)event_loop);

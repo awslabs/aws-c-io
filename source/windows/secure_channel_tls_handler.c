@@ -21,7 +21,7 @@
 
 /* To use the SCH_CREDENTIALS structure, define SCHANNEL_USE_BLACKLISTS  */
 #define SCHANNEL_USE_BLACKLISTS
-#include <Windows.h>
+#include <windows.h>
 
 #include <SubAuth.h>
 

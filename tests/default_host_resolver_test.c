@@ -96,7 +96,10 @@ static int s_test_default_with_ipv6_lookup_fn(struct aws_allocator *allocator, v
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -189,7 +192,10 @@ static int s_test_default_host_resolver_ipv6_address_variations_fn(struct aws_al
 
     };
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -263,7 +269,10 @@ static int s_test_default_with_ipv4_only_lookup_fn(struct aws_allocator *allocat
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -333,7 +342,10 @@ static int s_test_default_with_multiple_lookups_fn(struct aws_allocator *allocat
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -460,7 +472,10 @@ static int s_test_resolver_ttls_fn(struct aws_allocator *allocator, void *ctx) {
 
     s_set_time(0);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group, .max_entries = 10, .system_clock_override_fn = s_clock_fn};
@@ -672,7 +687,10 @@ static int s_test_resolver_connect_failure_recording_fn(struct aws_allocator *al
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -864,7 +882,10 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -1039,12 +1060,179 @@ static int s_test_resolver_ttl_refreshes_on_resolve_fn(struct aws_allocator *all
 
 AWS_TEST_CASE(test_resolver_ttl_refreshes_on_resolve, s_test_resolver_ttl_refreshes_on_resolve_fn)
 
+/**
+ * Test that a failed address isn't stuck on the bad list for eternity.
+ *
+ * This is a regression test for a real world use case:
+ * A server went offline for a while to do some updates.
+ * But when it came back online later, it wasn't getting any traffic.
+ * The expectation is that traffic to this server would eventually resume.
+ *
+ * The cause was: the default host resolver didn't purge addresses
+ * from the bad list after their TTL expired. Once an address got on the bad list,
+ * it was nearly impossible to ever get off it.
+ */
+static int s_test_resolver_bad_list_expires_eventually_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
+
+    struct aws_host_resolver_default_options resolver_options = {
+        .el_group = el_group,
+        .max_entries = 10,
+    };
+    struct aws_host_resolver *resolver = aws_host_resolver_new_default(allocator, &resolver_options);
+
+    const struct aws_string *host_name = aws_string_new_from_c_str(allocator, "host_address");
+
+    /*
+     * Set up mock DNS with 2 addresses.
+     * We'll tell the host resolver that a connection to addr1 failed.
+     * (don't report both as failed, or bad addresses will move back to the
+     * good list through mechanisms we're testing elsewhere)
+     * The mock DNS will continually report those same 2 addresses.
+     * Assert that, at some point in the future, the host resolver yields addr1 again.
+     */
+
+    const struct aws_string *addr1_ipv4 = aws_string_new_from_c_str(allocator, "address1ipv4");
+    const struct aws_string *addr2_ipv4 = aws_string_new_from_c_str(allocator, "address2ipv4");
+
+    struct mock_dns_resolver mock_resolver;
+    ASSERT_SUCCESS(mock_dns_resolver_init(&mock_resolver, 1000, allocator));
+
+    struct aws_host_resolution_config config = {
+        /* short TTL so bad entries expire and get removed without this test taking too long */
+        .max_ttl = 2 /*sec*/,
+        .impl = mock_dns_resolve,
+        .impl_data = &mock_resolver,
+    };
+
+    struct aws_host_address host_address_1_ipv4 = {
+        .address = addr1_ipv4,
+        .allocator = allocator,
+        .host = aws_string_new_from_c_str(allocator, "host_address"),
+        .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+    };
+
+    struct aws_host_address host_address_2_ipv4 = {
+        .address = addr2_ipv4,
+        .allocator = allocator,
+        .host = aws_string_new_from_c_str(allocator, "host_address"),
+        .record_type = AWS_ADDRESS_RECORD_TYPE_A,
+    };
+
+    struct aws_array_list address_list_1;
+    ASSERT_SUCCESS(aws_array_list_init_dynamic(&address_list_1, allocator, 2, sizeof(struct aws_host_address)));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_1_ipv4));
+    ASSERT_SUCCESS(aws_array_list_push_back(&address_list_1, &host_address_2_ipv4));
+
+    ASSERT_SUCCESS(mock_dns_resolver_append_address_list(&mock_resolver, &address_list_1));
+
+    struct aws_mutex mutex = AWS_MUTEX_INIT;
+    struct default_host_callback_data callback_data = {
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = &mutex,
+    };
+
+    /*
+     * Do first lookup, we expect to get addr1.
+     */
+
+    ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+        resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+
+    /* BEGIN CRITICAL SECTION */
+    ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+    aws_condition_variable_wait_pred(
+        &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+    ASSERT_INT_EQUALS(0, aws_string_compare(addr1_ipv4, callback_data.a_address.address));
+
+    aws_host_address_clean_up(&callback_data.a_address);
+    callback_data.invoked = false;
+    aws_mutex_unlock(&mutex);
+    /* END CRITICAL SECTION */
+
+    /*
+     * Report addr1 as failed.
+     * Then do repeated lookups in a loop.
+     * We expect to see addr2 again and again, until we eventually see addr1.
+     */
+
+    ASSERT_SUCCESS(aws_host_resolver_record_connection_failure(resolver, &host_address_1_ipv4));
+
+    uint64_t num_times_received_addr1 = 0;
+    uint64_t num_times_received_addr2 = 0;
+
+    uint64_t start_timestamp_ns = 0;
+    aws_high_res_clock_get_ticks(&start_timestamp_ns);
+    while (num_times_received_addr1 == 0) {
+
+        /* Check for timeout */
+        uint64_t current_timestamp_ns = 0;
+        aws_high_res_clock_get_ticks(&current_timestamp_ns);
+
+        uint64_t looping_secs = aws_timestamp_convert(
+            current_timestamp_ns - start_timestamp_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_SECS, NULL);
+        ASSERT_TRUE(looping_secs < 10, "Timed out waiting for addr1 to get off bad list");
+
+        /* Sleep a moment, to keep logs at reasonable size */
+        uint64_t sleep_ns = aws_timestamp_convert(100, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+        aws_thread_current_sleep(sleep_ns);
+
+        /* Do lookup */
+        ASSERT_SUCCESS(aws_host_resolver_resolve_host(
+            resolver, host_name, s_default_host_resolved_test_callback, &config, &callback_data));
+
+        /* BEGIN CRITICAL SECTION */
+        ASSERT_SUCCESS(aws_mutex_lock(&mutex));
+        aws_condition_variable_wait_pred(
+            &callback_data.condition_variable, &mutex, s_default_host_resolved_predicate, &callback_data);
+
+        if (aws_string_compare(addr1_ipv4, callback_data.a_address.address) == 0) {
+            ++num_times_received_addr1;
+        } else if (aws_string_compare(addr2_ipv4, callback_data.a_address.address) == 0) {
+            ++num_times_received_addr2;
+        } else {
+            ASSERT_TRUE(false, "Received unexpected address");
+        }
+
+        aws_host_address_clean_up(&callback_data.a_address);
+        callback_data.invoked = false;
+        aws_mutex_unlock(&mutex);
+        /* END CRITICAL SECTION */
+    }
+
+    ASSERT_TRUE(num_times_received_addr2 > 10, "Expected to see a lot of addr2 while addr1 was on bad list");
+
+    /* clean up */
+    aws_host_resolver_release(resolver);
+    aws_string_destroy((void *)host_name);
+    aws_event_loop_group_release(el_group);
+
+    aws_io_library_clean_up();
+
+    mock_dns_resolver_clean_up(&mock_resolver);
+
+    return 0;
+}
+
+AWS_TEST_CASE(test_resolver_bad_list_expires_eventually, s_test_resolver_bad_list_expires_eventually_fn)
+
 static int s_test_resolver_ipv4_address_lookup_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -1105,7 +1293,10 @@ static int s_test_resolver_purge_host_cache(struct aws_allocator *allocator, voi
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -1220,7 +1411,10 @@ static int s_test_resolver_purge_cache(struct aws_allocator *allocator, void *ct
     (void)ctx;
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -1369,7 +1563,10 @@ static int s_test_resolver_ipv6_address_lookup_fn(struct aws_allocator *allocato
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,
@@ -1431,7 +1628,10 @@ static int s_test_resolver_low_frequency_starvation_fn(struct aws_allocator *all
 
     aws_io_library_init(allocator);
 
-    struct aws_event_loop_group *el_group = aws_event_loop_group_new_default(allocator, 1, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = el_group,

@@ -7,16 +7,16 @@ on: [push]
 jobs:
   check-for-changes:
 
-    runs-on: ubuntu-20.04 # latest
+    runs-on: ubuntu-24.04 # latest
 
     steps:
     - name: Checkout Sources
-      uses: actions/checkout@v1
+      uses: actions/checkout@v4
 
     - name: Check
       run: |
         TMPFILE=$(mktemp)
-        echo "c624a28de5af7f851a240a1e65a26c01  source/linux/epoll_event_loop.c" > $TMPFILE
+        echo "5109c3b2748a98621ebdc05756fdfa51 source/linux/epoll_event_loop.c" > $TMPFILE
         md5sum --check $TMPFILE
 
     # No further steps if successful

@@ -8,6 +8,7 @@
 #include <aws/common/string.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/socket.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
@@ -20,6 +21,11 @@
     before the task is finished).*/
 #    pragma warning(disable : 4221)
 #endif
+
+// Define a macro to allocate and initialize a structure
+#define SETUP_SOCKET_SHUTDOWN_CALLBACKS(allocator, socket, struct_type, init_function, ...)                            \
+    struct struct_type *shutdown_args = struct_type##_new(allocator, __VA_ARGS__);                                     \
+    aws_socket_set_cleanup_complete_callback(socket, init_function, shutdown_args);
 
 static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
     AWS_ASSERT(bootstrap);
@@ -127,6 +133,13 @@ struct client_connection_args {
     bool setup_called;
     bool enable_read_back_pressure;
     struct aws_event_loop *requested_event_loop;
+
+    /*
+     * Apple network framework's establishment of a network connection combines both TCP and TLS related
+     * operations into a singular connection callback. This is used to store a previously received
+     * TLS error_code that can be reported at a later time.
+     */
+    int tls_error_code;
 
     /*
      * It is likely that all reference adjustments to the connection args take place in a single event loop
@@ -475,6 +488,18 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         }
 
         if (connection_args->channel_data.use_tls) {
+            if (aws_is_using_secitem()) {
+                /*
+                 * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
+                 * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
+                 * together, eliminating the need for a separate TLS configuration in the channel. This code is reached
+                 * only when a TLS connection has been successfully established. At that point, we signal a successful
+                 * TLS handshake, which also makes the server name and protocol available (if provided).
+                 */
+                s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
+                return;
+            }
+
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
             if (s_setup_client_tls(connection_args, channel)) {
@@ -484,7 +509,6 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         } else {
             s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
         }
-
         return;
     }
 
@@ -499,6 +523,11 @@ error:
     /* the channel shutdown callback will clean the channel up */
 }
 
+static void s_socket_shutdown_complete_release_client_connection_fn(void *user_data) {
+    struct client_connection_args *connection_args = user_data;
+    s_client_connection_args_release(connection_args);
+}
+
 static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
@@ -509,79 +538,174 @@ static void s_on_client_channel_on_shutdown(struct aws_channel *channel, int err
         (void *)channel,
         error_code);
 
-    /* note it's not safe to reference the bootstrap after the callback. */
+    struct aws_socket *socket = connection_args->channel_data.socket;
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
+
     s_connection_args_shutdown_callback(connection_args, error_code, channel);
 
+    /* note it's not safe to reference the bootstrap after the callback. */
     aws_channel_destroy(channel);
-    aws_socket_clean_up(connection_args->channel_data.socket);
-    aws_mem_release(allocator, connection_args->channel_data.socket);
-    s_client_connection_args_release(connection_args);
+
+    aws_socket_set_cleanup_complete_callback(
+        socket, s_socket_shutdown_complete_release_client_connection_fn, connection_args);
+
+    aws_socket_clean_up(socket);
+
+    aws_mem_release(allocator, socket);
 }
 
 static bool s_aws_socket_domain_uses_dns(enum aws_socket_domain domain) {
     return domain == AWS_SOCKET_IPV4 || domain == AWS_SOCKET_IPV6;
 }
 
+struct socket_shutdown_setup_channel_args {
+    struct aws_allocator *allocator;
+    struct client_connection_args *connection_args;
+    int error_code;
+    bool release_connection_args;
+};
+
+struct socket_shutdown_setup_channel_args *socket_shutdown_setup_channel_args_new(
+    struct aws_allocator *allocator,
+    struct client_connection_args *connection_args,
+    int error_code,
+    bool release_connection_args) {
+    struct socket_shutdown_setup_channel_args *shutdown_args =
+        aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_setup_channel_args));
+    shutdown_args->allocator = allocator;
+    shutdown_args->connection_args = connection_args;
+    shutdown_args->error_code = error_code;
+    shutdown_args->release_connection_args = release_connection_args;
+    return shutdown_args;
+}
+
+static void socket_shutdown_setup_channel_args_destroy(struct socket_shutdown_setup_channel_args *args) {
+    aws_mem_release(args->allocator, args);
+}
+
+static void s_socket_shutdown_complete_setup_connection_args_fn(void *user_data) {
+    struct socket_shutdown_setup_channel_args *shutdown_args = user_data;
+    struct client_connection_args *connection_args = shutdown_args->connection_args;
+
+    // The failed count should be set before validation
+    if (shutdown_args->error_code || !connection_args->channel_data.channel) {
+        connection_args->failed_count++;
+    }
+
+    /* if this is the last attempted connection and it failed, notify the user */
+    if (connection_args->failed_count == connection_args->addresses_count) {
+        if (connection_args->tls_error_code) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: Connection failed with error_code %d : %s.",
+                (void *)connection_args->bootstrap,
+                connection_args->tls_error_code,
+                aws_error_name(connection_args->tls_error_code));
+            /* connection_args will be released after setup_callback */
+            s_connection_args_setup_callback(connection_args, connection_args->tls_error_code, NULL);
+        } else {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: Connection failed with error_code %d : %s.",
+                (void *)connection_args->bootstrap,
+                shutdown_args->error_code,
+                aws_error_name(shutdown_args->error_code));
+            /* connection_args will be released after setup_callback */
+            s_connection_args_setup_callback(connection_args, shutdown_args->error_code, NULL);
+        }
+    }
+
+    if (shutdown_args->release_connection_args) {
+        /* every connection task adds a ref, so every failure or cancel needs to dec one */
+        s_client_connection_args_release(connection_args);
+    }
+    socket_shutdown_setup_channel_args_destroy(shutdown_args);
+}
+
+/* Called when a socket connection attempt task completes. First socket to successfully open
+ * assigns itself to connection_args->channel_data.socket and flips connection_args->connection_chosen
+ * to true. Subsequent successful sockets will be released and cleaned up
+ */
 static void s_on_client_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: client connection on socket %p completed with error %d.",
+        "id=%p: client connection on socket %p completed with error %d : %s",
         (void *)connection_args->bootstrap,
         (void *)socket,
-        error_code);
+        error_code,
+        aws_error_name(error_code));
 
-    if (error_code) {
-        connection_args->failed_count++;
+    struct aws_allocator *allocator = connection_args->bootstrap->allocator;
+    if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
+        struct aws_host_address host_address;
+        host_address.host = connection_args->host_name;
+        host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
+        host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
+                                       ? AWS_ADDRESS_RECORD_TYPE_AAAA
+                                       : AWS_ADDRESS_RECORD_TYPE_A;
+
+        if (host_address.address) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: recording bad address %s.",
+                (void *)connection_args->bootstrap,
+                socket->remote_endpoint.address);
+            aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
+            aws_string_destroy((void *)host_address.address);
+        }
     }
 
     if (error_code || connection_args->connection_chosen) {
-        if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
-            struct aws_host_address host_address;
-            host_address.host = connection_args->host_name;
-            host_address.address =
-                aws_string_new_from_c_str(connection_args->bootstrap->allocator, socket->remote_endpoint.address);
-            host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
-                                           ? AWS_ADDRESS_RECORD_TYPE_AAAA
-                                           : AWS_ADDRESS_RECORD_TYPE_A;
-
-            if (host_address.address) {
-                AWS_LOGF_DEBUG(
-                    AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                    "id=%p: recording bad address %s.",
-                    (void *)connection_args->bootstrap,
-                    socket->remote_endpoint.address);
-                aws_host_resolver_record_connection_failure(connection_args->bootstrap->host_resolver, &host_address);
-                aws_string_destroy((void *)host_address.address);
-            }
-        }
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: releasing socket %p either because we already have a "
-            "successful connection or because it errored out.",
-            (void *)connection_args->bootstrap,
-            (void *)socket);
-        aws_socket_close(socket);
-
-        aws_socket_clean_up(socket);
-        aws_mem_release(connection_args->bootstrap->allocator, socket);
-
-        /* if this is the last attempted connection and it failed, notify the user */
-        if (connection_args->failed_count == connection_args->addresses_count) {
-            AWS_LOGF_ERROR(
+        if (error_code) {
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                "id=%p: Connection failed with error_code %d.",
+                "id=%p: releasing socket %p due to error_code %d : %s",
                 (void *)connection_args->bootstrap,
-                error_code);
-            /* connection_args will be released after setup_callback */
-            s_connection_args_setup_callback(connection_args, error_code, NULL);
+                (void *)socket,
+                error_code,
+                aws_error_name(error_code));
+            if (aws_is_using_secitem()) {
+                /*
+                 * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful
+                 * TCP connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a
+                 * TLS related failure we store it to properly handle TLS failure rather than treating it as a TCP
+                 * connection failure. We also assign the socket and flip the connection_chosen to true as a TCP
+                 * connection must sucessfully be established before a TLS failure can occur.
+                 */
+                if (aws_error_code_is_tls(error_code)) {
+                    AWS_LOGF_DEBUG(
+                        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                        "id=%p: Storing socket %p error_code %d as this socket's TCP connection has succeeded but was "
+                        "followed up by a TLS neotiation error.",
+                        (void *)connection_args->bootstrap,
+                        (void *)socket,
+                        error_code);
+                    connection_args->tls_error_code = error_code;
+                    connection_args->connection_chosen = true;
+                    connection_args->channel_data.socket = socket;
+                }
+            }
+        } else {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                "id=%p: releasing socket %p because we already have a successful connection.",
+                (void *)connection_args->bootstrap,
+                (void *)socket);
         }
 
-        /* every connection task adds a ref, so every failure or cancel needs to dec one */
-        s_client_connection_args_release(connection_args);
+        SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+            allocator,
+            socket,
+            socket_shutdown_setup_channel_args,
+            s_socket_shutdown_complete_setup_connection_args_fn,
+            connection_args,
+            error_code,
+            true)
+        aws_socket_close(socket);
+        aws_socket_clean_up(socket);
+        aws_mem_release(allocator, socket);
         return;
     }
 
@@ -607,14 +731,17 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     connection_args->channel_data.channel = aws_channel_new(connection_args->bootstrap->allocator, &args);
 
     if (!connection_args->channel_data.channel) {
+
+        SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+            connection_args->bootstrap->allocator,
+            socket,
+            socket_shutdown_setup_channel_args,
+            s_socket_shutdown_complete_setup_connection_args_fn,
+            connection_args,
+            error_code,
+            false)
         aws_socket_clean_up(socket);
         aws_mem_release(connection_args->bootstrap->allocator, connection_args->channel_data.socket);
-        connection_args->failed_count++;
-
-        /* if this is the last attempted connection and it failed, notify the user */
-        if (connection_args->failed_count == connection_args->addresses_count) {
-            s_connection_args_setup_callback(connection_args, error_code, NULL);
-        }
     } else {
         s_connection_args_creation_callback(connection_args, connection_args->channel_data.channel);
     }
@@ -629,6 +756,55 @@ struct connection_task_data {
     struct aws_event_loop *connect_loop;
 };
 
+struct socket_shutdown_attempt_connection_args {
+    struct aws_allocator *allocator;
+    struct connection_task_data *task_data;
+    int error_code;
+};
+
+struct socket_shutdown_attempt_connection_args *socket_shutdown_attempt_connection_args_new(
+    struct aws_allocator *allocator,
+    struct connection_task_data *task_data,
+    int error_code) {
+    struct socket_shutdown_attempt_connection_args *close_args =
+        aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_attempt_connection_args));
+    close_args->allocator = allocator;
+    close_args->task_data = task_data;
+    close_args->error_code = error_code;
+    return close_args;
+}
+
+static void s_socket_shutdown_complete_attempt_connection_fn(void *user_data) {
+    struct socket_shutdown_attempt_connection_args *shutdown_args = user_data;
+    struct connection_task_data *task_data = shutdown_args->task_data;
+    int err_code = shutdown_args->error_code;
+
+    /* if this is the last attempted connection and it failed, notify the user */
+    if (++task_data->args->failed_count == task_data->args->addresses_count) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: Last attempt failed to create socket with error %d",
+            (void *)task_data->args->bootstrap,
+            err_code);
+        s_connection_args_setup_callback(task_data->args, err_code, NULL);
+    } else {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: Socket connect attempt %d/%d failed with error %d. More attempts ongoing...",
+            (void *)task_data->args->bootstrap,
+            task_data->args->failed_count,
+            task_data->args->addresses_count,
+            err_code);
+    }
+
+    s_client_connection_args_release(task_data->args);
+
+    aws_host_address_clean_up(&task_data->host_address);
+
+    aws_mem_release(shutdown_args->allocator, task_data);
+    aws_mem_release(shutdown_args->allocator, shutdown_args);
+}
+
 static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
     struct connection_task_data *task_data = arg;
@@ -639,18 +815,28 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
         goto task_cancelled;
     }
 
-    struct aws_socket *outgoing_socket = aws_mem_acquire(allocator, sizeof(struct aws_socket));
+    struct aws_socket *outgoing_socket = aws_mem_calloc(allocator, 1, sizeof(struct aws_socket));
     if (aws_socket_init(outgoing_socket, allocator, &task_data->options)) {
         goto socket_init_failed;
     }
 
-    if (aws_socket_connect(
-            outgoing_socket,
-            &task_data->endpoint,
-            task_data->connect_loop,
-            s_on_client_connection_established,
-            task_data->args)) {
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &task_data->endpoint,
+        .event_loop = task_data->connect_loop,
+        .on_connection_result = s_on_client_connection_established,
+        .user_data = task_data->args};
 
+    /*
+     * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
+     */
+    if (aws_is_using_secitem()) {
+        struct client_connection_args *connection_args = task_data->args;
+        if (connection_args->channel_data.use_tls) {
+            connect_options.tls_connection_options = &connection_args->channel_data.tls_options;
+        }
+    }
+
+    if (aws_socket_connect(outgoing_socket, &connect_options)) {
         goto socket_connect_failed;
     }
 
@@ -658,9 +844,24 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
 
 socket_connect_failed:
     aws_host_resolver_record_connection_failure(task_data->args->bootstrap->host_resolver, &task_data->host_address);
+
+    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+        allocator,
+        outgoing_socket,
+        socket_shutdown_attempt_connection_args,
+        s_socket_shutdown_complete_attempt_connection_fn,
+        task_data,
+        aws_last_error())
+
     aws_socket_clean_up(outgoing_socket);
+    aws_mem_release(allocator, outgoing_socket);
+
+    // The socket shutdown callback should handle the cleanup
+    return;
+
 socket_init_failed:
     aws_mem_release(allocator, outgoing_socket);
+
 task_cancelled:
     err_code = aws_last_error();
     task_data->args->failed_count++;
@@ -832,10 +1033,6 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     struct client_connection_args *client_connection_args =
         aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct client_connection_args));
 
-    if (!client_connection_args) {
-        return AWS_OP_ERR;
-    }
-
     const char *host_name = options->host_name;
     uint32_t port = options->port;
 
@@ -859,6 +1056,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     client_connection_args->outgoing_port = port;
     client_connection_args->enable_read_back_pressure = options->enable_read_back_pressure;
     client_connection_args->requested_event_loop = options->requested_event_loop;
+    client_connection_args->tls_error_code = AWS_ERROR_SUCCESS;
 
     if (tls_options) {
         if (aws_tls_connection_options_copy(&client_connection_args->channel_data.tls_options, tls_options)) {
@@ -946,11 +1144,29 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         struct aws_event_loop *connect_loop = s_get_connection_event_loop(client_connection_args);
 
         s_client_connection_args_acquire(client_connection_args);
-        if (aws_socket_connect(
-                outgoing_socket, &endpoint, connect_loop, s_on_client_connection_established, client_connection_args)) {
+
+        struct aws_socket_connect_options connect_options = {
+            .remote_endpoint = &endpoint,
+            .event_loop = connect_loop,
+            .on_connection_result = s_on_client_connection_established,
+            .user_data = client_connection_args};
+
+        /*
+         * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
+         */
+        if (aws_is_using_secitem()) {
+            if (client_connection_args->channel_data.use_tls) {
+                connect_options.tls_connection_options = &client_connection_args->channel_data.tls_options;
+            }
+        }
+
+        if (aws_socket_connect(outgoing_socket, &connect_options)) {
+
+            aws_socket_set_cleanup_complete_callback(
+                outgoing_socket, s_socket_shutdown_complete_release_client_connection_fn, client_connection_args);
+
             aws_socket_clean_up(outgoing_socket);
             aws_mem_release(client_connection_args->bootstrap->allocator, outgoing_socket);
-            s_client_connection_args_release(client_connection_args);
             goto error;
         }
     }
@@ -1014,13 +1230,13 @@ struct aws_server_bootstrap *aws_server_bootstrap_new(
 
     return bootstrap;
 }
-
 struct server_connection_args {
     struct aws_server_bootstrap *bootstrap;
     struct aws_socket listener;
     aws_server_bootstrap_on_accept_channel_setup_fn *incoming_callback;
     aws_server_bootstrap_on_accept_channel_shutdown_fn *shutdown_callback;
     aws_server_bootstrap_on_server_listener_destroy_fn *destroy_callback;
+    aws_server_bootstrap_on_listener_setup_fn *setup_callback;
     struct aws_tls_connection_options tls_options;
     aws_channel_on_protocol_negotiated_fn *on_protocol_negotiated;
     aws_tls_on_data_read_fn *user_on_data_read;
@@ -1072,6 +1288,31 @@ static void s_server_connection_args_release(struct server_connection_args *args
     if (args != NULL) {
         aws_ref_count_release(&args->ref_count);
     }
+}
+
+struct socket_shutdown_release_server_connection_args {
+    struct aws_allocator *allocator;
+    struct server_connection_args *connection_args;
+};
+
+struct socket_shutdown_release_server_connection_args *socket_shutdown_release_server_connection_args_new(
+    struct aws_allocator *allocator,
+    struct server_connection_args *connection_args) {
+    struct socket_shutdown_release_server_connection_args *shutdown_args =
+        aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_release_server_connection_args));
+    shutdown_args->allocator = allocator;
+    shutdown_args->connection_args = connection_args;
+    return shutdown_args;
+}
+
+static void s_socket_shutdown_complete_release_server_connection_fn(void *user_data) {
+    struct socket_shutdown_release_server_connection_args *shutdown_args = user_data;
+    struct server_connection_args *connection_args = shutdown_args->connection_args;
+    struct aws_allocator *allocator = shutdown_args->allocator;
+
+    s_server_connection_args_release(connection_args);
+
+    aws_mem_release(allocator, shutdown_args);
 }
 
 static void s_server_incoming_callback(
@@ -1226,11 +1467,43 @@ static inline int s_setup_server_tls(struct server_channel_data *channel_data, s
     return AWS_OP_SUCCESS;
 }
 
+struct socket_shutdown_server_channel_setup_complete_args {
+    struct aws_allocator *allocator;
+    struct server_channel_data *channel_data;
+    int error_code;
+};
+
+struct socket_shutdown_server_channel_setup_complete_args *socket_shutdown_server_channel_setup_complete_args_new(
+    struct aws_allocator *allocator,
+    struct server_channel_data *channel_data,
+    int error_code) {
+    struct socket_shutdown_server_channel_setup_complete_args *shutdown_args =
+        aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_server_channel_setup_complete_args));
+    shutdown_args->allocator = allocator;
+    shutdown_args->channel_data = channel_data;
+    shutdown_args->error_code = error_code;
+    return shutdown_args;
+}
+
+static void socket_shutdown_server_channel_setup_complete_fn(void *user_data) {
+    struct socket_shutdown_server_channel_setup_complete_args *shutdown_args = user_data;
+    struct server_channel_data *channel_data = shutdown_args->channel_data;
+    struct server_connection_args *connection_args = channel_data->server_connection_args;
+    struct aws_allocator *allocator = shutdown_args->allocator;
+
+    s_server_incoming_callback(shutdown_args->channel_data, shutdown_args->error_code, NULL);
+    s_server_connection_args_release(connection_args);
+    aws_mem_release(allocator, shutdown_args->channel_data);
+
+    aws_mem_release(allocator, shutdown_args);
+}
+
 static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
     struct server_channel_data *channel_data = user_data;
 
     int err_code = error_code;
     if (err_code) {
+
         /* channel fail to set up no destroy callback will fire */
         AWS_LOGF_ERROR(
             AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -1240,13 +1513,20 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
             err_code);
 
         aws_channel_destroy(channel);
+
         struct aws_allocator *allocator = channel_data->socket->allocator;
+        struct aws_socket *socket = channel_data->socket;
+
+        SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+            allocator,
+            socket,
+            socket_shutdown_server_channel_setup_complete_args,
+            socket_shutdown_server_channel_setup_complete_fn,
+            channel_data,
+            aws_last_error())
+
         aws_socket_clean_up(channel_data->socket);
-        aws_mem_release(allocator, (void *)channel_data->socket);
-        s_server_incoming_callback(channel_data, err_code, NULL);
-        aws_mem_release(channel_data->server_connection_args->bootstrap->allocator, channel_data);
-        /* no shutdown call back will be fired, we release the ref_count of connection arg here */
-        s_server_connection_args_release(channel_data->server_connection_args);
+        aws_mem_release(socket->allocator, socket);
         return;
     }
 
@@ -1291,6 +1571,17 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
     if (channel_data->server_connection_args->use_tls) {
+        if (aws_is_using_secitem()) {
+            /*
+             * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
+             * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
+             * together, eliminating the need for a separate TLS configuration in the channel. This code is reached only
+             * when a TLS connection has been successfully established. At that point, we signal a successful TLS
+             * handshake, which also makes the server name and protocol available (if provided).
+             */
+            s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
+            return;
+        }
         /* incoming callback will be invoked upon the negotiation completion so don't do it
          * here. */
         if (s_setup_server_tls(channel_data, channel)) {
@@ -1300,6 +1591,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     } else {
         s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
     }
+
     return;
 
 error:
@@ -1307,33 +1599,111 @@ error:
     aws_channel_shutdown(channel, err_code);
 }
 
-static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
-    struct server_channel_data *channel_data = user_data;
-    struct server_connection_args *args = channel_data->server_connection_args;
+struct socket_shutdown_server_channel_shutdown_args {
+    struct aws_allocator *allocator;
+    struct server_channel_data *channel_data;
+    struct aws_channel *channel;
+    int error_code;
+};
+
+struct socket_shutdown_server_channel_shutdown_args *socket_shutdown_server_channel_shutdown_args_new(
+    struct aws_allocator *allocator,
+    struct server_channel_data *channel_data,
+    struct aws_channel *channel,
+    int error_code) {
+    struct socket_shutdown_server_channel_shutdown_args *shutdown_args =
+        aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_server_channel_shutdown_args));
+    shutdown_args->allocator = allocator;
+    shutdown_args->channel_data = channel_data;
+    shutdown_args->channel = channel;
+    shutdown_args->error_code = error_code;
+    return shutdown_args;
+}
+
+static void socket_shutdown_server_channel_shutdown_fn(void *user_data) {
+    struct socket_shutdown_server_channel_shutdown_args *shutdown_args = user_data;
+    struct server_channel_data *channel_data = shutdown_args->channel_data;
+    struct server_connection_args *connection_args = channel_data->server_connection_args;
+    struct aws_allocator *allocator = shutdown_args->allocator;
+
     AWS_LOGF_DEBUG(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
         "id=%p: channel %p shutdown with error %d.",
-        (void *)args->bootstrap,
-        (void *)channel,
-        error_code);
+        (void *)connection_args->bootstrap,
+        (void *)shutdown_args->channel,
+        shutdown_args->error_code);
 
-    void *server_shutdown_user_data = args->user_data;
-    struct aws_server_bootstrap *server_bootstrap = args->bootstrap;
-    struct aws_allocator *allocator = server_bootstrap->allocator;
+    void *server_shutdown_user_data = connection_args->user_data;
+    struct aws_server_bootstrap *server_bootstrap = connection_args->bootstrap;
+
+    int error_code = shutdown_args->error_code;
+    if (channel_data->incoming_called) {
+        connection_args->shutdown_callback(
+            server_bootstrap, error_code, shutdown_args->channel, server_shutdown_user_data);
+    }
+
+    aws_channel_destroy(shutdown_args->channel);
+    s_server_connection_args_release(channel_data->server_connection_args);
+    aws_mem_release(allocator, channel_data);
+
+    aws_mem_release(allocator, shutdown_args);
+}
+
+static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int error_code, void *user_data) {
+    struct server_channel_data *channel_data = user_data;
+    struct server_connection_args *args = channel_data->server_connection_args;
+    struct aws_allocator *allocator = args->bootstrap->allocator;
 
     if (!channel_data->incoming_called) {
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
         s_server_incoming_callback(channel_data, error_code, NULL);
-    } else {
-        args->shutdown_callback(server_bootstrap, error_code, channel, server_shutdown_user_data);
     }
 
-    aws_channel_destroy(channel);
-    aws_socket_clean_up(channel_data->socket);
-    aws_mem_release(allocator, channel_data->socket);
-    s_server_connection_args_release(channel_data->server_connection_args);
+    struct aws_socket *socket = channel_data->socket;
 
-    aws_mem_release(allocator, channel_data);
+    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+        allocator,
+        socket,
+        socket_shutdown_server_channel_shutdown_args,
+        socket_shutdown_server_channel_shutdown_fn,
+        channel_data,
+        channel,
+        error_code)
+
+    aws_socket_clean_up(socket);
+    aws_mem_release(allocator, socket);
+}
+
+struct socket_shutdown_server_connection_result_args {
+    struct aws_allocator *allocator;
+    struct server_connection_args *connection_args;
+    int error_code;
+};
+
+struct socket_shutdown_server_connection_result_args *socket_shutdown_server_connection_result_args_new(
+    struct aws_allocator *allocator,
+    struct server_connection_args *connection_args,
+    int error_code) {
+    struct socket_shutdown_server_connection_result_args *shutdown_args =
+        aws_mem_calloc(allocator, 1, sizeof(struct socket_shutdown_server_connection_result_args));
+    shutdown_args->allocator = allocator;
+    shutdown_args->connection_args = connection_args;
+    shutdown_args->error_code = error_code;
+    return shutdown_args;
+}
+
+static void s_socket_shutdown_server_connection_result_fn(void *user_data) {
+    struct socket_shutdown_server_connection_result_args *shutdown_args = user_data;
+    struct server_connection_args *connection_args = shutdown_args->connection_args;
+    struct aws_allocator *allocator = shutdown_args->allocator;
+
+    /* no channel is created */
+    connection_args->incoming_callback(
+        connection_args->bootstrap, shutdown_args->error_code, NULL, connection_args->user_data);
+
+    s_server_connection_args_release(connection_args);
+
+    aws_mem_release(allocator, shutdown_args);
 }
 
 void s_on_server_connection_result(
@@ -1361,9 +1731,7 @@ void s_on_server_connection_result(
             (void *)socket);
         struct server_channel_data *channel_data =
             aws_mem_calloc(connection_args->bootstrap->allocator, 1, sizeof(struct server_channel_data));
-        if (!channel_data) {
-            goto error_cleanup;
-        }
+
         channel_data->incoming_called = false;
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
@@ -1376,10 +1744,9 @@ void s_on_server_connection_result(
             .setup_user_data = channel_data,
             .shutdown_user_data = channel_data,
             .on_shutdown_completed = s_on_server_channel_on_shutdown,
+            .event_loop = event_loop,
+            .enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure,
         };
-
-        channel_args.event_loop = event_loop;
-        channel_args.enable_read_back_pressure = channel_data->server_connection_args->enable_read_back_pressure;
 
         if (aws_socket_assign_to_event_loop(new_socket, event_loop)) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
@@ -1402,12 +1769,19 @@ void s_on_server_connection_result(
 
 error_cleanup:
     /* no channel is created */
-    connection_args->incoming_callback(connection_args->bootstrap, aws_last_error(), NULL, connection_args->user_data);
-
+    ; // to avoid expression error after a label
     struct aws_allocator *allocator = new_socket->allocator;
+
+    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+        allocator,
+        socket,
+        socket_shutdown_server_connection_result_args,
+        s_socket_shutdown_server_connection_result_fn,
+        connection_args,
+        aws_last_error())
+
     aws_socket_clean_up(new_socket);
     aws_mem_release(allocator, (void *)new_socket);
-    s_server_connection_args_release(connection_args);
 }
 
 static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -1416,8 +1790,49 @@ static void s_listener_destroy_task(struct aws_task *task, void *arg, enum aws_t
     struct server_connection_args *server_connection_args = arg;
 
     aws_socket_stop_accept(&server_connection_args->listener);
+
+    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+        server_connection_args->bootstrap->allocator,
+        &server_connection_args->listener,
+        socket_shutdown_release_server_connection_args,
+        s_socket_shutdown_complete_release_server_connection_fn,
+        server_connection_args)
+
     aws_socket_clean_up(&server_connection_args->listener);
+}
+
+/* Called when a listener connection attempt task completes.
+ */
+static void s_on_listener_connection_established(struct aws_socket *socket, int error_code, void *user_data) {
+    struct server_connection_args *server_connection_args = user_data;
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: listener connection on socket %p completed with error %d.",
+        (void *)server_connection_args->bootstrap,
+        (void *)socket,
+        error_code);
+
+    if (error_code) {
+
+        SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+            server_connection_args->bootstrap->allocator,
+            &server_connection_args->listener,
+            socket_shutdown_release_server_connection_args,
+            s_socket_shutdown_complete_release_server_connection_fn,
+            server_connection_args)
+
+        aws_socket_clean_up(&server_connection_args->listener);
+    }
+
+    if (server_connection_args->setup_callback) {
+        server_connection_args->setup_callback(
+            server_connection_args->bootstrap, error_code, server_connection_args->user_data);
+    }
+
     s_server_connection_args_release(server_connection_args);
+
+    return;
 }
 
 struct aws_socket *aws_server_bootstrap_new_socket_listener(
@@ -1426,6 +1841,8 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     AWS_PRECONDITION(bootstrap_options->bootstrap);
     AWS_PRECONDITION(bootstrap_options->incoming_callback);
     AWS_PRECONDITION(bootstrap_options->shutdown_callback);
+
+    bool async_setup = bootstrap_options->setup_callback != NULL;
 
     struct server_connection_args *server_connection_args =
         aws_mem_calloc(bootstrap_options->bootstrap->allocator, 1, sizeof(struct server_connection_args));
@@ -1452,6 +1869,7 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     server_connection_args->destroy_callback = bootstrap_options->destroy_callback;
     server_connection_args->on_protocol_negotiated = bootstrap_options->bootstrap->on_protocol_negotiated;
     server_connection_args->enable_read_back_pressure = bootstrap_options->enable_read_back_pressure;
+    server_connection_args->setup_callback = bootstrap_options->setup_callback;
 
     aws_task_init(
         &server_connection_args->listener_destroy_task,
@@ -1514,7 +1932,15 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     memcpy(endpoint.address, bootstrap_options->host_name, host_name_len);
     endpoint.port = bootstrap_options->port;
 
-    if (aws_socket_bind(&server_connection_args->listener, &endpoint)) {
+    struct aws_socket_bind_options socket_bind_options = {
+        .local_endpoint = &endpoint, .user_data = server_connection_args};
+
+    if (aws_is_using_secitem()) {
+        socket_bind_options.event_loop = connection_loop;
+        socket_bind_options.tls_connection_options = &server_connection_args->tls_options;
+    }
+
+    if (aws_socket_bind(&server_connection_args->listener, &socket_bind_options)) {
         goto cleanup_listener;
     }
 
@@ -1522,18 +1948,44 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
         goto cleanup_listener;
     }
 
-    if (aws_socket_start_accept(
-            &server_connection_args->listener,
-            connection_loop,
-            s_on_server_connection_result,
-            server_connection_args)) {
+    struct aws_socket_listener_options options = {
+        .on_accept_result = s_on_server_connection_result,
+        .on_accept_result_user_data = server_connection_args,
+        .on_accept_start = NULL,
+        .on_accept_start_user_data = NULL,
+    };
+
+    if (async_setup) {
+        // If we use an async socket, acquire the connection args for listener establish callbacks, if
+        // aws_socket_start_accept succeed, the args should be released in `s_on_listener_connection_established`
+        s_server_connection_args_acquire(server_connection_args);
+        options.on_accept_start = s_on_listener_connection_established;
+        options.on_accept_start_user_data = server_connection_args;
+    }
+
+    if (aws_socket_start_accept(&server_connection_args->listener, connection_loop, options)) {
+        if (async_setup) {
+            // release the args we acquired above
+            s_server_connection_args_release(server_connection_args);
+        }
         goto cleanup_listener;
     }
 
     return &server_connection_args->listener;
 
 cleanup_listener:
+
+    ; // This line just used to avoid expression error after the label
+
+    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+        bootstrap_options->bootstrap->allocator,
+        &server_connection_args->listener,
+        socket_shutdown_release_server_connection_args,
+        s_socket_shutdown_complete_release_server_connection_fn,
+        server_connection_args)
+
     aws_socket_clean_up(&server_connection_args->listener);
+    return NULL;
 
 cleanup_server_connection_args:
     s_server_connection_args_release(server_connection_args);

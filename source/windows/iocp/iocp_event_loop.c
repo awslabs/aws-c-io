@@ -11,8 +11,9 @@
 #include <aws/common/thread.h>
 
 #include <aws/io/logging.h>
+#include <aws/io/private/event_loop_impl.h>
 
-#include <Windows.h>
+#include <windows.h>
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
@@ -95,7 +96,8 @@ enum {
     MAX_COMPLETION_PACKETS_PER_LOOP = 100,
 };
 
-static void s_destroy(struct aws_event_loop *event_loop);
+static void s_start_destroy(struct aws_event_loop *event_loop);
+static void s_complete_destroy(struct aws_event_loop *event_loop);
 static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
@@ -104,6 +106,22 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static bool s_is_event_thread(struct aws_event_loop *event_loop);
+static int s_subscribe_to_io_events(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    aws_event_loop_on_event_fn *on_event,
+    void *user_data) {
+    (void)handle;
+    (void)events;
+    (void)on_event;
+    (void)user_data;
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_EVENT_LOOP,
+        "id=%p: subscribe_to_io_events() is not supported using IOCP Event Loops",
+        (void *)event_loop);
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
 static int s_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 static void s_free_io_event_resources(void *user_data);
 static void aws_event_loop_thread(void *user_data);
@@ -130,7 +148,8 @@ struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *
 }
 
 struct aws_event_loop_vtable s_iocp_vtable = {
-    .destroy = s_destroy,
+    .start_destroy = s_start_destroy,
+    .complete_destroy = s_complete_destroy,
     .run = s_run,
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
@@ -138,12 +157,13 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
     .connect_to_io_completion_port = s_connect_to_io_completion_port,
-    .is_on_callers_thread = s_is_event_thread,
+    .subscribe_to_io_events = s_subscribe_to_io_events,
     .unsubscribe_from_io_events = s_unsubscribe_from_io_events,
     .free_io_event_resources = s_free_io_event_resources,
+    .is_on_callers_thread = s_is_event_thread,
 };
 
-struct aws_event_loop *aws_event_loop_new_default_with_options(
+struct aws_event_loop *aws_event_loop_new_with_iocp(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
@@ -242,6 +262,7 @@ struct aws_event_loop *aws_event_loop_new_default_with_options(
     event_loop->impl_data = impl;
 
     event_loop->vtable = &s_iocp_vtable;
+    event_loop->base_elg = options->parent_elg;
 
     return event_loop;
 
@@ -278,8 +299,12 @@ clean_up:
     return NULL;
 }
 
+static void s_start_destroy(struct aws_event_loop *event_loop) {
+    (void)event_loop;
+}
+
 /* Should not be called from event-thread */
-static void s_destroy(struct aws_event_loop *event_loop) {
+static void s_complete_destroy(struct aws_event_loop *event_loop) {
     AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: destroying event-loop", (void *)event_loop);
 
     struct iocp_loop *impl = event_loop->impl_data;
@@ -433,8 +458,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     if (s_is_event_thread(event_loop)) {
         AWS_LOGF_TRACE(
             AWS_LS_IO_EVENT_LOOP,
-            "id=%p: scheduling task %p in-thread for timestamp %llu",
+            "id=%p: scheduling %s task %p in-thread for timestamp %llu",
             (void *)event_loop,
+            task->type_tag,
             (void *)task,
             (unsigned long long)run_at_nanos);
         if (run_at_nanos == 0) {
@@ -447,8 +473,9 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
-        "id=%p: Scheduling task %p cross-thread for timestamp %llu",
+        "id=%p: Scheduling %s task %p cross-thread for timestamp %llu",
         (void *)event_loop,
+        task->type_tag,
         (void *)task,
         (unsigned long long)run_at_nanos);
     /* Otherwise, add it to synced_data.tasks_to_schedule and signal the event-thread to process it */
@@ -485,7 +512,8 @@ static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws
 }
 
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task) {
-    AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling task %p", (void *)event_loop, (void *)task);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_EVENT_LOOP, "id=%p: cancelling %s task %p", (void *)event_loop, task->type_tag, (void *)task);
     struct iocp_loop *iocp_loop = event_loop->impl_data;
     aws_task_scheduler_cancel_task(&iocp_loop->thread_data.scheduler, task);
 }

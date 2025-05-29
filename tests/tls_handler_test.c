@@ -10,6 +10,7 @@
 #    include <aws/io/file_utils.h>
 #    include <aws/io/host_resolver.h>
 #    include <aws/io/logging.h>
+#    include <aws/io/private/event_loop_impl.h>
 #    include <aws/io/socket.h>
 #    include <aws/io/tls_channel_handler.h>
 
@@ -178,7 +179,10 @@ static int s_tls_common_tester_init(struct aws_allocator *allocator, struct tls_
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    tester->el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    tester->el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = tester->el_group,
@@ -533,7 +537,11 @@ static int s_tls_channel_server_client_tester_init(struct aws_allocator *allocat
     AWS_ZERO_STRUCT(s_server_client_tester);
     ASSERT_SUCCESS(aws_mutex_init(&s_server_client_tester.server_mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_server_client_tester.server_condition_variable));
-    s_server_client_tester.client_el_group = aws_event_loop_group_new_default(allocator, 0, NULL);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
+    s_server_client_tester.client_el_group = aws_event_loop_group_new(allocator, &elg_options);
 
     ASSERT_SUCCESS(s_tls_rw_args_init(
         &s_server_client_tester.server_rw_args,
@@ -990,7 +998,7 @@ static int s_verify_negotiation_fails_helper(
         return AWS_OP_SKIP;
     }
 
-    ASSERT_INT_EQUALS(AWS_IO_TLS_ERROR_NEGOTIATION_FAILURE, outgoing_args.last_error_code);
+    ASSERT_TRUE(aws_error_code_is_tls(outgoing_args.last_error_code));
 
     aws_client_bootstrap_release(client_bootstrap);
 
@@ -1791,7 +1799,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_no_verify_untrusted_root,
     s_tls_client_channel_negotiation_no_verify_untrusted_root_fn)
 
-static void s_lower_tls_version(struct aws_tls_ctx_options *options) {
+static void s_lower_tls_version_to_tls10(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1);
 }
 
@@ -1799,7 +1807,7 @@ static int s_tls_client_channel_negotiation_override_legacy_crypto_tls10_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
-    return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version);
+    return s_verify_good_host(allocator, s_legacy_crypto_tls10_host_name, 1010, &s_lower_tls_version_to_tls10);
 }
 
 AWS_TEST_CASE(
@@ -2107,13 +2115,14 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
      * This lets us hang up on the server, instead of automatically going through with proper TLS negotiation */
     ASSERT_SUCCESS(aws_socket_init(&shutdown_tester->client_socket, allocator, &local_server_tester.socket_options));
 
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &local_server_tester.endpoint,
+        .event_loop = aws_event_loop_group_get_next_loop(c_tester.el_group),
+        .on_connection_result = s_on_client_connected_do_hangup,
+        .user_data = shutdown_tester};
+
     /* Upon connecting, immediately close the socket */
-    ASSERT_SUCCESS(aws_socket_connect(
-        &shutdown_tester->client_socket,
-        &local_server_tester.endpoint,
-        aws_event_loop_group_get_next_loop(c_tester.el_group),
-        s_on_client_connected_do_hangup,
-        shutdown_tester));
+    ASSERT_SUCCESS(aws_socket_connect(&shutdown_tester->client_socket, &connect_options));
 
     /* Wait for client socket to close */
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
@@ -2164,7 +2173,7 @@ static struct aws_event_loop *s_default_new_event_loop(
     void *user_data) {
 
     (void)user_data;
-    return aws_event_loop_new_default_with_options(allocator, options);
+    return aws_event_loop_new(allocator, options);
 }
 
 static int s_statistic_test_clock_fn(uint64_t *timestamp) {
@@ -2186,8 +2195,11 @@ static int s_tls_common_tester_statistics_init(struct aws_allocator *allocator, 
     aws_atomic_store_int(&tester->current_time_ns, 0);
     aws_atomic_store_ptr(&tester->stats_handler, NULL);
 
-    tester->el_group =
-        aws_event_loop_group_new(allocator, s_statistic_test_clock_fn, 1, s_default_new_event_loop, NULL, NULL);
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+        .clock_override = s_statistic_test_clock_fn,
+    };
+    tester->el_group = aws_event_loop_group_new_internal(allocator, &elg_options, s_default_new_event_loop, NULL);
 
     struct aws_host_resolver_default_options resolver_options = {
         .el_group = tester->el_group,
@@ -2630,7 +2642,6 @@ struct import_info {
 
 static void s_import_cert(void *ctx) {
     (void)ctx;
-#    if !defined(AWS_OS_IOS)
     struct import_info *import = ctx;
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&import->cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&import->key_buf);
@@ -2643,7 +2654,6 @@ static void s_import_cert(void *ctx) {
     AWS_FATAL_ASSERT(import->tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
-#    endif /* !AWS_OS_IOS */
 }
 
 #    define NUM_PAIRS 2
@@ -2702,7 +2712,7 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     struct aws_byte_buf cert_buf = {0};
     struct aws_byte_buf key_buf = {0};
 
-#    if !defined(AWS_OS_IOS)
+#    if !defined(AWS_USE_SECITEM)
 
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert0.pem"));
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey.pem"));
@@ -2722,7 +2732,7 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     aws_tls_ctx_release(tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
-#    endif /* !AWS_OS_IOS */
+#    endif /* !AWS_USE_SECITEM */
 
     /* clean up */
     aws_byte_buf_clean_up(&cert_buf);

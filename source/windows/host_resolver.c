@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-/* don't move this below the Windows.h include!!!!*/
+/* don't move this below the windows.h include!!!!*/
 #include <winsock2.h>
 #include <ws2tcpip.h>
 
 #include <aws/common/string.h>
 #include <aws/io/host_resolver.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/socket.h>
 
 int aws_default_dns_resolve(
