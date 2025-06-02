@@ -104,11 +104,9 @@ add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 endif()
 
 if(WIN32)
-    set(WIN_VERSION ${CMAKE_SYSTEM_VERSION})
-    string(REPLACE "." ";" BUILD_VERSION ${CMAKE_SYSTEM_VERSION})
-    separate_arguments(BUILD_VERSION)
+    string(REPLACE "." ";" BUILD_VERSION ${CMAKE_HOST_SYSTEM_VERSION})
     list(GET BUILD_VERSION 2 BUILD_V)
-    message("Windows Version " ${CMAKE_SYSTEM_VERSION})
+    message("Windows Version " ${CMAKE_HOST_SYSTEM_VERSION} ", build " ${BUILD_V})
 
     if(${BUILD_V} GREATER_EQUAL 20348)
         message("Building for version 20348 or higher: supporting TLS1.3")
