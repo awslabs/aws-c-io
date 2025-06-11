@@ -29,54 +29,46 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
         return AWS_OP_ERR;
     }
     struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
-    /* Note: this is a bit hacky, but begin is basically used as a state that represents everything non-data */
-    enum aws_pem_parse_state state = BEGIN;
+    bool is_on_data = false;
 
     while (pem_cursor.len > 0) {
-        switch (state) {
-            case BEGIN:
-                if (aws_byte_cursor_starts_with(&pem_cursor, &begin_header)) {
-                    /* mini optimization - just copy over begin to avoid all the starts with checks */
-                    aws_byte_buf_append_dynamic(&clean_pem_buf, &begin_header);
-                    aws_byte_cursor_advance(&pem_cursor, begin_header.len);
-                    state = ON_DATA;
-                } else {
-                    aws_byte_cursor_advance(&pem_cursor, 1);
-                }
-                break;
-            case ON_DATA:
-                /* Note this does not validate that end label is same as begin label. */
-                if (aws_byte_cursor_starts_with(&pem_cursor, &end_header)) {
-                    /* copy over end */
-                    aws_byte_buf_append_dynamic(&clean_pem_buf, &end_header);
-                    aws_byte_cursor_advance(&pem_cursor, end_header.len);
+        if (!is_on_data) {
+            if (aws_byte_cursor_starts_with(&pem_cursor, &begin_header)) {
+                /* mini optimization - just copy over begin to avoid all the starts with checks */
+                aws_byte_buf_append_dynamic(&clean_pem_buf, &begin_header);
+                aws_byte_cursor_advance(&pem_cursor, begin_header.len);
+                is_on_data = true;
+            } else {
+                aws_byte_cursor_advance(&pem_cursor, 1);
+            }
+        } else {
+            /* Note this does not validate that end label is same as begin label. */
+            if (aws_byte_cursor_starts_with(&pem_cursor, &end_header)) {
+                /* copy over end */
+                aws_byte_buf_append_dynamic(&clean_pem_buf, &end_header);
+                aws_byte_cursor_advance(&pem_cursor, end_header.len);
 
-                    /* copy over label until the closing 5 dashes */
-                    while (pem_cursor.len > 0) {
-                        aws_byte_buf_append_byte_dynamic(&clean_pem_buf, *pem_cursor.ptr);
-                        aws_byte_cursor_advance(&pem_cursor, 1);
-
-                        if (aws_byte_cursor_starts_with(&pem_cursor, &dashes)) {
-                            aws_byte_buf_append_dynamic(&clean_pem_buf, &dashes);
-                            aws_byte_cursor_advance(&pem_cursor, dashes.len);
-                            aws_byte_buf_append_byte_dynamic(&clean_pem_buf, (uint8_t)'\n');
-                            state = BEGIN;
-                            break;
-                        }
-                    }
-                } else {
+                /* copy over label until the closing 5 dashes */
+                while (pem_cursor.len > 0) {
                     aws_byte_buf_append_byte_dynamic(&clean_pem_buf, *pem_cursor.ptr);
                     aws_byte_cursor_advance(&pem_cursor, 1);
+
+                    if (aws_byte_cursor_starts_with(&pem_cursor, &dashes)) {
+                        aws_byte_buf_append_dynamic(&clean_pem_buf, &dashes);
+                        aws_byte_cursor_advance(&pem_cursor, dashes.len);
+                        aws_byte_buf_append_byte_dynamic(&clean_pem_buf, (uint8_t)'\n');
+                        is_on_data = false;
+                        break;
+                    }
                 }
-                break;
-            default:
-                /* unused states */
-                AWS_FATAL_ASSERT(false);
-                break;
+            } else {
+                aws_byte_buf_append_byte_dynamic(&clean_pem_buf, *pem_cursor.ptr);
+                aws_byte_cursor_advance(&pem_cursor, 1);
+            }
         }
     }
 
-    if (clean_pem_buf.len == 0 || state == ON_DATA) {
+    if (clean_pem_buf.len == 0 || is_on_data) {
         /* No valid data remains after sanitization or data block is left hanging.
          File might have been the wrong format */
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
