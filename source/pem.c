@@ -9,7 +9,12 @@
 
 #include <aws/io/logging.h>
 
-enum aws_pem_parse_state { NOT_DATA, BEGIN, ON_DATA, END };
+enum aws_pem_parse_state {
+    NOT_DATA,
+    BEGIN,
+    ON_DATA,
+    END,
+};
 
 static const struct aws_byte_cursor begin_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN");
 static const struct aws_byte_cursor end_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----END");
@@ -28,45 +33,47 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
     enum aws_pem_parse_state state = NOT_DATA;
 
     while (pem_cursor.len > 0) {
-        char current = *pem_cursor.ptr;
-
         switch (state) {
             case NOT_DATA:
-                if (current == '-' && aws_byte_cursor_starts_with(&pem_cursor, &begin_header)) {
-                    aws_byte_buf_append_byte_dynamic(&clean_pem_buf, current);
+                if (aws_byte_cursor_starts_with(&pem_cursor, &begin_header)) {
                     /* mini optimization - just copy over begin to avoid all the starts with checks */
                     aws_byte_buf_append_dynamic(&clean_pem_buf, &begin_header);
                     aws_byte_cursor_advance(&pem_cursor, begin_header.len);
                     state = ON_DATA;
+                } else {
+                    aws_byte_cursor_advance(&pem_cursor, 1);
                 }
                 break;
             case ON_DATA:
-                aws_byte_buf_append_byte_dynamic(&clean_pem_buf, current);
                 /* Note this does not validate that end label is same as begin label. */
-                if (current == '-' && aws_byte_cursor_starts_with(&pem_cursor, &end_header)) {
+                if (aws_byte_cursor_starts_with(&pem_cursor, &end_header)) {
                     /* copy over end */
                     aws_byte_buf_append_dynamic(&clean_pem_buf, &end_header);
                     aws_byte_cursor_advance(&pem_cursor, end_header.len);
 
                     /* copy over label until the closing 5 dashes */
                     for (size_t i = 0; i < pem_cursor.len; ++i) {
-                        current = *pem_cursor.ptr;
-                        aws_byte_buf_append_byte_dynamic(&clean_pem_buf, current);
+                        aws_byte_buf_append_byte_dynamic(&clean_pem_buf, *pem_cursor.ptr);
                         aws_byte_cursor_advance(&pem_cursor, 1);
 
-                        if (current == '-' && aws_byte_cursor_starts_with(&pem_cursor, &dashes)) {
+                        if (aws_byte_cursor_starts_with(&pem_cursor, &dashes)) {
                             aws_byte_buf_append_dynamic(&clean_pem_buf, &dashes);
                             aws_byte_cursor_advance(&pem_cursor, dashes.len);
+                            aws_byte_buf_append_byte_dynamic(&clean_pem_buf, (uint8_t)'\n');
                             state = NOT_DATA;
+                            break;
                         }
                     }
+                } else {
+                    aws_byte_buf_append_byte_dynamic(&clean_pem_buf, *pem_cursor.ptr);
+                    aws_byte_cursor_advance(&pem_cursor, 1);
                 }
+                break;
             default:
                 /* unused states */
+                AWS_FATAL_ASSERT(false);
                 break;
         }
-
-        aws_byte_cursor_advance(&pem_cursor, 1);
     }
 
     if (clean_pem_buf.len == 0 || state == ON_DATA) {
