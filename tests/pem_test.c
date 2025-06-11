@@ -59,6 +59,18 @@ static int s_test_pem_sanitize_empty_file_rejected(struct aws_allocator *allocat
 
 AWS_TEST_CASE(pem_sanitize_empty_file_rejected, s_test_pem_sanitize_empty_file_rejected)
 
+static int s_test_pem_sanitize_bad_format_rejected(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    struct aws_byte_buf pem = aws_byte_buf_from_c_str("aaaaa-");
+
+    ASSERT_ERROR(AWS_ERROR_INVALID_ARGUMENT, aws_sanitize_pem(&pem, allocator));
+
+    aws_byte_buf_clean_up(&pem);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(pem_sanitize_bad_format_rejected, s_test_pem_sanitize_bad_format_rejected)
+
 AWS_TEST_CASE(pem_sanitize_wrong_format_rejected, s_test_pem_sanitize_wrong_format_rejected)
 static int s_test_pem_sanitize_wrong_format_rejected(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
