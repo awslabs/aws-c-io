@@ -9,12 +9,7 @@
 
 #include <aws/io/logging.h>
 
-enum aws_pem_parse_state {
-    NOT_DATA,
-    BEGIN,
-    ON_DATA,
-    END
-};
+enum aws_pem_parse_state { NOT_DATA, BEGIN, ON_DATA, END };
 
 static const struct aws_byte_cursor begin_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN");
 static const struct aws_byte_cursor end_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----END");
@@ -66,6 +61,9 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
                         }
                     }
                 }
+            default:
+                /* unused states */
+                break;
         }
 
         aws_byte_cursor_advance(&pem_cursor, 1);
