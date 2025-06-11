@@ -10,7 +10,6 @@
 #include <aws/io/logging.h>
 
 enum aws_pem_parse_state {
-    NOT_DATA,
     BEGIN,
     ON_DATA,
     END,
@@ -30,11 +29,12 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
         return AWS_OP_ERR;
     }
     struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(pem);
-    enum aws_pem_parse_state state = NOT_DATA;
+    /* Note: this is a bit hacky, but begin is basically used as a state that represents everything non-data */
+    enum aws_pem_parse_state state = BEGIN;
 
     while (pem_cursor.len > 0) {
         switch (state) {
-            case NOT_DATA:
+            case BEGIN:
                 if (aws_byte_cursor_starts_with(&pem_cursor, &begin_header)) {
                     /* mini optimization - just copy over begin to avoid all the starts with checks */
                     aws_byte_buf_append_dynamic(&clean_pem_buf, &begin_header);
@@ -60,7 +60,7 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
                             aws_byte_buf_append_dynamic(&clean_pem_buf, &dashes);
                             aws_byte_cursor_advance(&pem_cursor, dashes.len);
                             aws_byte_buf_append_byte_dynamic(&clean_pem_buf, (uint8_t)'\n');
-                            state = NOT_DATA;
+                            state = BEGIN;
                             break;
                         }
                     }
