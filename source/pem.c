@@ -11,8 +11,7 @@
 
 enum aws_pem_parse_state {
     BEGIN,
-    ON_DATA,
-    END,
+    ON_DATA
 };
 
 static const struct aws_byte_cursor begin_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN");
