@@ -52,7 +52,7 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
                     aws_byte_cursor_advance(&pem_cursor, end_header.len);
 
                     /* copy over label until the closing 5 dashes */
-                    for (size_t i = 0; i < pem_cursor.len; ++i) {
+                    while (pem_cursor.len > 0) {
                         aws_byte_buf_append_byte_dynamic(&clean_pem_buf, *pem_cursor.ptr);
                         aws_byte_cursor_advance(&pem_cursor, 1);
 
