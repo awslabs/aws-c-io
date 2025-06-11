@@ -53,6 +53,7 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
 
                     /* copy over label until the closing 5 dashes */
                     for (size_t i = 0; i < pem_cursor.len; ++i) {
+                        current = *pem_cursor.ptr;
                         aws_byte_buf_append_byte_dynamic(&clean_pem_buf, current);
                         aws_byte_cursor_advance(&pem_cursor, 1);
 
@@ -69,7 +70,8 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
     }
 
     if (clean_pem_buf.len == 0 || state == DATA) {
-        /* No valid data remains after sanitization. File might have been the wrong format */
+        /* No valid data remains after sanitization or data block is left hanging.
+         File might have been the wrong format */
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto error;
     }
