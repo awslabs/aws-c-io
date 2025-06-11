@@ -11,7 +11,9 @@
 
 enum aws_pem_parse_state {
     NOT_DATA,
-    DATA,
+    BEGIN,
+    ON_DATA,
+    END
 };
 
 static const struct aws_byte_cursor begin_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN");
@@ -40,10 +42,10 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
                     /* mini optimization - just copy over begin to avoid all the starts with checks */
                     aws_byte_buf_append_dynamic(&clean_pem_buf, &begin_header);
                     aws_byte_cursor_advance(&pem_cursor, begin_header.len);
-                    state = DATA;
+                    state = ON_DATA;
                 }
                 break;
-            case DATA:
+            case ON_DATA:
                 aws_byte_buf_append_byte_dynamic(&clean_pem_buf, current);
                 /* Note this does not validate that end label is same as begin label. */
                 if (current == '-' && aws_byte_cursor_starts_with(&pem_cursor, &end_header)) {
@@ -69,7 +71,7 @@ int aws_sanitize_pem(struct aws_byte_buf *pem, struct aws_allocator *allocator) 
         aws_byte_cursor_advance(&pem_cursor, 1);
     }
 
-    if (clean_pem_buf.len == 0 || state == DATA) {
+    if (clean_pem_buf.len == 0 || state == ON_DATA) {
         /* No valid data remains after sanitization or data block is left hanging.
          File might have been the wrong format */
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
