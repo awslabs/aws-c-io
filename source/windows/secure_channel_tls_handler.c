@@ -23,7 +23,7 @@
 #define SCHANNEL_USE_BLACKLISTS
 #include <windows.h>
 
-#include <SubAuth.h>
+#include <subauth.h>
 
 #include <schannel.h>
 #include <security.h>
