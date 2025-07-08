@@ -274,6 +274,8 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
             return true;
 #endif
 
+        case AWS_IO_TLS_CIPHER_PREF_TLSV1_2_FIPS:
+            return true;
         default:
             return false;
     }
@@ -1541,6 +1543,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
             security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
+            break;
+        case AWS_IO_TLS_CIPHER_PREF_TLSV1_2_FIPS:
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2025";
             break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
