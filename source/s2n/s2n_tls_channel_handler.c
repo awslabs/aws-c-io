@@ -1554,6 +1554,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     AWS_ASSERT(security_policy != NULL);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "Set security policy to %s (minimum_tls_version: %d; cipher_pref: %d)",
+        security_policy,
+        (int)options->minimum_tls_version,
+        (int)options->cipher_pref);
+
     if (s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, security_policy)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
