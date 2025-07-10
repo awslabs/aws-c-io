@@ -21,11 +21,7 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
     AWS_ZERO_STRUCT(*options);
     options->allocator = allocator;
     options->minimum_tls_version = AWS_IO_TLS_VER_SYS_DEFAULTS;
-    if (aws_tls_is_cipher_pref_supported(AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT)) {
-        options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT;
-    } else {
-        options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
-    }
+    options->cipher_pref = AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT;
     options->verify_peer = true;
     options->max_fragment_size = g_aws_channel_max_fragment_size;
 
