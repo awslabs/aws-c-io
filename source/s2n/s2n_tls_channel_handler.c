@@ -274,6 +274,8 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
             return true;
 #endif
 
+        case AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07:
+            return true;
         default:
             return false;
     }
@@ -1542,6 +1544,9 @@ static struct aws_tls_ctx *s_tls_ctx_new(
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
             security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
             break;
+        case AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07:
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2025";
+            break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);
             aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
@@ -1549,6 +1554,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     AWS_ASSERT(security_policy != NULL);
+
+    AWS_LOGF_DEBUG(
+        AWS_LS_IO_TLS,
+        "Set security policy to %s (minimum_tls_version: %d; cipher_pref: %d)",
+        security_policy,
+        (int)options->minimum_tls_version,
+        (int)options->cipher_pref);
+
     if (s2n_config_set_cipher_preferences(s2n_ctx->s2n_config, security_policy)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,

@@ -46,6 +46,11 @@ enum aws_tls_cipher_pref {
     /* Recommended default policy with post-quantum algorithm support. This policy may change over time. */
     AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT = 8,
 
+    /* This security policy is based on AWS-CRT-SDK-TLSv1.2-2023 (the default when a minimum TLS version is TLS 1.2),
+     * with tightened security. This security policy is FIPS-complaint.
+     */
+    AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07 = 9,
+
     AWS_IO_TLS_CIPHER_PREF_END_RANGE = 0xFFFF
 };
 
