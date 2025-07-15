@@ -216,7 +216,14 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
     void *result_addr = aws_future_impl_get_result_address(future);
     memcpy(dst_address, result_addr, future->sizeof_result);
     memset(result_addr, 0, future->sizeof_result);
+
+    /* BEGIN CRITICAL SECTION */
+    aws_mutex_lock(&future->lock);
+
     future->owns_result = false;
+
+    aws_mutex_unlock(&future->lock);
+    /* END CRITICAL SECTION */
 }
 
 /* Data for invoking callback as a task on an event-loop */
