@@ -428,6 +428,27 @@ AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
  */
 AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
 
+/**
+ * Converts an IP address string into its binary network address representation.
+ *
+ * This function is a cross-platform wrapper around the standard inet_pton() function.
+ * It converts a human-readable IP address string (like "192.168.1.1" or "2001:db8::1")
+ * into its binary representation in network byte order.
+ *
+ * @param af    Address family - must be either AF_INET (for IPv4) or AF_INET6 (for IPv6)
+ * @param src   Null-terminated string containing the IP address to convert
+ * @param dst   Buffer where the binary network address will be stored
+ *              For AF_INET, this should be a pointer to a struct in_addr
+ *              For AF_INET6, this should be a pointer to a struct in6_addr
+ *
+ * @return AWS_OP_SUCCESS if the conversion was successful
+ *         AWS_IO_SOCKET_INVALID_ADDRESS if the string is not a valid IP address for the specified family
+ *         Other AWS error codes for system-level failures
+ *
+ * @note The dst buffer is written in network byte order (big-endian)
+ */
+AWS_IO_API int aws_inet_pton(int af, const char *src, void *dst);
+
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
 

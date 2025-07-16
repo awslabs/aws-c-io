@@ -1099,16 +1099,6 @@ static inline int s_tcp_connect(
     return AWS_OP_SUCCESS;
 }
 
-/* This should be called IMMEDIATELY after failure.
- * Otherwise, WSAGetLastError() could get cleared accidentally by a logging call */
-static inline int s_convert_pton_error(int pton_err) {
-    if (pton_err == 0) {
-        return AWS_IO_SOCKET_INVALID_ADDRESS;
-    }
-
-    return s_determine_socket_error(WSAGetLastError());
-}
-
 /* initiate TCP ipv4 outbound connection. */
 static int s_ipv4_stream_connect(
     struct aws_socket *socket,
@@ -1126,10 +1116,8 @@ static int s_ipv4_stream_connect(
     socket->connect_accept_user_data = user_data;
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
-    int err = inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr));
 
-    if (err != 1) {
-        int aws_err = s_convert_pton_error(err); /* call before logging or WSAError may get cleared */
+    if (aws_inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr))) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%u.",
@@ -1137,7 +1125,7 @@ static int s_ipv4_stream_connect(
             (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             remote_endpoint->port);
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
 
     AWS_LOGF_DEBUG(
@@ -1194,9 +1182,7 @@ static int s_ipv6_stream_connect(
 
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
-    int pton_err = inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr));
-    if (pton_err != 1) {
-        int aws_err = s_convert_pton_error(pton_err); /* call before logging or WSAError may get cleared */
+    if (aws_inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr))) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%u.",
@@ -1204,7 +1190,7 @@ static int s_ipv6_stream_connect(
             (void *)socket->io_handle.data.handle,
             remote_endpoint->address,
             remote_endpoint->port);
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
 
     AWS_LOGF_DEBUG(
@@ -1409,11 +1395,10 @@ static int s_ipv4_dgram_connect(
     socket->connect_accept_user_data = user_data;
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
-    int pton_err = inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr));
-    if (pton_err != 1) {
-        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
+
+    if (aws_inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr))) {
         socket->state = ERRORED;
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
 
     addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
@@ -1435,12 +1420,10 @@ static int s_ipv6_dgram_connect(
     socket->connect_accept_user_data = user_data;
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
-    int pton_err = inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr));
 
-    if (pton_err != 1) {
-        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
+    if (aws_inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr))) {
         socket->state = ERRORED;
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
 
     addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
@@ -1505,14 +1488,10 @@ error:
 static int s_ipv4_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
-    int pton_err = inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
-
-    if (pton_err != 1) {
-        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
+    if (aws_inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr))) {
         socket->state = ERRORED;
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
-
     addr_in.sin_port = htons((uint16_t)local_endpoint->port);
     addr_in.sin_family = AF_INET;
 
@@ -1522,12 +1501,10 @@ static int s_ipv4_stream_bind(struct aws_socket *socket, const struct aws_socket
 static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
-    int pton_err = inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr));
 
-    if (pton_err != 1) {
-        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
+    if (aws_inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr))) {
         socket->state = ERRORED;
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
 
     addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
@@ -1573,12 +1550,10 @@ error:
 static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
-    int pton_err = inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr));
 
-    if (pton_err != 1) {
-        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
+    if (aws_inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr))) {
         socket->state = ERRORED;
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
 
     addr_in.sin_port = htons((uint16_t)local_endpoint->port);
@@ -1590,12 +1565,9 @@ static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_
 static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
-    int pton_err = inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr));
-
-    if (pton_err != 1) {
-        int aws_err = s_convert_pton_error(pton_err); /* call right after failure, so that WSAError isn't cleared */
+    if (aws_inet_pton(AF_INET6, local_endpoint->address, &(addr_in.sin_addr))) {
         socket->state = ERRORED;
-        return aws_raise_error(aws_err);
+        return AWS_OP_ERR;
     }
 
     addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
@@ -3397,4 +3369,14 @@ bool aws_is_network_interface_name_valid(const char *interface_name) {
     (void)interface_name;
     AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_names are not supported on Windows");
     return false;
+}
+
+int aws_inet_pton(int af, const char *src, void *dst) {
+    int result = inet_pton(af, src, dst);
+
+    if (result == 0) {
+        return AWS_IO_SOCKET_INVALID_ADDRESS;
+    }
+
+    return s_determine_socket_error(WSAGetLastError());
 }

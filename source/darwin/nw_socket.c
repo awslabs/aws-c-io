@@ -120,14 +120,6 @@ static int s_convert_nw_error(nw_error_t nw_error) {
     return crt_error_code;
 }
 
-static inline int s_convert_pton_error(int pton_code) {
-    if (pton_code == 0) {
-        return AWS_IO_SOCKET_INVALID_ADDRESS;
-    }
-
-    return s_determine_socket_error(errno);
-}
-
 /*
  * Helper function that gets the available human readable error description from Core Foundation.
  */
@@ -1838,18 +1830,18 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
 
     struct socket_address address;
     AWS_ZERO_STRUCT(address);
-    int pton_err = 1;
+    int rt_code = AWS_OP_SUCCESS;
 
     switch (socket->options.domain) {
         case AWS_SOCKET_IPV4: {
-            pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+            rt_code = aws_inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
             address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
             address.sock_addr_types.addr_in.sin_family = AF_INET;
             address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
             break;
         }
         case AWS_SOCKET_IPV6: {
-            pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+            rt_code = aws_inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
             address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
             address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
             address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
@@ -1870,7 +1862,7 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
         }
     }
 
-    if (pton_err != 1) {
+    if (rt_code != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p: failed to parse address %s:%d.",
@@ -1878,7 +1870,6 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
             remote_endpoint->address,
             (int)remote_endpoint->port);
         s_unlock_socket_synced_data(nw_socket);
-        aws_raise_error(s_convert_pton_error(pton_err));
         goto error;
     }
 
@@ -2040,17 +2031,17 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
 
     struct socket_address address;
     AWS_ZERO_STRUCT(address);
-    int pton_err = 1;
+    int rt_code = AWS_OP_SUCCESS;
     switch (socket->options.domain) {
         case AWS_SOCKET_IPV4: {
-            pton_err = inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+            rt_code = aws_inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
             address.sock_addr_types.addr_in.sin_port = htons((uint16_t)local_endpoint->port);
             address.sock_addr_types.addr_in.sin_family = AF_INET;
             address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
             break;
         }
         case AWS_SOCKET_IPV6: {
-            pton_err = inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+            rt_code = aws_inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
             address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
             address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
             address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
@@ -2069,7 +2060,7 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
         }
     }
 
-    if (pton_err != 1) {
+    if (rt_code != AWS_OP_SUCCESS) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p: failed to parse address %s:%d.",
@@ -2077,7 +2068,7 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
             local_endpoint->address,
             (int)local_endpoint->port);
         s_unlock_socket_synced_data(nw_socket);
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        return AWS_OP_ERR;
     }
 
     nw_endpoint_t endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
