@@ -3387,7 +3387,8 @@ int aws_inet_pton(enum aws_socket_domain domain_af, const char *src, void *dst) 
 
     if (result == 0) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+    } else if (result < 0) {
+        return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
     }
-
-    return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
+    return AWS_OP_SUCCESS;
 }
