@@ -47,12 +47,10 @@ struct aws_future_impl {
         aws_future_impl_result_release_fn *release;
     } result_dtor;
     int error_code;
-    /* sum of bit fields should be 32 */
-#define BIT_COUNT_FOR_SIZEOF_RESULT 27
-    unsigned int sizeof_result : BIT_COUNT_FOR_SIZEOF_RESULT;
-    unsigned int type : 3; /* aws_future_type */
-    unsigned int is_done : 1;
-    unsigned int owns_result : 1;
+
+    enum aws_future_type type;
+    bool is_done;
+    bool owns_result;
 };
 
 static void s_future_impl_result_dtor(struct aws_future_impl *future, void *result_addr) {
@@ -186,7 +184,7 @@ bool aws_future_impl_is_done(const struct aws_future_impl *future) {
 
     /* BEGIN CRITICAL SECTION */
     aws_mutex_lock(mutable_lock);
-    bool is_done = future->is_done != 0;
+    bool is_done = future->is_done;
     aws_mutex_unlock(mutable_lock);
     /* END CRITICAL SECTION */
 
@@ -216,14 +214,7 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
     void *result_addr = aws_future_impl_get_result_address(future);
     memcpy(dst_address, result_addr, future->sizeof_result);
     memset(result_addr, 0, future->sizeof_result);
-
-    /* BEGIN CRITICAL SECTION */
-    aws_mutex_lock(&future->lock);
-
     future->owns_result = false;
-
-    aws_mutex_unlock(&future->lock);
-    /* END CRITICAL SECTION */
 }
 
 /* Data for invoking callback as a task on an event-loop */
@@ -369,7 +360,7 @@ static bool s_future_impl_register_callback(
 
     AWS_FATAL_ASSERT(future->callback.fn == NULL && "Future done callback must only be set once");
 
-    bool already_done = future->is_done != 0;
+    bool already_done = future->is_done;
 
     /* if not done, store callback for later */
     if (!already_done) {
@@ -463,7 +454,7 @@ void aws_future_impl_register_channel_callback(
 
 static bool s_future_impl_is_done_pred(void *user_data) {
     struct aws_future_impl *future = user_data;
-    return future->is_done != 0;
+    return future->is_done;
 }
 
 bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout_ns) {
