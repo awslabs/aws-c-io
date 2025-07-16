@@ -48,7 +48,7 @@ struct aws_future_impl {
     } result_dtor;
     int error_code;
 
-    unsigned int sizeof_result;
+    size_t sizeof_result;
     enum aws_future_type type;
     bool is_done;
     bool owns_result;
@@ -107,9 +107,7 @@ static struct aws_future_impl *s_future_impl_new(struct aws_allocator *alloc, si
     struct aws_future_impl *future = aws_mem_calloc(alloc, 1, total_size);
     future->alloc = alloc;
 
-    /* we store sizeof_result in a bit field, ensure the number will fit */
-    AWS_ASSERT(sizeof_result <= (UINT_MAX >> (32 - BIT_COUNT_FOR_SIZEOF_RESULT)));
-    future->sizeof_result = (unsigned int)sizeof_result;
+    future->sizeof_result = sizeof_result;
 
     aws_ref_count_init(&future->ref_count, future, s_future_impl_destroy);
     aws_mutex_init(&future->lock);
