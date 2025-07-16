@@ -1117,7 +1117,7 @@ static int s_ipv4_stream_connect(
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
 
-    if (aws_inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV4, remote_endpoint->address, &(addr_in.sin_addr))) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%u.",
@@ -1182,7 +1182,7 @@ static int s_ipv6_stream_connect(
 
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
-    if (aws_inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV6, remote_endpoint->address, &(addr_in6.sin6_addr))) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
             "id=%p handle=%p: failed to parse address %s:%u.",
@@ -1396,7 +1396,7 @@ static int s_ipv4_dgram_connect(
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
 
-    if (aws_inet_pton(AF_INET, remote_endpoint->address, &(addr_in.sin_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV4, remote_endpoint->address, &(addr_in.sin_addr))) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
@@ -1421,7 +1421,7 @@ static int s_ipv6_dgram_connect(
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
 
-    if (aws_inet_pton(AF_INET6, remote_endpoint->address, &(addr_in6.sin6_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV6, remote_endpoint->address, &(addr_in6.sin6_addr))) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
@@ -1488,7 +1488,7 @@ error:
 static int s_ipv4_stream_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
-    if (aws_inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV4, local_endpoint->address, &(addr_in.sin_addr))) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
@@ -1502,7 +1502,7 @@ static int s_ipv6_stream_bind(struct aws_socket *socket, const struct aws_socket
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
 
-    if (aws_inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV6, local_endpoint->address, &(addr_in6.sin6_addr))) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
@@ -1551,7 +1551,7 @@ static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_
     struct sockaddr_in addr_in;
     AWS_ZERO_STRUCT(addr_in);
 
-    if (aws_inet_pton(AF_INET, local_endpoint->address, &(addr_in.sin_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV4, local_endpoint->address, &(addr_in.sin_addr))) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
@@ -1565,7 +1565,7 @@ static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_
 static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
-    if (aws_inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr))) {
+    if (aws_inet_pton(AWS_SOCKET_IPV6, local_endpoint->address, &(addr_in6.sin6_addr))) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
@@ -3371,12 +3371,23 @@ bool aws_is_network_interface_name_valid(const char *interface_name) {
     return false;
 }
 
-int aws_inet_pton(int af, const char *src, void *dst) {
+int aws_inet_pton(enum aws_socket_domain domain_type, const char *src, void *dst) {
+    int af = 0;
+    switch (domain_type) {
+        case AWS_SOCKET_IPV4:
+            af = AF_INET;
+            break;
+        case AWS_SOCKET_IPV6:
+            af = AF_INET6;
+            break;
+        default:
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
     int result = inet_pton(af, src, dst);
 
     if (result == 0) {
-        return AWS_IO_SOCKET_INVALID_ADDRESS;
+        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
     }
 
-    return s_determine_socket_error(WSAGetLastError());
+    return aws_raise_error(s_determine_socket_error(WSAGetLastError()));
 }

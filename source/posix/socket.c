@@ -710,12 +710,12 @@ static int s_socket_connect(struct aws_socket *socket, struct aws_socket_connect
     socklen_t sock_size = 0;
     int rt_code = AWS_OP_SUCCESS;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
-        rt_code = aws_inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+        rt_code = aws_inet_pton(AWS_SOCKET_IPV4, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
         address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         sock_size = sizeof(address.sock_addr_types.addr_in);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
-        rt_code = aws_inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+        rt_code = aws_inet_pton(AWS_SOCKET_IPV6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
         address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
         address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
         sock_size = sizeof(address.sock_addr_types.addr_in6);
@@ -892,12 +892,12 @@ static int s_socket_bind(struct aws_socket *socket, struct aws_socket_bind_optio
     socklen_t sock_size = 0;
     int rt_code = AWS_OP_SUCCESS;
     if (socket->options.domain == AWS_SOCKET_IPV4) {
-        rt_code = aws_inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+        rt_code = aws_inet_pton(AWS_SOCKET_IPV4, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
         address.sock_addr_types.addr_in.sin_port = htons((uint16_t)local_endpoint->port);
         address.sock_addr_types.addr_in.sin_family = AF_INET;
         sock_size = sizeof(address.sock_addr_types.addr_in);
     } else if (socket->options.domain == AWS_SOCKET_IPV6) {
-        rt_code = aws_inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+        rt_code = aws_inet_pton(AWS_SOCKET_IPV6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
         address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
         address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
         sock_size = sizeof(address.sock_addr_types.addr_in6);
@@ -2135,7 +2135,18 @@ bool aws_is_network_interface_name_valid(const char *interface_name) {
     }
     return true;
 }
-int aws_inet_pton(int af, const char *src, void *dst) {
+int aws_inet_pton(enum aws_socket_domain domain_type, const char *src, void *dst) {
+    int af = 0;
+    switch (domain_type) {
+        case AWS_SOCKET_IPV4:
+            af = AF_INET;
+            break;
+        case AWS_SOCKET_IPV6:
+            af = AF_INET6;
+            break;
+        default:
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
     int result = inet_pton(af, src, dst);
     if (result == 0) {
         return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);

@@ -1834,14 +1834,16 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
 
     switch (socket->options.domain) {
         case AWS_SOCKET_IPV4: {
-            rt_code = aws_inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+            rt_code =
+                aws_inet_pton(AWS_SOCKET_IPV4, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
             address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
             address.sock_addr_types.addr_in.sin_family = AF_INET;
             address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
             break;
         }
         case AWS_SOCKET_IPV6: {
-            rt_code = aws_inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+            rt_code =
+                aws_inet_pton(AWS_SOCKET_IPV6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
             address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
             address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
             address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
@@ -2034,14 +2036,16 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
     int rt_code = AWS_OP_SUCCESS;
     switch (socket->options.domain) {
         case AWS_SOCKET_IPV4: {
-            rt_code = aws_inet_pton(AF_INET, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+            rt_code =
+                aws_inet_pton(AWS_SOCKET_IPV4, local_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
             address.sock_addr_types.addr_in.sin_port = htons((uint16_t)local_endpoint->port);
             address.sock_addr_types.addr_in.sin_family = AF_INET;
             address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
             break;
         }
         case AWS_SOCKET_IPV6: {
-            rt_code = aws_inet_pton(AF_INET6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+            rt_code =
+                aws_inet_pton(AWS_SOCKET_IPV6, local_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
             address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)local_endpoint->port);
             address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
             address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
