@@ -1565,7 +1565,7 @@ static int s_ipv4_dgram_bind(struct aws_socket *socket, const struct aws_socket_
 static int s_ipv6_dgram_bind(struct aws_socket *socket, const struct aws_socket_endpoint *local_endpoint) {
     struct sockaddr_in6 addr_in6;
     AWS_ZERO_STRUCT(addr_in6);
-    if (aws_inet_pton(AF_INET6, local_endpoint->address, &(addr_in.sin_addr))) {
+    if (aws_inet_pton(AF_INET6, local_endpoint->address, &(addr_in6.sin6_addr))) {
         socket->state = ERRORED;
         return AWS_OP_ERR;
     }
