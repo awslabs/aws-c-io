@@ -47,12 +47,11 @@ struct aws_future_impl {
         aws_future_impl_result_release_fn *release;
     } result_dtor;
     int error_code;
-    /* sum of bit fields should be 32 */
-#define BIT_COUNT_FOR_SIZEOF_RESULT 27
-    unsigned int sizeof_result : BIT_COUNT_FOR_SIZEOF_RESULT;
-    unsigned int type : 3; /* aws_future_type */
-    unsigned int is_done : 1;
-    unsigned int owns_result : 1;
+
+    size_t sizeof_result;
+    enum aws_future_type type;
+    bool is_done;
+    bool owns_result;
 };
 
 static void s_future_impl_result_dtor(struct aws_future_impl *future, void *result_addr) {
@@ -108,9 +107,7 @@ static struct aws_future_impl *s_future_impl_new(struct aws_allocator *alloc, si
     struct aws_future_impl *future = aws_mem_calloc(alloc, 1, total_size);
     future->alloc = alloc;
 
-    /* we store sizeof_result in a bit field, ensure the number will fit */
-    AWS_ASSERT(sizeof_result <= (UINT_MAX >> (32 - BIT_COUNT_FOR_SIZEOF_RESULT)));
-    future->sizeof_result = (unsigned int)sizeof_result;
+    future->sizeof_result = sizeof_result;
 
     aws_ref_count_init(&future->ref_count, future, s_future_impl_destroy);
     aws_mutex_init(&future->lock);
@@ -186,7 +183,7 @@ bool aws_future_impl_is_done(const struct aws_future_impl *future) {
 
     /* BEGIN CRITICAL SECTION */
     aws_mutex_lock(mutable_lock);
-    bool is_done = future->is_done != 0;
+    bool is_done = future->is_done;
     aws_mutex_unlock(mutable_lock);
     /* END CRITICAL SECTION */
 
@@ -362,7 +359,7 @@ static bool s_future_impl_register_callback(
 
     AWS_FATAL_ASSERT(future->callback.fn == NULL && "Future done callback must only be set once");
 
-    bool already_done = future->is_done != 0;
+    bool already_done = future->is_done;
 
     /* if not done, store callback for later */
     if (!already_done) {
@@ -456,7 +453,7 @@ void aws_future_impl_register_channel_callback(
 
 static bool s_future_impl_is_done_pred(void *user_data) {
     struct aws_future_impl *future = user_data;
-    return future->is_done != 0;
+    return future->is_done;
 }
 
 bool aws_future_impl_wait(const struct aws_future_impl *future, uint64_t timeout_ns) {
