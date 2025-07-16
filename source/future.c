@@ -48,6 +48,7 @@ struct aws_future_impl {
     } result_dtor;
     int error_code;
 
+    unsigned int sizeof_result;
     enum aws_future_type type;
     bool is_done;
     bool owns_result;
