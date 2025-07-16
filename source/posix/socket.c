@@ -2135,9 +2135,9 @@ bool aws_is_network_interface_name_valid(const char *interface_name) {
     }
     return true;
 }
-int aws_inet_pton(enum aws_socket_domain domain_type, const char *src, void *dst) {
+int aws_inet_pton(enum aws_socket_domain domain_af, const char *src, void *dst) {
     int af = 0;
-    switch (domain_type) {
+    switch (domain_af) {
         case AWS_SOCKET_IPV4:
             af = AF_INET;
             break;

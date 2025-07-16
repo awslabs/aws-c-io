@@ -435,7 +435,7 @@ AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
  * It converts a human-readable IP address string (like "192.168.1.1" or "2001:db8::1")
  * into its binary representation in network byte order.
  *
- * @param domain_type    Address family - must be either AWS_SOCKET_IPV4 (for IPv4) or AWS_SOCKET_IPV6 (for IPv6)
+ * @param domain_af   Domain Address family - must be either AWS_SOCKET_IPV4 (for IPv4) or AWS_SOCKET_IPV6 (for IPv6)
  * @param src   Null-terminated string containing the IP address to convert
  * @param dst   Buffer where the binary network address will be stored
  *              For AF_INET, this should be a pointer to a struct in_addr
@@ -447,7 +447,7 @@ AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
  *
  * @note The dst buffer is written in network byte order (big-endian)
  */
-AWS_IO_API int aws_inet_pton(enum aws_socket_domain domain_type, const char *src, void *dst);
+AWS_IO_API int aws_inet_pton(enum aws_socket_domain domain_af, const char *src, void *dst);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
