@@ -2667,3 +2667,196 @@ static int s_test_socket_validate_port(struct aws_allocator *allocator, void *ct
     return 0;
 }
 AWS_TEST_CASE(socket_validate_port, s_test_socket_validate_port)
+
+static int s_test_aws_inet_pton_ipv4_valid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    struct test_case {
+        const char *input;
+        uint32_t expected_network_order; /* in network byte order */
+    };
+
+    struct test_case test_cases[] = {
+        {"127.0.0.1", htonl(0x7F000001)},       /* localhost */
+        {"0.0.0.0", htonl(0x00000000)},         /* any address */
+        {"255.255.255.255", htonl(0xFFFFFFFF)}, /* broadcast */
+        {"192.168.1.1", htonl(0xC0A80101)},     /* common private IP */
+        {"10.0.0.1", htonl(0x0A000001)},        /* private IP */
+        {"172.16.0.1", htonl(0xAC100001)},      /* private IP */
+        {"8.8.8.8", htonl(0x08080808)},         /* Google DNS */
+        {"1.2.3.4", htonl(0x01020304)},         /* simple test case */
+    };
+
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(test_cases); i++) {
+        struct in_addr result;
+        ASSERT_SUCCESS(aws_inet_pton(AWS_SOCKET_IPV4, test_cases[i].input, &result));
+        ASSERT_INT_EQUALS(
+            test_cases[i].expected_network_order, result.s_addr, "Incorrect conversion for %s", test_cases[i].input);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_inet_pton_ipv4_valid_addresses, s_test_aws_inet_pton_ipv4_valid_addresses)
+
+static int s_test_aws_inet_pton_ipv4_invalid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    const char *invalid_addresses[] = {
+        "",                  /* empty string */
+        "256.1.1.1",         /* octet > 255 */
+        "1.256.1.1",         /* octet > 255 */
+        "1.1.256.1",         /* octet > 255 */
+        "1.1.1.256",         /* octet > 255 */
+        "1.1.1",             /* too few octets */
+        "1.1.1.1.1",         /* too many octets */
+        "1.1.1.a",           /* non-numeric */
+        "a.b.c.d",           /* all non-numeric */
+        "1..1.1",            /* empty octet */
+        "1.1.1.",            /* trailing dot */
+        ".1.1.1",            /* leading dot */
+        "1.1.1.1.1.1",       /* way too many octets */
+        "192.168.1",         /* missing octet */
+        "192.168.1.1.1",     /* extra octet */
+        "999.999.999.999",   /* all octets > 255 */
+        "192.168.1.-1",      /* negative number */
+        "192.168.1.1a",      /* trailing non-numeric */
+        "192 168 1 1",       /* spaces instead of dots */
+        "192,168,1,1",       /* commas instead of dots */
+        "not.an.ip.address", /* clearly not an IP */
+        "2001:db8::1",       /* IPv6 address */
+    };
+
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(invalid_addresses); i++) {
+        struct in_addr result;
+        ASSERT_FAILS(
+            aws_inet_pton(AWS_SOCKET_IPV4, invalid_addresses[i], &result),
+            "aws_inet_pton should fail for IPv4 address: %s",
+            invalid_addresses[i]);
+
+        ASSERT_INT_EQUALS(
+            AWS_IO_SOCKET_INVALID_ADDRESS,
+            aws_last_error(),
+            "aws_inet_pton should have failed for invalid IPv4 address: %s",
+            invalid_addresses[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_inet_pton_ipv4_invalid_addresses, s_test_aws_inet_pton_ipv4_invalid_addresses)
+
+static int s_test_aws_inet_pton_ipv6_valid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    struct test_case {
+        const char *input;
+        uint8_t expected[16]; /* IPv6 addresses are 16 bytes */
+    };
+
+    struct test_case test_cases[] = {
+        /* Loopback address */
+        {"::1", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}},
+
+        /* Any address */
+        {"::", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},
+
+        /* Full IPv6 address */
+        {"2001:0db8:85a3:0000:0000:8a2e:0370:7334",
+         {0x20, 0x01, 0x0d, 0xb8, 0x85, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x8a, 0x2e, 0x03, 0x70, 0x73, 0x34}},
+
+        /* Compressed IPv6 address */
+        {"2001:db8:85a3::8a2e:370:7334",
+         {0x20, 0x01, 0x0d, 0xb8, 0x85, 0xa3, 0x00, 0x00, 0x00, 0x00, 0x8a, 0x2e, 0x03, 0x70, 0x73, 0x34}},
+
+        /* IPv6 with embedded IPv4 */
+        {"::ffff:192.168.1.1", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 168, 1, 1}},
+
+        /* Link-local address */
+        {"fe80::1", {0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}},
+    };
+
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(test_cases); i++) {
+        struct in6_addr result;
+        ASSERT_SUCCESS(
+            aws_inet_pton(AWS_SOCKET_IPV6, test_cases[i].input, &result),
+            "aws_inet_pton failed for IPv6 address: %s",
+            test_cases[i].input);
+
+        /* Compare the result byte by byte */
+        for (int j = 0; j < 16; j++) {
+            ASSERT_INT_EQUALS(
+                test_cases[i].expected[j],
+                result.s6_addr[j],
+                "Byte %d mismatch for IPv6 address %s: expected 0x%02x, got 0x%02x",
+                j,
+                test_cases[i].input,
+                test_cases[i].expected[j],
+                result.s6_addr[j]);
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_inet_pton_ipv6_valid_addresses, s_test_aws_inet_pton_ipv6_valid_addresses)
+
+static int s_test_aws_inet_pton_ipv6_invalid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    const char *invalid_addresses[] = {
+        "",                                             /* empty string */
+        ":::",                                          /* too many colons */
+        "2001:db8:85a3::8a2e::7334",                    /* multiple :: */
+        "2001:db8:85a3:0000:0000:8a2e:0370:7334:extra", /* too many groups */
+        "2001:db8:85a3:0000:0000:8a2e:0370",            /* too few groups */
+        "2001:db8:85a3:0000:0000:8a2e:0370:733g",       /* invalid hex digit */
+        "2001:db8:85a3:0000:0000:8a2e:0370:73344",      /* group too long */
+        "192.168.1.1",                                  /* IPv4 address */
+        "not:an:ipv6:address",                          /* clearly not IPv6 */
+        "2001:db8::192.168.1.256",                      /* invalid embedded IPv4 */
+        "2001:db8::192.168.1",                          /* incomplete embedded IPv4 */
+        "::ffff:192.168.1.1.1",                         /* invalid embedded IPv4 */
+        "2001::db8::1",                                 /* multiple :: not allowed */
+        "2001:0db8:85a3:0000:0000:8a2e:0370:7334:0000", /* too many groups */
+        ":2001:db8::1",                                 /* leading single colon */
+        "2001:db8::1:",                                 /* trailing single colon */
+        "2001:db8:::1",                                 /* triple colon */
+        "gggg::1",                                      /* invalid hex characters */
+        "2001:db8:85a3:0000:0000:8a2e:0370:733456",     /* group way too long */
+    };
+
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(invalid_addresses); i++) {
+        struct in6_addr result;
+        ASSERT_FAILS(
+            aws_inet_pton(AWS_SOCKET_IPV6, invalid_addresses[i], &result),
+            "aws_inet_pton should have failed for invalid IPv6 address: %s",
+            invalid_addresses[i]);
+
+        ASSERT_INT_EQUALS(
+            AWS_IO_SOCKET_INVALID_ADDRESS,
+            aws_last_error(),
+            "aws_inet_pton should have failed for invalid IPv6 address: %s",
+            invalid_addresses[i]);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_inet_pton_ipv6_invalid_addresses, s_test_aws_inet_pton_ipv6_invalid_addresses)
+
+static int s_test_aws_inet_pton_invalid_domain(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+    struct in_addr ipv4_result;
+    /* Test invalid domain values */
+    ASSERT_FAILS(aws_inet_pton(AWS_SOCKET_LOCAL, "127.0.0.1", &ipv4_result));
+    ASSERT_INT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, aws_last_error());
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_inet_pton_invalid_domain, s_test_aws_inet_pton_invalid_domain)

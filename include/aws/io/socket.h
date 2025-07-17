@@ -438,8 +438,8 @@ AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
  * @param domain_af   Domain Address family - must be either AWS_SOCKET_IPV4 (for IPv4) or AWS_SOCKET_IPV6 (for IPv6)
  * @param src   Null-terminated string containing the IP address to convert
  * @param dst   Buffer where the binary network address will be stored
- *              For AF_INET, this should be a pointer to a struct in_addr
- *              For AF_INET6, this should be a pointer to a struct in6_addr
+ *              For AWS_SOCKET_IPV4, this should be a pointer to a struct in_addr
+ *              For AWS_SOCKET_IPV6, this should be a pointer to a struct in6_addr
  *
  * @return AWS_OP_SUCCESS if the conversion was successful
  *         AWS_IO_SOCKET_INVALID_ADDRESS if the string is not a valid IP address for the specified family

@@ -89,6 +89,12 @@ add_test_case(cleanup_in_write_cb_doesnt_explode)
 add_test_case(sock_write_cb_is_async)
 add_test_case(socket_validate_port)
 
+add_test_case(aws_inet_pton_ipv4_valid_addresses)
+add_test_case(aws_inet_pton_ipv4_invalid_addresses)
+add_test_case(aws_inet_pton_ipv6_valid_addresses)
+add_test_case(aws_inet_pton_ipv6_invalid_addresses)
+add_test_case(aws_inet_pton_invalid_domain)
+
 if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
 # Apple Network Framework does not support bind+connect
 add_test_case(udp_bind_connect_communication)
@@ -97,7 +103,7 @@ add_test_case(wrong_thread_read_write_fails)
 # Apple Network Framework would not validate the binding endpoint until we start the
 # listen. The test does not apply here.
 add_test_case(incoming_duplicate_tcp_bind_errors)
-# nw_socket does not allow clean up event loop before socket shutdown, thus the following tests triggered 
+# nw_socket does not allow clean up event loop before socket shutdown, thus the following tests triggered
 # by event loop shutdown would not apply to Apple Network Framework
 add_net_test_case(connect_timeout_cancelation)
 add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
@@ -309,7 +315,7 @@ endif()
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)
     add_net_test_case(tls_certificate_chain_test)
-    
+
 else()
     add_test_case(byo_tls_handler_test)
 endif()
