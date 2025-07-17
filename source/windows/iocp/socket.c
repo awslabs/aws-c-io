@@ -3398,3 +3398,24 @@ bool aws_is_network_interface_name_valid(const char *interface_name) {
     AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "network_interface_names are not supported on Windows");
     return false;
 }
+
+int aws_parse_ipv4_address(const struct aws_string *src, uint32_t *dst) {
+    int result = inet_pton(AF_INET, aws_string_c_str(src), dst);
+    if (result != 1) {
+        return aws_raise_error(s_convert_pton_error(result));
+    }
+    return AWS_OP_SUCCESS;
+}
+int aws_parse_ipv6_address(const struct aws_string *src, struct aws_byte_buf *dst) {
+    /* IPV6 requires 16 bytes */
+    size_t result_length = 16;
+    if (dst->capacity - dst->len < result_length) {
+        return aws_raise_error(AWS_ERROR_SHORT_BUFFER);
+    }
+    int result = inet_pton(AF_INET6, aws_string_c_str(src), dst->buffer + dst->len);
+    if (result != 1) {
+        return aws_raise_error(s_convert_pton_error(result));
+    }
+    dst->len += result_length;
+    return AWS_OP_SUCCESS;
+}

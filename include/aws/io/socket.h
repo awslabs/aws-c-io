@@ -209,6 +209,7 @@ struct aws_socket_bind_options {
 
 struct aws_byte_buf;
 struct aws_byte_cursor;
+struct aws_string;
 
 AWS_EXTERN_C_BEGIN
 
@@ -427,6 +428,40 @@ AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
  * For user in internal tests only.
  */
 AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
+
+/**
+ * Parse an IPv4 address string and convert it to binary representation.
+ *
+ * This function converts a string representation of an IPv4 address
+ * into its binary network byte order (big-endian) representation.
+ *
+ * @param src The IPv4 address string to parse. Must be a valid IPv4 address in dotted decimal notation.
+ * @param dst Pointer to a uint32_t where the parsed address will be stored in network byte order.
+ *
+ * @return AWS_OP_SUCCESS on success, or AWS_OP_ERR on failure.
+ *         On failure, aws_last_error() will be set to:
+ *         - AWS_IO_SOCKET_INVALID_ADDRESS if the input string is not a valid IPv4 address
+ */
+AWS_IO_API int aws_parse_ipv4_address(const struct aws_string *src, uint32_t *dst);
+
+/**
+ * Parse an IPv6 address string and convert it to binary representation.
+ *
+ * This function converts a string representation of an IPv6 address
+ * into its binary network byte order(big-endian) representation.
+ *
+ * @param src The IPv6 address string to parse. Must be a valid IPv6 address in standard notation.
+ * @param dst Pointer to an aws_byte_buf where the parsed address will be appended.
+ *            The buffer must have at least 16 bytes of available capacity.
+ *            The parsed 16-byte IPv6 address will be appended to the buffer and
+ *            the buffer's length will be increased by 16.
+ *
+ * @return AWS_OP_SUCCESS on success, or AWS_OP_ERR on failure.
+ *         On failure, aws_last_error() will be set to:
+ *         - AWS_IO_SOCKET_INVALID_ADDRESS if the input string is not a valid IPv6 address
+ *         - AWS_ERROR_SHORT_BUFFER if the destination buffer doesn't have enough capacity
+ */
+AWS_IO_API int aws_parse_ipv6_address(const struct aws_string *src, struct aws_byte_buf *dst);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
