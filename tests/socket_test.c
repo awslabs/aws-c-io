@@ -2689,10 +2689,10 @@ static int s_test_aws_inet_pton_ipv4_valid_addresses(struct aws_allocator *alloc
     };
 
     for (size_t i = 0; i < AWS_ARRAY_SIZE(test_cases); i++) {
-        struct in_addr result;
+        uint32_t result;
         ASSERT_SUCCESS(aws_inet_pton(AWS_SOCKET_IPV4, test_cases[i].input, &result));
         ASSERT_INT_EQUALS(
-            test_cases[i].expected_network_order, result.s_addr, "Incorrect conversion for %s", test_cases[i].input);
+            test_cases[i].expected_network_order, result, "Incorrect conversion for %s", test_cases[i].input);
     }
 
     return AWS_OP_SUCCESS;
@@ -2730,7 +2730,7 @@ static int s_test_aws_inet_pton_ipv4_invalid_addresses(struct aws_allocator *all
     };
 
     for (size_t i = 0; i < AWS_ARRAY_SIZE(invalid_addresses); i++) {
-        struct in_addr result;
+        uint32_t result;
         ASSERT_FAILS(
             aws_inet_pton(AWS_SOCKET_IPV4, invalid_addresses[i], &result),
             "aws_inet_pton should fail for IPv4 address: %s",
@@ -2780,7 +2780,7 @@ static int s_test_aws_inet_pton_ipv6_valid_addresses(struct aws_allocator *alloc
     };
 
     for (size_t i = 0; i < AWS_ARRAY_SIZE(test_cases); i++) {
-        struct in6_addr result;
+        uint8_t result[16] = {0};
         ASSERT_SUCCESS(
             aws_inet_pton(AWS_SOCKET_IPV6, test_cases[i].input, &result),
             "aws_inet_pton failed for IPv6 address: %s",
@@ -2790,12 +2790,12 @@ static int s_test_aws_inet_pton_ipv6_valid_addresses(struct aws_allocator *alloc
         for (int j = 0; j < 16; j++) {
             ASSERT_INT_EQUALS(
                 test_cases[i].expected[j],
-                result.s6_addr[j],
+                result[j],
                 "Byte %d mismatch for IPv6 address %s: expected 0x%02x, got 0x%02x",
                 j,
                 test_cases[i].input,
                 test_cases[i].expected[j],
-                result.s6_addr[j]);
+                result[j]);
         }
     }
 
@@ -2831,7 +2831,7 @@ static int s_test_aws_inet_pton_ipv6_invalid_addresses(struct aws_allocator *all
     };
 
     for (size_t i = 0; i < AWS_ARRAY_SIZE(invalid_addresses); i++) {
-        struct in6_addr result;
+        uint8_t result[16] = {0};
         ASSERT_FAILS(
             aws_inet_pton(AWS_SOCKET_IPV6, invalid_addresses[i], &result),
             "aws_inet_pton should have failed for invalid IPv6 address: %s",
@@ -2852,10 +2852,13 @@ AWS_TEST_CASE(aws_inet_pton_ipv6_invalid_addresses, s_test_aws_inet_pton_ipv6_in
 static int s_test_aws_inet_pton_invalid_domain(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     (void)ctx;
-    struct in_addr ipv4_result;
+    uint8_t result[1] = {0};
     /* Test invalid domain values */
-    ASSERT_FAILS(aws_inet_pton(AWS_SOCKET_LOCAL, "127.0.0.1", &ipv4_result));
+    ASSERT_FAILS(aws_inet_pton(AWS_SOCKET_LOCAL, "127.0.0.1", &result));
     ASSERT_INT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, aws_last_error());
+    /* With not enough space, the function will just succeed and write to available space. */
+    ASSERT_SUCCESS(aws_inet_pton(AWS_SOCKET_IPV4, "127.0.0.1", &result));
+    ASSERT_SUCCESS(aws_inet_pton(AWS_SOCKET_IPV6, "2001:db8:85a3::8a2e:370:7334", &result));
     return AWS_OP_SUCCESS;
 }
 
