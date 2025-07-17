@@ -2667,3 +2667,135 @@ static int s_test_socket_validate_port(struct aws_allocator *allocator, void *ct
     return 0;
 }
 AWS_TEST_CASE(socket_validate_port, s_test_socket_validate_port)
+
+static int s_test_parse_ipv4_valid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct {
+        const char *input;
+        uint32_t expected_network_order;
+    } test_cases[] = {
+        {"127.0.0.1", htonl(0x7F000001)},       /* localhost */
+        {"0.0.0.0", htonl(0x00000000)},         /* any address */
+        {"255.255.255.255", htonl(0xFFFFFFFF)}, /* broadcast */
+        {"192.168.1.1", htonl(0xC0A80101)},     /* common private IP */
+        {"10.0.0.1", htonl(0x0A000001)},        /* private IP */
+        {"172.16.0.1", htonl(0xAC100001)},      /* private IP */
+        {"8.8.8.8", htonl(0x08080808)},         /* Google DNS */
+        {"1.2.3.4", htonl(0x01020304)},         /* simple test case */
+    };
+
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(test_cases); i++) {
+        uint32_t result;
+        struct aws_string *addr_str = aws_string_new_from_c_str(allocator, test_cases[i].input);
+        ASSERT_SUCCESS(aws_parse_ipv4_address(addr_str, &result));
+        ASSERT_INT_EQUALS(test_cases[i].expected_network_order, result, "Failed for %s", test_cases[i].input);
+        aws_string_destroy(addr_str);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(parse_ipv4_valid_addresses, s_test_parse_ipv4_valid_addresses)
+
+static int s_test_parse_ipv4_invalid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const char *invalid_addresses[] = {
+        "",                  /* empty string */
+        "256.1.1.1",         /* octet > 255 */
+        "1.1.1",             /* too few octets */
+        "1.1.1.1.1",         /* too many octets */
+        "1.1.1.a",           /* non-numeric */
+        "1..1.1",            /* empty octet */
+        "192.168.1.-1",      /* negative number */
+        "not.an.ip.address", /* clearly not an IP */
+        "2001:db8::1",       /* IPv6 address */
+    };
+
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(invalid_addresses); i++) {
+        uint32_t result;
+        struct aws_string *addr_str = aws_string_new_from_c_str(allocator, invalid_addresses[i]);
+        ASSERT_FAILS(aws_parse_ipv4_address(addr_str, &result), "Failed for %s", invalid_addresses[i]);
+        ASSERT_INT_EQUALS(AWS_IO_SOCKET_INVALID_ADDRESS, aws_last_error(), "Wrong error for %s", invalid_addresses[i]);
+        aws_string_destroy(addr_str);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(parse_ipv4_invalid_addresses, s_test_parse_ipv4_invalid_addresses)
+
+static int s_test_parse_ipv6_valid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    struct {
+        const char *input;
+        uint8_t expected[16];
+    } test_cases[] = {
+        {"::1", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}, /* loopback */
+        {"::", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}},  /* any address */
+        {"2001:db8:85a3::8a2e:370:7334",
+         {0x20,
+          0x01,
+          0x0d,
+          0xb8,
+          0x85,
+          0xa3,
+          0x00,
+          0x00,
+          0x00,
+          0x00,
+          0x8a,
+          0x2e,
+          0x03,
+          0x70,
+          0x73,
+          0x34}},                                                                           /* compressed
+                                                                                             */
+        {"::ffff:192.168.1.1", {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 192, 168, 1, 1}}, /* IPv4-mapped */
+        {"fe80::1", {0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}},                /* link-local */
+    };
+
+    struct aws_byte_buf result;
+    aws_byte_buf_init(&result, allocator, 16);
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(test_cases); i++) {
+        struct aws_string *addr_str = aws_string_new_from_c_str(allocator, test_cases[i].input);
+        ASSERT_SUCCESS(aws_parse_ipv6_address(addr_str, &result), "Failed for %s", test_cases[i].input);
+        struct aws_byte_cursor expected = aws_byte_cursor_from_array(test_cases[i].expected, 16);
+        ASSERT_TRUE(aws_byte_cursor_eq_byte_buf(&expected, &result));
+        aws_string_destroy(addr_str);
+    }
+    aws_byte_buf_clean_up(&result);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(parse_ipv6_valid_addresses, s_test_parse_ipv6_valid_addresses)
+
+static int s_test_parse_ipv6_invalid_addresses(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const char *invalid_addresses[] = {
+        "",                                             /* empty string */
+        ":::",                                          /* too many colons */
+        "2001:db8:85a3::8a2e::7334",                    /* multiple :: */
+        "2001:db8:85a3:0000:0000:8a2e:0370:7334:extra", /* too many groups */
+        "2001:db8:85a3:0000:0000:8a2e:0370:733g",       /* invalid hex digit */
+        "192.168.1.1",                                  /* IPv4 address */
+        "not:an:ipv6:address",                          /* clearly not IPv6 */
+        "gggg::1",                                      /* invalid hex characters */
+    };
+
+    struct aws_byte_buf result;
+    aws_byte_buf_init(&result, allocator, 16);
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(invalid_addresses); i++) {
+        struct aws_string *addr_str = aws_string_new_from_c_str(allocator, invalid_addresses[i]);
+        ASSERT_FAILS(aws_parse_ipv6_address(addr_str, &result), "Failed for %s", invalid_addresses[i]);
+        ASSERT_INT_EQUALS(AWS_IO_SOCKET_INVALID_ADDRESS, aws_last_error(), "Wrong error for %s", invalid_addresses[i]);
+        aws_string_destroy(addr_str);
+    }
+    aws_byte_buf_clean_up(&result);
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(parse_ipv6_invalid_addresses, s_test_parse_ipv6_invalid_addresses)
