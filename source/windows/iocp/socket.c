@@ -3402,8 +3402,7 @@ bool aws_is_network_interface_name_valid(const char *interface_name) {
 int aws_parse_ipv4_address(const struct aws_string *src, uint32_t *dst) {
     int result = inet_pton(AF_INET, aws_string_c_str(src), dst);
     if (result != 1) {
-        int errno_value = errno; /* Always cache errno before potential side-effect */
-        return aws_raise_error(s_convert_pton_error(result, errno_value));
+        return aws_raise_error(s_convert_pton_error(result));
     }
     return AWS_OP_SUCCESS;
 }
@@ -3415,8 +3414,7 @@ int aws_parse_ipv6_address(const struct aws_string *src, struct aws_byte_buf *ds
     }
     int result = inet_pton(AF_INET6, aws_string_c_str(src), dst->buffer + dst->len);
     if (result != 1) {
-        int errno_value = errno; /* Always cache errno before potential side-effect */
-        return aws_raise_error(s_convert_pton_error(result, errno_value));
+        return aws_raise_error(s_convert_pton_error(result));
     }
     dst->len += result_length;
     return AWS_OP_SUCCESS;
