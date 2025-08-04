@@ -1496,7 +1496,8 @@ static struct aws_host_resolver_vtable s_vtable = {
     .purge_host_cache = s_resolver_purge_host_cache,
 };
 
-static void s_aws_host_resolver_destroy(struct aws_host_resolver *resolver) {
+static void s_aws_host_resolver_destroy(void *user_data) {
+    struct aws_host_resolver *resolver = user_data;
     AWS_ASSERT(resolver->vtable && resolver->vtable->destroy);
     resolver->vtable->destroy(resolver);
 }

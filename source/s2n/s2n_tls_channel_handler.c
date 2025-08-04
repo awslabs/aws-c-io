@@ -1405,7 +1405,8 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_new_tls_handler(allocator, options, slot, S2N_SERVER);
 }
 
-static void s_s2n_ctx_destroy(struct s2n_ctx *s2n_ctx) {
+static void s_s2n_ctx_destroy(void *user_data) {
+    struct s2n_ctx *s2n_ctx = user_data;
     if (s2n_ctx != NULL) {
         if (s2n_ctx->s2n_config) {
             s2n_config_free(s2n_ctx->s2n_config);

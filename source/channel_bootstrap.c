@@ -27,11 +27,12 @@
     struct struct_type *shutdown_args = struct_type##_new(allocator, __VA_ARGS__);                                     \
     aws_socket_set_cleanup_complete_callback(socket, init_function, shutdown_args);
 
-static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstrap) {
+static void s_client_bootstrap_destroy_impl(void *user_data) {
+    struct aws_client_bootstrap *bootstrap = user_data;
     AWS_ASSERT(bootstrap);
     AWS_LOGF_DEBUG(AWS_LS_IO_CHANNEL_BOOTSTRAP, "id=%p: bootstrap destroying", (void *)bootstrap);
     aws_client_bootstrap_shutdown_complete_fn *on_shutdown_complete = bootstrap->on_shutdown_complete;
-    void *user_data = bootstrap->user_data;
+    void *shutdown_user_data = bootstrap->user_data;
 
     aws_event_loop_group_release(bootstrap->event_loop_group);
     aws_host_resolver_release(bootstrap->host_resolver);
@@ -39,7 +40,7 @@ static void s_client_bootstrap_destroy_impl(struct aws_client_bootstrap *bootstr
     aws_mem_release(bootstrap->allocator, bootstrap);
 
     if (on_shutdown_complete) {
-        on_shutdown_complete(user_data);
+        on_shutdown_complete(shutdown_user_data);
     }
 }
 
@@ -159,7 +160,8 @@ static struct client_connection_args *s_client_connection_args_acquire(struct cl
     return args;
 }
 
-static void s_client_connection_args_destroy(struct client_connection_args *args) {
+static void s_client_connection_args_destroy(void *user_data) {
+    struct client_connection_args *args = user_data;
     AWS_ASSERT(args);
     AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL_BOOTSTRAP, "destroying client connection args, args=%p", (void *)args);
 
@@ -1181,7 +1183,8 @@ error:
     return AWS_OP_ERR;
 }
 
-void s_server_bootstrap_destroy_impl(struct aws_server_bootstrap *bootstrap) {
+void s_server_bootstrap_destroy_impl(void *user_data) {
+    struct aws_server_bootstrap *bootstrap = user_data;
     AWS_ASSERT(bootstrap);
     aws_event_loop_group_release(bootstrap->event_loop_group);
     aws_mem_release(bootstrap->allocator, bootstrap);
@@ -1265,7 +1268,8 @@ static struct server_connection_args *s_server_connection_args_acquire(struct se
     return args;
 }
 
-static void s_server_connection_args_destroy(struct server_connection_args *args) {
+static void s_server_connection_args_destroy(void *user_data) {
+    struct server_connection_args *args = user_data;
     if (args == NULL) {
         return;
     }
