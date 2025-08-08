@@ -732,6 +732,8 @@ static void s_setup_tls_options(
           s_tls_verification_block(metadata, trust, complete, nw_socket, transport_ctx);
         },
         dispatch_loop->dispatch_queue);
+
+    nw_release(sec_options);
 }
 
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
@@ -1985,7 +1987,6 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
 
     // released when the connection state changed to nw_connection_state_cancelled
     s_socket_acquire_internal_ref(nw_socket);
-    nw_retain(socket->io_handle.data.handle);
     nw_connection_start(socket->io_handle.data.handle);
     s_unlock_socket_synced_data(nw_socket);
 
@@ -2793,6 +2794,7 @@ static int s_socket_write_fn(
     nw_connection_send(
         socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           s_handle_nw_connection_send_completion_fn(error, data, nw_socket, written_fn, user_data);
+          dispatch_release(data);
         });
 
     s_unlock_socket_synced_data(nw_socket);
