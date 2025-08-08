@@ -5,6 +5,7 @@
  * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
+#include <aws/common/clock.h>
 #include <aws/io/stream.h>
 
 #ifndef AWS_UNSTABLE_TESTING_API
@@ -60,6 +61,9 @@ struct aws_input_stream_tester_options {
 
     /* error-code to raise if failing on purpose */
     int fail_with_error_code;
+
+    /* Wait before read. */
+    size_t sleep_before_read_secs;
 };
 
 struct aws_input_stream_tester {
@@ -84,6 +88,11 @@ static inline int s_input_stream_tester_seek(
 
 static inline int s_input_stream_tester_read(struct aws_input_stream *stream, struct aws_byte_buf *original_dest) {
     struct aws_input_stream_tester *impl = (struct aws_input_stream_tester *)stream->impl;
+    if (impl->options.sleep_before_read_secs > 0) {
+        aws_thread_current_sleep(
+            aws_timestamp_convert(impl->options.sleep_before_read_secs, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL));
+        impl->options.sleep_before_read_secs = 0;
+    }
 
     impl->read_count++;
 
