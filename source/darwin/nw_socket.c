@@ -2147,7 +2147,6 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
 
     socket->io_handle.set_queue = s_listener_set_dispatch_queue;
     nw_socket->os_handle.nw_listener = socket->io_handle.data.handle;
-    nw_retain(socket->io_handle.data.handle);
     nw_socket->mode = NWSM_LISTENER;
 
     AWS_LOGF_TRACE(
