@@ -1037,12 +1037,22 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_tls_handler_new(allocator, options, slot, kSSLServerSide);
 }
 
+void s_aws_release_cert(const void *val, void *context) {
+    (void)context;
+    CFTypeRef cert = (CFTypeRef)val;
+    CFRelease(cert);
+}
+
 static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secure_transport_ctx) {
     if (secure_transport_ctx == NULL) {
         return;
     }
 
     if (secure_transport_ctx->certs) {
+        if (secure_transport_ctx->cleanup_cert) {
+            CFRange range = CFRangeMake(0, CFArrayGetCount(secure_transport_ctx->certs));
+            CFArrayApplyFunction(secure_transport_ctx->certs, range, s_aws_release_cert, NULL);
+        }
         CFRelease(secure_transport_ctx->certs);
     }
 
@@ -1087,6 +1097,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->verify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
     secure_transport_ctx->certs = NULL;
+    secure_transport_ctx->cleanup_cert = false;
     secure_transport_ctx->secitem_identity = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
@@ -1140,6 +1151,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                     aws_last_error());
                 goto cleanup_wrapped_allocator;
             }
+            secure_transport_ctx->cleanup_cert = true;
         }
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
 

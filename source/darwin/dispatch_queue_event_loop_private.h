@@ -16,6 +16,8 @@ struct secure_transport_ctx {
     struct aws_tls_ctx ctx;
     CFAllocatorRef wrapped_allocator;
     CFArrayRef certs;
+    /* The certs field can be set in two different ways, and only one requires releasing individual cert objects. */
+    bool cleanup_cert;
     sec_identity_t secitem_identity;
     CFArrayRef ca_cert;
     enum aws_tls_versions minimum_tls_version;
