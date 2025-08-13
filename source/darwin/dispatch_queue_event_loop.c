@@ -183,6 +183,7 @@ static void s_dispatch_event_loop_final_destroy(struct aws_event_loop *event_loo
         aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
     }
 
+    dispatch_release(dispatch_loop->dispatch_queue);
     aws_mutex_clean_up(&dispatch_loop->synced_data.synced_data_lock);
     aws_condition_variable_clean_up(&dispatch_loop->synced_data.signal);
     // We don't need to clean up the dispatch_loop->synced_data.scheduled_iterations, as all scheduling entries should
