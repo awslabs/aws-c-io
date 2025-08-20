@@ -171,8 +171,9 @@ static void s_scheduled_iteration_entry_destroy(struct scheduled_iteration_entry
         return;
     }
 
-    s_dispatch_loop_release(entry->dispatch_loop);
+    struct aws_dispatch_loop *dispatch_loop_for_release = entry->dispatch_loop;
     aws_mem_release(entry->allocator, entry);
+    s_dispatch_loop_release(dispatch_loop_for_release);
 }
 
 /* Manually called to destroy an aws_event_loop */
@@ -183,6 +184,7 @@ static void s_dispatch_event_loop_final_destroy(struct aws_event_loop *event_loo
         aws_task_scheduler_clean_up(&dispatch_loop->scheduler);
     }
 
+    dispatch_release(dispatch_loop->dispatch_queue);
     aws_mutex_clean_up(&dispatch_loop->synced_data.synced_data_lock);
     aws_condition_variable_clean_up(&dispatch_loop->synced_data.signal);
     // We don't need to clean up the dispatch_loop->synced_data.scheduled_iterations, as all scheduling entries should

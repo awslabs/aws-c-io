@@ -216,7 +216,8 @@ static void s_event_loop_destroy_async_thread_fn(void *thread_data) {
     aws_thread_current_at_exit(s_event_loop_group_thread_exit, el_group);
 }
 
-static void s_aws_event_loop_group_shutdown_async(struct aws_event_loop_group *el_group) {
+static void s_aws_event_loop_group_shutdown_async(void *user_data) {
+    struct aws_event_loop_group *el_group = user_data;
 
     /* It's possible that the last refcount was released on an event-loop thread,
      * so we would deadlock if we waited here for all the event-loop threads to shut down.

@@ -188,7 +188,8 @@ static int s_aws_input_stream_byte_cursor_get_length(struct aws_input_stream *st
     return AWS_OP_SUCCESS;
 }
 
-static void s_aws_input_stream_byte_cursor_destroy(struct aws_input_stream_byte_cursor_impl *impl) {
+static void s_aws_input_stream_byte_cursor_destroy(void *user_data) {
+    struct aws_input_stream_byte_cursor_impl *impl = user_data;
     aws_mem_release(impl->allocator, impl);
 }
 
@@ -271,7 +272,8 @@ static int s_aws_input_stream_file_get_length(struct aws_input_stream *stream, i
     return aws_file_get_length(impl->file, length);
 }
 
-static void s_aws_input_stream_file_destroy(struct aws_input_stream_file_impl *impl) {
+static void s_aws_input_stream_file_destroy(void *user_data) {
+    struct aws_input_stream_file_impl *impl = user_data;
 
     if (impl->close_on_clean_up && impl->file) {
         fclose(impl->file);

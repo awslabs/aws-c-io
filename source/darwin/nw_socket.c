@@ -732,6 +732,8 @@ static void s_setup_tls_options(
           s_tls_verification_block(metadata, trust, complete, nw_socket, transport_ctx);
         },
         dispatch_loop->dispatch_queue);
+
+    nw_release(sec_options);
 }
 
 static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_socket_options *options) {
@@ -1041,12 +1043,8 @@ static void s_process_socket_cancel_task(struct aws_task *task, void *arg, enum 
 
         if (nw_socket->mode == NWSM_LISTENER) {
             nw_listener_cancel(nw_socket->os_handle.nw_listener);
-            nw_release(nw_socket->os_handle.nw_listener);
-            nw_socket->os_handle.nw_listener = NULL;
         } else if (nw_socket->mode == NWSM_CONNECTION) {
             nw_connection_cancel(nw_socket->os_handle.nw_connection);
-            nw_release(nw_socket->os_handle.nw_connection);
-            nw_socket->os_handle.nw_connection = NULL;
         }
     }
 
@@ -1104,6 +1102,13 @@ static void s_socket_internal_destroy(void *sock_ptr) {
             nw_socket->on_socket_close_complete_fn(nw_socket->close_user_data);
         }
     }
+
+    if (nw_socket->mode == NWSM_LISTENER) {
+        nw_release(nw_socket->os_handle.nw_listener);
+    } else if (nw_socket->mode == NWSM_CONNECTION) {
+        nw_release(nw_socket->os_handle.nw_connection);
+    }
+
     s_release_event_loop(nw_socket);
     aws_ref_count_release(&nw_socket->nw_socket_ref_count);
 }
@@ -1985,7 +1990,6 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
 
     // released when the connection state changed to nw_connection_state_cancelled
     s_socket_acquire_internal_ref(nw_socket);
-    nw_retain(socket->io_handle.data.handle);
     nw_connection_start(socket->io_handle.data.handle);
     s_unlock_socket_synced_data(nw_socket);
 
@@ -2143,7 +2147,6 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
 
     socket->io_handle.set_queue = s_listener_set_dispatch_queue;
     nw_socket->os_handle.nw_listener = socket->io_handle.data.handle;
-    nw_retain(socket->io_handle.data.handle);
     nw_socket->mode = NWSM_LISTENER;
 
     AWS_LOGF_TRACE(
@@ -2793,6 +2796,7 @@ static int s_socket_write_fn(
     nw_connection_send(
         socket->io_handle.data.handle, data, _nw_content_context_default_message, true, ^(nw_error_t error) {
           s_handle_nw_connection_send_completion_fn(error, data, nw_socket, written_fn, user_data);
+          dispatch_release(data);
         });
 
     s_unlock_socket_synced_data(nw_socket);
