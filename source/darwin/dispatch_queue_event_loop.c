@@ -171,7 +171,8 @@ static void s_scheduled_iteration_entry_destroy(struct scheduled_iteration_entry
         return;
     }
 
-    struct aws_dispatch_loop *dispatch_loop_for_release = entry->dispatch_loop aws_mem_release(entry->allocator, entry);
+    struct aws_dispatch_loop *dispatch_loop_for_release = entry->dispatch_loop;
+    aws_mem_release(entry->allocator, entry);
     s_dispatch_loop_release(dispatch_loop_for_release);
 }
 
