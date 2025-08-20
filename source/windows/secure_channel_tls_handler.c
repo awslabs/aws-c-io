@@ -27,7 +27,6 @@
 
 #include <schannel.h>
 #include <security.h>
-#include <sspi.h>
 
 #include <errno.h>
 #include <inttypes.h>
