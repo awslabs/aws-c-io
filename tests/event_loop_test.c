@@ -1372,8 +1372,8 @@ static void s_process_serialized_scheduling_task(struct aws_task *task, void *ar
 
     test_task->test_context->synced_data.last_processed_id = test_task->id;
 
-    aws_mutex_unlock(&test_task->test_context->lock);
     aws_condition_variable_notify_all(&test_task->test_context->signal);
+    aws_mutex_unlock(&test_task->test_context->lock);
 
     aws_mem_release(test_task->allocator, test_task);
 }
