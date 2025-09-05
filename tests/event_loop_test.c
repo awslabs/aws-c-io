@@ -1550,7 +1550,7 @@ static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocat
     struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
 
     struct serialized_scheduling_context context;
-    s_serialized_scheduling_context_init(&context, allocator, event_loop, 1000000);
+    s_serialized_scheduling_context_init(&context, allocator, event_loop, 100000);
 
     struct aws_thread external_thread;
     aws_thread_init(&external_thread, allocator);
