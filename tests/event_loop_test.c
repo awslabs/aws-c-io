@@ -1529,7 +1529,12 @@ static void s_in_event_loop_scheduling_task(struct aws_task *task, void *arg, en
 
 /*
  * Test that verifies serialized scheduling by running two concurrent executions, one on the target event loop, one
- * on an external thread, so that
+ * on an external thread.  The two submit tasks as fast as they can (although the event loop thread must yield
+ * occasionally in order for the scheduled tasks to get serviced) and we verify that order-of-execution matches
+ * order-of-submission.
+ *
+ * There are a couple of sleep(0)s in the logic to help achieve some approximate mutex-locking fairness.  Without them,
+ * the external thread was successfully taking the lock at a much higher rate (30x) than the in-event-loop execution.
  */
 static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocator, void *ctx) {
 
