@@ -1297,3 +1297,255 @@ static int test_event_loop_group_setup_and_shutdown_async(struct aws_allocator *
 }
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown_async, test_event_loop_group_setup_and_shutdown_async)
+
+enum scheduling_source {
+    EVENT_LOOP_THREAD,
+    EXTERNAL_THREAD
+};
+
+struct serialized_scheduling_context {
+    struct aws_allocator *allocator;
+    struct aws_event_loop *loop;
+    size_t max_ids;
+
+    struct aws_condition_variable signal;
+    struct aws_mutex lock;
+    struct {
+        size_t next_id;
+        size_t last_processed_id;
+
+        size_t event_loop_schedules;
+        size_t external_schedules;
+
+        bool scheduling_allowed;
+        bool el_scheduling_finished;
+        bool external_thread_finished;
+        bool test_failed;
+    } synced_data;
+};
+
+static void s_serialized_scheduling_context_init(struct serialized_scheduling_context *context, struct aws_allocator *allocator, struct aws_event_loop *event_loop, size_t max_ids) {
+    AWS_ZERO_STRUCT(*context);
+    context->allocator = allocator;
+    context->loop = event_loop;
+    context->max_ids = max_ids;
+    context->synced_data.next_id = 1;
+
+    aws_mutex_init(&context->lock);
+    aws_condition_variable_init(&context->signal);
+}
+
+static void s_serialized_scheduling_context_clean_up(struct serialized_scheduling_context *context) {
+    aws_mutex_clean_up(&context->lock);
+    aws_condition_variable_clean_up(&context->signal);
+}
+
+struct aws_serialized_scheduling_task {
+    struct aws_allocator *allocator;
+
+    struct aws_task base;
+    struct serialized_scheduling_context *test_context;
+    size_t id;
+    enum scheduling_source source;
+};
+
+static void s_process_serialized_scheduling_task(struct aws_task *task, void *arg, enum aws_task_status) {
+    (void)task;
+
+    struct aws_serialized_scheduling_task *test_task = arg;
+
+    aws_mutex_lock(&test_task->test_context->lock);
+
+    if (test_task->source == EVENT_LOOP_THREAD) {
+        ++test_task->test_context->synced_data.event_loop_schedules;
+    } else {
+        ++test_task->test_context->synced_data.external_schedules;
+    }
+
+    if (test_task->id != test_task->test_context->synced_data.last_processed_id + 1) {
+        test_task->test_context->synced_data.test_failed = true;
+    }
+
+    test_task->test_context->synced_data.last_processed_id = test_task->id;
+
+    aws_mutex_unlock(&test_task->test_context->lock);
+    aws_condition_variable_notify_all(&test_task->test_context->signal);
+
+    aws_mem_release(test_task->allocator, test_task);
+}
+
+static bool s_wait_for_scheduling_allowed_predicate(void *arg) {
+    struct serialized_scheduling_context *context = arg;
+
+    return context->synced_data.scheduling_allowed || context->synced_data.next_id > context->max_ids;
+}
+
+static bool s_serialized_scheduling_context_schedule_task(struct serialized_scheduling_context *context, enum scheduling_source source) {
+    bool no_ids_left = false;
+
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_wait_for_scheduling_allowed_predicate, context);
+
+    if (context->synced_data.next_id <= context->max_ids) {
+        size_t id = context->synced_data.next_id++;
+        struct aws_serialized_scheduling_task *task = aws_mem_calloc(context->allocator, 1, sizeof(struct aws_serialized_scheduling_task));
+        task->allocator = context->allocator;
+        aws_task_init(&task->base, s_process_serialized_scheduling_task, task, "serialized scheduling test task");
+        task->test_context = context;
+        task->id = id;
+        task->source = source;
+
+        aws_event_loop_schedule_task_now_serialized(context->loop, &task->base);
+    } else {
+        no_ids_left = true;
+    }
+
+    aws_mutex_unlock(&context->lock);
+
+    return no_ids_left;
+}
+
+static bool s_wait_for_all_threads_predicate(void *arg) {
+    struct serialized_scheduling_context *context = arg;
+
+    return context->synced_data.el_scheduling_finished && context->synced_data.external_thread_finished;
+}
+
+static void s_serialized_scheduling_context_wait_for_all_threads(struct serialized_scheduling_context *context) {
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_wait_for_all_threads_predicate, context);
+    aws_mutex_unlock(&context->lock);
+}
+
+static bool s_wait_for_all_ids_processed_predicate(void *arg) {
+    struct serialized_scheduling_context *context = arg;
+
+    return context->synced_data.last_processed_id == context->max_ids;
+}
+
+static void s_serialized_scheduling_context_wait_for_all_ids_processed(struct serialized_scheduling_context *context) {
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_wait_for_all_ids_processed_predicate, context);
+    aws_mutex_unlock(&context->lock);
+}
+
+static void s_serialized_scheduling_thread_fn(void *arg) {
+
+    struct serialized_scheduling_context *context = arg;
+
+    bool done = false;
+    while (!done) {
+        done = s_serialized_scheduling_context_schedule_task(context, EXTERNAL_THREAD);
+    }
+
+    aws_mutex_lock(&context->lock);
+    context->synced_data.external_thread_finished = true;
+    aws_condition_variable_notify_all(&context->signal);
+    aws_mutex_unlock(&context->lock);
+}
+
+struct aws_in_event_loop_scheduling_task {
+    struct aws_allocator *allocator;
+
+    struct aws_task base;
+    struct serialized_scheduling_context *test_context;
+};
+
+static void s_in_event_loop_scheduling_task(struct aws_task *task, void *arg, enum aws_task_status);
+
+static void s_schedule_next_in_event_loop_scheduling_task(struct aws_allocator *allocator, struct serialized_scheduling_context *context) {
+    struct aws_in_event_loop_scheduling_task *task = aws_mem_calloc(allocator, 1, sizeof(struct aws_in_event_loop_scheduling_task));
+    task->allocator = allocator;
+    aws_task_init(&task->base, s_in_event_loop_scheduling_task, task, "in event loop control task");
+    task->test_context = context;
+
+    aws_event_loop_schedule_task_now_serialized(context->loop, &task->base);
+}
+
+static void s_enable_scheduling(struct serialized_scheduling_context *context) {
+    aws_mutex_lock(&context->lock);
+    context->synced_data.scheduling_allowed = true;
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+static void s_disable_scheduling(struct serialized_scheduling_context *context) {
+    aws_mutex_lock(&context->lock);
+    context->synced_data.scheduling_allowed = false;
+    aws_mutex_unlock(&context->lock);
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+#define IN_EVENT_LOOP_SCHEDULE_BLOCK_SIZE 200
+
+static void s_in_event_loop_scheduling_task(struct aws_task *task, void *arg, enum aws_task_status) {
+    (void)task;
+
+    struct aws_in_event_loop_scheduling_task *scheduling_task = arg;
+
+    s_enable_scheduling(scheduling_task->test_context);
+
+    bool ids_left = true;
+    for (size_t i = 0; i < IN_EVENT_LOOP_SCHEDULE_BLOCK_SIZE; ++i) {
+        if (s_serialized_scheduling_context_schedule_task(scheduling_task->test_context, EVENT_LOOP_THREAD)) {
+            ids_left = false;
+            break;
+        }
+    }
+
+    s_disable_scheduling(scheduling_task->test_context);
+
+    if (ids_left) {
+        s_schedule_next_in_event_loop_scheduling_task(scheduling_task->allocator, scheduling_task->test_context);
+    } else {
+        aws_mutex_lock(&scheduling_task->test_context->lock);
+        scheduling_task->test_context->synced_data.el_scheduling_finished = true;
+        aws_mutex_unlock(&scheduling_task->test_context->lock);
+        aws_condition_variable_notify_all(&scheduling_task->test_context->signal);
+    }
+
+    aws_mem_release(scheduling_task->allocator, scheduling_task);
+}
+
+/*
+ * Test that verifies serialized scheduling by running two concurrent executions, one on the target event loop, one
+ * on an external thread, so that
+ */
+static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocator, void *ctx) {
+
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 1,
+    };
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
+
+    struct serialized_scheduling_context context;
+    s_serialized_scheduling_context_init(&context, allocator, event_loop, 1000000);
+
+    struct aws_thread external_thread;
+    aws_thread_init(&external_thread, allocator);
+    aws_thread_launch(&external_thread, s_serialized_scheduling_thread_fn, &context, NULL);
+
+    s_schedule_next_in_event_loop_scheduling_task(allocator, &context);
+
+    s_serialized_scheduling_context_wait_for_all_ids_processed(&context);
+    s_serialized_scheduling_context_wait_for_all_threads(&context);
+
+    ASSERT_FALSE(context.synced_data.test_failed);
+    ASSERT_TRUE(context.synced_data.external_schedules > 0);
+    ASSERT_TRUE(context.synced_data.event_loop_schedules > 0);
+
+    s_serialized_scheduling_context_clean_up(&context);
+    aws_event_loop_group_release(event_loop_group);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_serialized_scheduling, s_test_event_loop_serialized_scheduling)

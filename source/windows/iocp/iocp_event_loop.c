@@ -102,6 +102,7 @@ static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+static void s_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task);
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
@@ -154,6 +155,7 @@ struct aws_event_loop_vtable s_iocp_vtable = {
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
     .schedule_task_now = s_schedule_task_now,
+    .schedule_task_now_serialized = s_schedule_task_now_serialized,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
     .connect_to_io_completion_port = s_connect_to_io_completion_port,
@@ -446,30 +448,11 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-/* Common function used by schedule_task_now() and schedule_task_future().
- * When run_at_nanos is 0, it's treated as a "now" task.
- * Called from any thread */
-static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
+static void s_schedule_task_cross_thread(
+    struct aws_event_loop *event_loop,
+    struct aws_task *task,
+    uint64_t run_at_nanos) {
     struct iocp_loop *impl = event_loop->impl_data;
-    AWS_ASSERT(impl);
-    AWS_ASSERT(task);
-
-    /* If we're on the event-thread, just schedule it directly */
-    if (s_is_event_thread(event_loop)) {
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p: scheduling %s task %p in-thread for timestamp %llu",
-            (void *)event_loop,
-            task->type_tag,
-            (void *)task,
-            (unsigned long long)run_at_nanos);
-        if (run_at_nanos == 0) {
-            aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
-        } else {
-            aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, run_at_nanos);
-        }
-        return;
-    }
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
@@ -501,9 +484,41 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     }
 }
 
+/* Common function used by schedule_task_now() and schedule_task_future().
+ * When run_at_nanos is 0, it's treated as a "now" task.
+ * Called from any thread */
+static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
+    struct iocp_loop *impl = event_loop->impl_data;
+    AWS_ASSERT(impl);
+    AWS_ASSERT(task);
+
+    /* If we're on the event-thread, just schedule it directly */
+    if (s_is_event_thread(event_loop)) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: scheduling %s task %p in-thread for timestamp %llu",
+            (void *)event_loop,
+            task->type_tag,
+            (void *)task,
+            (unsigned long long)run_at_nanos);
+        if (run_at_nanos == 0) {
+            aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
+        } else {
+            aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, run_at_nanos);
+        }
+        return;
+    }
+
+    s_schedule_task_cross_thread(event_loop, task, run_at_nanos);
+}
+
 /* Called from any thread */
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
     s_schedule_task_common(event_loop, task, 0 /* use zero to denote it's a "now" task */);
+}
+
+static void s_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task) {
+    s_schedule_task_cross_thread(event_loop, task, 0 /* use zero to denote it's a "now" task */);
 }
 
 /* Called from any thread */

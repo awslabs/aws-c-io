@@ -35,6 +35,7 @@ struct aws_event_loop_vtable {
     int (*stop)(struct aws_event_loop *event_loop);
     int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
     void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+    void (*schedule_task_now_serialized)(struct aws_event_loop *event_loop, struct aws_task *task);
     void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
     void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
     int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
@@ -115,6 +116,15 @@ AWS_EXTERN_C_BEGIN
  */
 AWS_IO_API
 void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+
+/**
+ * Variant of aws_event_loop_schedule_task_now that forces all tasks to go through the cross thread task queue,
+ * guaranteeing that order-of-submission is order-of-execution.  If you need this guarantee, you must use this
+ * function; the base function contains short-circuiting logic that breaks ordering invariants.  Beyond that, all
+ * properties of aws_event_loop_schedule_task_now apply to this function as well.
+ */
+AWS_IO_API
+void aws_event_loop_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task);
 
 /**
  * The event loop will schedule the task and run it at the specified time.
