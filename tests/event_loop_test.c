@@ -1560,6 +1560,9 @@ static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocat
     ASSERT_TRUE(context.synced_data.external_schedules_processed > 0);
     ASSERT_TRUE(context.synced_data.event_loop_schedules_processed > 0);
 
+    aws_thread_join(&external_thread);
+    aws_thread_clean_up(&external_thread);
+
     s_serialized_scheduling_context_clean_up(&context);
     aws_event_loop_group_release(event_loop_group);
 
