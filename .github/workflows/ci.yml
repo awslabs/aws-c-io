@@ -175,7 +175,7 @@ jobs:
   windows-lean:
     runs-on: windows-2025 # latest
     env:
-          CXXFLAGS: "-DWIN32_LEAN_AND_MEAN"
+      CFLAGS: "-DWIN32_LEAN_AND_MEAN"
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
