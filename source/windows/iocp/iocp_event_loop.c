@@ -18,7 +18,7 @@
  * Force win to not define status so we dont have to worry whether it includes status or not.
  */
 #include <windows.h>
-#include <winnt.h>
+#include <winternl.h>
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
