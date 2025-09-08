@@ -13,8 +13,15 @@
 #include <aws/io/logging.h>
 #include <aws/io/private/event_loop_impl.h>
 
+/*
+ * Note: windows.h does not include ntstatus when compiled lean and mean.
+ * Force win to not define status so we dont have to worry whether it includes status or not.
+ */
+#define WIN32_NO_STATUS
 #include <windows.h>
-#include <ntdef.h>
+#undef WIN32_NO_STATUS
+
+#include <ntstatus.h>
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
