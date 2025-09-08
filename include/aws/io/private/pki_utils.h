@@ -7,7 +7,10 @@
 #include <aws/io/io.h>
 
 #ifdef _WIN32
-#   include <wincrypt.h>
+/* It's ok to include external headers because this is a PRIVATE header file
+ * (it is usually a crime to include windows.h from header file) */
+#    include <windows.h>
+#    include <wincrypt.h>
 #endif /* _WIN32 */
 
 #ifdef AWS_OS_APPLE
