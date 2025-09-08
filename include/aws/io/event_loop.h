@@ -122,6 +122,9 @@ void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct 
  * guaranteeing that order-of-submission is order-of-execution.  If you need this guarantee, you must use this
  * function; the base function contains short-circuiting logic that breaks ordering invariants.  Beyond that, all
  * properties of aws_event_loop_schedule_task_now apply to this function as well.
+ *
+ * Serialization guarantee does not apply to task cancellation (which can occur out-of-order or even out-of-thread in
+ * certain cases).
  */
 AWS_IO_API
 void aws_event_loop_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task);
