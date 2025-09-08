@@ -11,8 +11,9 @@
  * (it is usually a crime to include windows.h from header file) */
 #    define NOMINMAX
 #    define NOCRYPT
-#    include <wincrypt.h>
 #    include <windows.h>
+
+#    include <wincrypt.h>
 #endif /* _WIN32 */
 
 #ifdef AWS_OS_APPLE
