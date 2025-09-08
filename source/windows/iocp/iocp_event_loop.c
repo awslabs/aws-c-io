@@ -17,9 +17,7 @@
  * Note: windows.h does not include ntstatus when compiled lean and mean.
  * Force win to not define status so we dont have to worry whether it includes status or not.
  */
-#define WIN32_NO_STATUS
 #include <windows.h>
-#undef WIN32_NO_STATUS
 
 #include <ntstatus.h>
 
