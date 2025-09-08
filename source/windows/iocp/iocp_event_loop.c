@@ -15,7 +15,7 @@
 
 /*
  * Note: windows.h does not include ntstatus when compiled lean and mean.
- * Force win to not define status so we dont have to worry whether it includes status or not.
+ * winternl is the proper place to pickup ntstatus
  */
 #include <windows.h>
 #include <winternl.h>
