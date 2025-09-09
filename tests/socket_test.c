@@ -2675,14 +2675,14 @@ static int s_test_parse_ipv4_valid_addresses(struct aws_allocator *allocator, vo
         const char *input;
         uint32_t expected_network_order;
     } test_cases[] = {
-        {"127.0.0.1", htonl(0x7F000001)},       /* localhost */
-        {"0.0.0.0", htonl(0x00000000)},         /* any address */
-        {"255.255.255.255", htonl(0xFFFFFFFF)}, /* broadcast */
-        {"192.168.1.1", htonl(0xC0A80101)},     /* common private IP */
-        {"10.0.0.1", htonl(0x0A000001)},        /* private IP */
-        {"172.16.0.1", htonl(0xAC100001)},      /* private IP */
-        {"8.8.8.8", htonl(0x08080808)},         /* Google DNS */
-        {"1.2.3.4", htonl(0x01020304)},         /* simple test case */
+        {"127.0.0.1", aws_hton32(0x7F000001)},       /* localhost */
+        {"0.0.0.0", aws_hton32(0x00000000)},         /* any address */
+        {"255.255.255.255", aws_hton32(0xFFFFFFFF)}, /* broadcast */
+        {"192.168.1.1", aws_hton32(0xC0A80101)},     /* common private IP */
+        {"10.0.0.1", aws_hton32(0x0A000001)},        /* private IP */
+        {"172.16.0.1", aws_hton32(0xAC100001)},      /* private IP */
+        {"8.8.8.8", aws_hton32(0x08080808)},         /* Google DNS */
+        {"1.2.3.4", aws_hton32(0x01020304)},         /* simple test case */
     };
 
     for (size_t i = 0; i < AWS_ARRAY_SIZE(test_cases); i++) {

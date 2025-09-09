@@ -13,7 +13,12 @@
 #include <aws/io/logging.h>
 #include <aws/io/private/event_loop_impl.h>
 
+/*
+ * Note: windows.h does not include ntstatus when compiled lean and mean.
+ * winternl is the proper place to pickup ntstatus
+ */
 #include <windows.h>
+#include <winternl.h>
 
 /* The next set of struct definitions are taken directly from the
     windows documentation. We can't include the header files directly
