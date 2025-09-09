@@ -31,6 +31,7 @@ static int s_run(struct aws_event_loop *event_loop);
 static int s_stop(struct aws_event_loop *event_loop);
 static int s_wait_for_stop_completion(struct aws_event_loop *event_loop);
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+static void s_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task);
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
 static void s_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
 static int s_connect_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle) {
@@ -134,6 +135,7 @@ struct aws_event_loop_vtable s_kqueue_vtable = {
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
     .schedule_task_now = s_schedule_task_now,
+    .schedule_task_now_serialized = s_schedule_task_now_serialized,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
     .connect_to_io_completion_port = s_connect_to_io_completion_port,
@@ -465,29 +467,12 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
     return AWS_OP_SUCCESS;
 }
 
-/* Common functionality for "now" and "future" task scheduling.
- * If `run_at_nanos` is zero then the task is scheduled as a "now" task. */
-static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
-    AWS_ASSERT(task);
+static void s_schedule_task_cross_thread(
+    struct aws_event_loop *event_loop,
+    struct aws_task *task,
+    uint64_t run_at_nanos) {
     struct kqueue_loop *impl = event_loop->impl_data;
 
-    /* If we're on the event-thread, just schedule it directly */
-    if (s_is_event_thread(event_loop)) {
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP,
-            "id=%p: scheduling task %p in-thread for timestamp %llu",
-            (void *)event_loop,
-            (void *)task,
-            (unsigned long long)run_at_nanos);
-        if (run_at_nanos == 0) {
-            aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
-        } else {
-            aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, run_at_nanos);
-        }
-        return;
-    }
-
-    /* Otherwise, add it to cross_thread_data.tasks_to_schedule and signal the event-thread to process it */
     AWS_LOGF_TRACE(
         AWS_LS_IO_EVENT_LOOP,
         "id=%p: scheduling task %p cross-thread for timestamp %llu",
@@ -515,8 +500,38 @@ static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws
     }
 }
 
+/* Common functionality for "now" and "future" task scheduling.
+ * If `run_at_nanos` is zero then the task is scheduled as a "now" task. */
+static void s_schedule_task_common(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
+    AWS_ASSERT(task);
+    struct kqueue_loop *impl = event_loop->impl_data;
+
+    /* If we're on the event-thread, just schedule it directly */
+    if (s_is_event_thread(event_loop)) {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: scheduling task %p in-thread for timestamp %llu",
+            (void *)event_loop,
+            (void *)task,
+            (unsigned long long)run_at_nanos);
+        if (run_at_nanos == 0) {
+            aws_task_scheduler_schedule_now(&impl->thread_data.scheduler, task);
+        } else {
+            aws_task_scheduler_schedule_future(&impl->thread_data.scheduler, task, run_at_nanos);
+        }
+        return;
+    }
+
+    /* Otherwise, add it to cross_thread_data.tasks_to_schedule and signal the event-thread to process it */
+    s_schedule_task_cross_thread(event_loop, task, run_at_nanos);
+}
+
 static void s_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task) {
     s_schedule_task_common(event_loop, task, 0); /* Zero is used to denote "now" tasks */
+}
+
+static void s_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task) {
+    s_schedule_task_cross_thread(event_loop, task, 0); /* Zero is used to denote "now" tasks */
 }
 
 static void s_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos) {
