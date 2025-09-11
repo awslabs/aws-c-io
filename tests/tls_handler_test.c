@@ -1225,6 +1225,10 @@ static void s_raise_tls_version_to_12(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
 }
 
+static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
+}
+
 static int s_tls_client_channel_negotiation_error_override_legacy_crypto_tls11_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1333,6 +1337,21 @@ static int s_tls_client_channel_negotiation_error_socket_closed_fn(struct aws_al
 AWS_TEST_CASE(
     tls_client_channel_negotiation_error_socket_closed,
     s_tls_client_channel_negotiation_error_socket_closed_fn);
+
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_local_tls_server_host_name, "127.0.0.1");
+
+static int s_tls_client_channel_negotiation_error_tls1_3_to_tls1_2_server_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    uint32_t server_tls1_2_port = 58443;
+    return s_verify_negotiation_fails(
+        allocator, s_aws_local_tls_server_host_name, server_tls1_2_port, &s_raise_tls_version_to_13);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_error_tls1_3_to_tls1_2_server,
+    s_tls_client_channel_negotiation_error_tls1_3_to_tls1_2_server_fn)
 
 static int s_verify_good_host(
     struct aws_allocator *allocator,
