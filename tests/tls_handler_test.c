@@ -1581,7 +1581,7 @@ static int s_verify_good_host_mtls_connect(
     aws_client_bootstrap_release(client_bootstrap);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
-    return AWS_OP_SUCCESS;
+    return AWS_OP_ERR;
 }
 
 static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
