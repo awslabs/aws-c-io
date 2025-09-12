@@ -1574,6 +1574,7 @@ static int s_verify_good_host_connect(
     return AWS_OP_SUCCESS;
 }
 
+#if 0
 static int s_verify_negotiation_fails_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
@@ -1697,6 +1698,7 @@ static int s_verify_negotiation_fails_connect(
 
     return AWS_OP_SUCCESS;
 }
+#endif
 
 static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
