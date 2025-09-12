@@ -1609,6 +1609,7 @@ static int s_verify_negotiation_fails_connect(
         .allocator = allocator,
         .condition_variable = &c_tester.condition_variable,
         .error_invoked = 0,
+        .expects_error = true,
         .rw_handler = NULL,
         .server = false,
         .tls_levels_negotiated = 0,
