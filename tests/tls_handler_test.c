@@ -1574,7 +1574,6 @@ static int s_verify_good_host_connect(
     return AWS_OP_SUCCESS;
 }
 
-#if 0
 static int s_verify_negotiation_fails_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
@@ -1698,7 +1697,6 @@ static int s_verify_negotiation_fails_connect(
 
     return AWS_OP_SUCCESS;
 }
-#endif
 
 static int s_tls_client_channel_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1763,7 +1761,8 @@ static int s_tls_client_channel_negotiation_error_tls1_3_to_tls1_2_server_fn(
     void *ctx) {
     (void)ctx;
     uint32_t server_tls1_2_port = 58443;
-    return s_verify_good_host_connect(allocator, s_aws_ecc384_host_name, server_tls1_2_port, s_raise_tls_version_to_13);
+    return s_verify_negotiation_fails_connect(
+        allocator, s_aws_ecc384_host_name, server_tls1_2_port, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
