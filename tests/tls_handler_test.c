@@ -1671,13 +1671,12 @@ static int s_verify_negotiation_fails_connect(
      * done messed up. */
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
 
-    ASSERT_TRUE(outgoing_args.error_invoked);
-
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    aws_channel_shutdown(outgoing_args.channel, AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_condition_variable_wait_pred(
         &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    ASSERT_TRUE(outgoing_args.error_invoked);
 
     ASSERT_TRUE(aws_error_code_is_tls(outgoing_args.last_error_code));
 
