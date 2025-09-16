@@ -41,7 +41,7 @@ class TlsServerSetup(Builder.Action):
 
         print("Running TLS servers")
 
-        python_path = sys.executable
+        python_path = env.config['variables']['python']
 
         tls12_server_process = subprocess.Popen(
             [python_path, tls_server_dir / 'tls_server.py', '--port', '58443', '--resource-dir', resource_dir,
