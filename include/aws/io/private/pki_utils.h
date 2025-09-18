@@ -9,7 +9,16 @@
 #ifdef _WIN32
 /* It's ok to include external headers because this is a PRIVATE header file
  * (it is usually a crime to include windows.h from header file) */
+#    define NOMINMAX
+#    define NOCRYPT
 #    include <windows.h>
+
+/* Note: we need defs for crypto definitions, we can get them from windows.h, but
+ * with lean an mean on they will be missing from windows.h.
+ * So instead lets have a proper dependency on the header that defines them, and force them
+ * to not be included in windows.h.
+ */
+#    include <wincrypt.h>
 #endif /* _WIN32 */
 
 #ifdef AWS_OS_APPLE

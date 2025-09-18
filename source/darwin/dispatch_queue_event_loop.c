@@ -73,6 +73,8 @@ static struct aws_event_loop_vtable s_vtable = {
     .stop = s_stop,
     .wait_for_stop_completion = s_wait_for_stop_completion,
     .schedule_task_now = s_schedule_task_now,
+    /* dispatch queue event loop impl does not have any short-circuiting, so just use the base scheduling logic */
+    .schedule_task_now_serialized = s_schedule_task_now,
     .schedule_task_future = s_schedule_task_future,
     .cancel_task = s_cancel_task,
     .connect_to_io_completion_port = s_connect_to_io_completion_port,

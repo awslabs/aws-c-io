@@ -1443,17 +1443,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
     s2n_mode mode) {
-    struct s2n_ctx *s2n_ctx = aws_mem_calloc(alloc, 1, sizeof(struct s2n_ctx));
-
-    if (!s2n_ctx) {
-        return NULL;
-    }
 
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
         return NULL;
     }
+
+    struct s2n_ctx *s2n_ctx = aws_mem_calloc(alloc, 1, sizeof(struct s2n_ctx));
 
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
