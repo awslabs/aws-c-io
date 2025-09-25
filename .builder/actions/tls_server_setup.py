@@ -5,7 +5,6 @@ Setup local TLS servers for tests
 import Builder
 
 from pathlib import Path
-import sys
 import subprocess
 import atexit
 
