@@ -1071,13 +1071,13 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
 }
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
-    struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
-
     if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
         return NULL;
     }
+
+    struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
 
     secure_transport_ctx->wrapped_allocator = aws_wrapped_cf_allocator_new(alloc);
     if (!secure_transport_ctx->wrapped_allocator) {
