@@ -2728,18 +2728,18 @@ static int s_test_tls_cipher_preference_fn(struct aws_allocator *allocator, void
     aws_tls_ctx_options_set_tls_cipher_preference(&tls_options, AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07);
     /* Creating tls context */
     struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
-#ifdef USE_S2N
+#    ifdef USE_S2N
     ASSERT_NOT_NULL(tls_context);
     aws_tls_ctx_release(tls_context);
-#else
+#    else
     /* The cipher suite currently only available with S2N */
     ASSERT_NULL(tls_context);
     ASSERT_INT_EQUALS(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED, aws_last_error());
-#endif
+#    endif
 
     aws_tls_ctx_options_clean_up(&tls_options);
     aws_io_library_clean_up();
-    
+
     return AWS_OP_SUCCESS;
 }
 
