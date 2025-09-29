@@ -2725,19 +2725,15 @@ static int s_test_tls_cipher_preference_fn(struct aws_allocator *allocator, void
     struct aws_tls_ctx_options tls_options;
     aws_tls_ctx_options_init_default_client(&tls_options, allocator);
 
-    int result = aws_tls_ctx_options_set_tls_cipher_preference(&tls_options, aws_tls_cipher_pref.AWS_IO_TLS_CIPHER_PREF_TLS_1_2_2025_07);
-    
-#ifdef Linux
-    /* On Linux, setting cipher preference should succeed */
-    ASSERT_SUCCESS(result);
-    
-    /* Creating context should also succeed */
+    aws_tls_ctx_options_set_tls_cipher_preference(&tls_options, AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07);
+    /* Creating tls context */
     struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+#ifdef USE_S2N
     ASSERT_NOT_NULL(tls_context);
     aws_tls_ctx_release(tls_context);
 #else
-    /* On macOS and Windows, setting cipher preference should fail */
-    ASSERT_FAILS(result);
+    /* The cipher suite currently only available with S2N */
+    ASSERT_NULL(tls_context);
     ASSERT_INT_EQUALS(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED, aws_last_error());
 #endif
 
