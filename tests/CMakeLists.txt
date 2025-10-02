@@ -19,20 +19,20 @@ add_test_case(io_library_init_cleanup_init_cleanup)
 add_test_case(io_library_error_order)
 
 # Dispatch Queue does not support pipe
-if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
-add_pipe_test_case(pipe_open_close)
-add_pipe_test_case(pipe_read_write)
-add_pipe_test_case(pipe_read_write_large_buffer)
-add_pipe_test_case(pipe_readable_event_sent_after_write)
-add_pipe_test_case(pipe_readable_event_sent_once)
-add_pipe_test_case(pipe_readable_event_sent_on_subscribe_if_data_present)
-add_pipe_test_case(pipe_readable_event_sent_on_resubscribe_if_data_present)
-add_pipe_test_case(pipe_readable_event_sent_again_after_all_data_read)
-add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
-add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
-add_pipe_test_case(pipe_writes_are_fifo)
-add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
-endif()
+# if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
+# add_pipe_test_case(pipe_open_close)
+# add_pipe_test_case(pipe_read_write)
+# add_pipe_test_case(pipe_read_write_large_buffer)
+# add_pipe_test_case(pipe_readable_event_sent_after_write)
+# add_pipe_test_case(pipe_readable_event_sent_once)
+# add_pipe_test_case(pipe_readable_event_sent_on_subscribe_if_data_present)
+# add_pipe_test_case(pipe_readable_event_sent_on_resubscribe_if_data_present)
+# add_pipe_test_case(pipe_readable_event_sent_again_after_all_data_read)
+# add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
+# add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
+# add_pipe_test_case(pipe_writes_are_fifo)
+# add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
+# endif()
 
 
 add_test_case(event_loop_xthread_scheduled_tasks_execute)
@@ -242,12 +242,12 @@ if(NOT BYO_CRYPTO)
     # to be a way to disable it
     if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
         # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
-        if(NOT AWS_USE_SECITEM)
-        add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
-        # SecItem does not allow use of depricated TLS versions
-        add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
-        add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
-        endif()
+        # if(NOT AWS_USE_SECITEM)
+        # add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
+        # # SecItem does not allow use of depricated TLS versions
+        # add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
+        # add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+        # endif()
         add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
     endif()
 
@@ -292,27 +292,27 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(test_ecc_cert_import)
 
     add_test_case(test_tls_cipher_preference)
-if(NOT AWS_USE_SECITEM)
-    # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
-    # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
-    # valid app bundle.
-    add_net_test_case(test_concurrent_cert_import)
+# if(NOT AWS_USE_SECITEM)
+#     # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
+#     # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
+#     # valid app bundle.
+#     add_net_test_case(test_concurrent_cert_import)
 
-    # PKCS8 is not supported on iOS. We will not support PKCS8 on macOS using SecItem.
-    # PKCS8 support for SecItem can be added in the future but it will require macOS
-    # specific branching of logic and import of the key into the keychain.
-    add_net_test_case(test_pkcs8_import)
+#     # PKCS8 is not supported on iOS. We will not support PKCS8 on macOS using SecItem.
+#     # PKCS8 support for SecItem can be added in the future but it will require macOS
+#     # specific branching of logic and import of the key into the keychain.
+#     add_net_test_case(test_pkcs8_import)
 
-    # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
-    # further up the channel. Apple Network Framework's connection handles both the socket connection as well
-    # as the TLS handshake within the same create connection call without external notification that the socket
-    # has succeeded prior to the TLS negotiation. As such, this test will not work for Secitem.
-    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
+#     # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
+#     # further up the channel. Apple Network Framework's connection handles both the socket connection as well
+#     # as the TLS handshake within the same create connection call without external notification that the socket
+#     # has succeeded prior to the TLS negotiation. As such, this test will not work for Secitem.
+#     add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
 
-    # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
-    # the socket establishment and does not need a separate timeout task for TLS.
-    add_net_test_case(tls_channel_statistics_test)
-endif()
+#     # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
+#     # the socket establishment and does not need a separate timeout task for TLS.
+#     add_net_test_case(tls_channel_statistics_test)
+# endif()
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)

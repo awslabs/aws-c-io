@@ -101,23 +101,20 @@ elseif (APPLE)
             "source/darwin/*.c"
             )
 
-    find_library(SECURITY_LIB Security)
-    find_library(NETWORK_LIB Network)
-
-    # Enable dispatch queue if the libraries are avaliable
-    if (NETWORK_LIB AND SECURITY_LIB)
-        list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
-        list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
-    endif ()
-
-    # Enable KQUEUE on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
-    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
-        list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
+    find_library(SECURITY_LIB Security REQUIRED)
+    if (NOT SECURITY_LIB)
+        message(FATAL_ERROR "Security framework not found")
+    endif()
+    find_library(NETWORK_LIB Network REQUIRED)
+    if (NOT NETWORK_LIB)
+        message(FATAL_ERROR "Network framework not found")
     endif()
 
+    list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
+    list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
+
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
-    file(GLOB AWS_IO_OS_HEADERS
-            )
+    file(GLOB AWS_IO_OS_HEADERS)
 
     file(GLOB AWS_IO_OS_SRC
             "source/bsd/*.c"
@@ -184,9 +181,9 @@ foreach(EVENT_LOOP_DEFINE IN LISTS EVENT_LOOP_DEFINES)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
 endforeach()
 
-if (AWS_USE_SECITEM)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
-endif()
+# if (AWS_USE_SECITEM)
+#     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
+# endif()
 
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
@@ -204,9 +201,9 @@ if (USE_VSOCK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DUSE_VSOCK")
 endif()
 
-if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
-endif()
+# if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
+#     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
+# endif()
 
 if (AWS_USE_APPLE_DISPATCH_QUEUE)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
