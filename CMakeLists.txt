@@ -112,6 +112,7 @@ elseif (APPLE)
 
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
     list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS)
@@ -181,10 +182,6 @@ foreach(EVENT_LOOP_DEFINE IN LISTS EVENT_LOOP_DEFINES)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
 endforeach()
 
-# if (AWS_USE_SECITEM)
-#     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
-# endif()
-
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
 endif()
@@ -200,10 +197,6 @@ endif()
 if (USE_VSOCK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DUSE_VSOCK")
 endif()
-
-# if (AWS_USE_APPLE_NETWORK_FRAMEWORK)
-#     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_NETWORK_FRAMEWORK")
-# endif()
 
 if (AWS_USE_APPLE_DISPATCH_QUEUE)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
