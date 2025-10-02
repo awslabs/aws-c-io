@@ -226,6 +226,16 @@ else()
    set (TARGET_DIR "static")
 endif()
 
+if(${CMAKE_SYSTEM_NAME} STREQUAL "OpenBSD")
+  # OpenBSD by defaults links with --execute-only, which is problematic because
+  # some AWS assembly sources still have references to static data in the .text section
+  if(NOT BUILD_SHARED_LIBS)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--no-execute-only")
+  else()
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--no-execute-only")
+  endif()
+endif()
+
 install(EXPORT "${PROJECT_NAME}-targets"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}/${TARGET_DIR}"
         NAMESPACE AWS::
