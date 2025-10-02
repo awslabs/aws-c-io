@@ -264,16 +264,9 @@ bool aws_tls_is_alpn_available(void) {
 
 bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     switch (cipher_pref) {
-        case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
-            return true;
-            /* PQ Crypto no-ops on android for now */
-#ifndef ANDROID
-        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
-            return true;
         case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
-            return true;
-#endif
-
+        case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
+        case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
         case AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07:
             return true;
         default:
@@ -1519,14 +1512,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 security_policy = "AWS-CRT-SDK-TLSv1.1-2023";
                 break;
             case AWS_IO_TLSv1_2:
-                security_policy = "AWS-CRT-SDK-TLSv1.2-2023";
+                security_policy = "AWS-CRT-SDK-TLSv1.2-2025-PQ";
                 break;
             case AWS_IO_TLSv1_3:
-                security_policy = "AWS-CRT-SDK-TLSv1.3-2023";
+                security_policy = "AWS-CRT-SDK-TLSv1.3-2025-PQ";
                 break;
             case AWS_IO_TLS_VER_SYS_DEFAULTS:
             default:
-                security_policy = "AWS-CRT-SDK-TLSv1.0-2023";
+                security_policy = "AWS-CRT-SDK-TLSv1.0-2025-PQ";
         }
     }
 
@@ -1537,12 +1530,15 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
             /* The specific PQ policy used here may change over time. */
-            security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2025-PQ";
             break;
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
             security_policy = "AWS-CRT-SDK-TLSv1.2-2023-PQ";
             break;
         case AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07:
+            security_policy = "AWS-CRT-SDK-TLSv1.2-2025";
+            break;
+        case AWS_IO_TLS_CIPHER_PREF_TLSV1_0_2023_06:
             security_policy = "AWS-CRT-SDK-TLSv1.2-2025";
             break;
         default:
