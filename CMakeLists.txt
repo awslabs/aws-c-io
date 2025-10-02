@@ -101,18 +101,18 @@ elseif (APPLE)
             "source/darwin/*.c"
             )
 
-    find_library(SECURITY_LIB Security REQUIRED)
+    find_library(SECURITY_LIB Security)
+    find_library(NETWORK_LIB Network)
+
     if (NOT SECURITY_LIB)
         message(FATAL_ERROR "Security framework not found")
     endif()
-    find_library(NETWORK_LIB Network REQUIRED)
     if (NOT NETWORK_LIB)
         message(FATAL_ERROR "Network framework not found")
     endif()
 
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
     list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS)
@@ -200,6 +200,10 @@ endif()
 
 if (AWS_USE_APPLE_DISPATCH_QUEUE)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
+endif()
+
+if (APPLE)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
 endif()
 
 target_include_directories(${PROJECT_NAME} PUBLIC
