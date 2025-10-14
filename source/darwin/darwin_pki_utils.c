@@ -798,18 +798,34 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
+    SecIdentityRef sec_identity_ref = NULL;
+    OSStatus status = SecIdentityCreateWithCertificate(NULL, cert_ref, &sec_identity_ref);
+    if (status != errSecSuccess) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecIdentityCreateWithCertificate failed with OSStatus %d", (int)status);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    *secitem_identity = sec_identity_create(sec_identity_ref);
+    if (*secitem_identity == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "sec_identity_create failed to create sec_identity_t from SecIdentityRef.");
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        aws_cf_release(sec_identity_ref);
+        goto done;
+    }
+
     // Add the certificate and private key to keychain then retrieve identity
-    if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
-        goto done;
-    }
+    // if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
+    //     goto done;
+    // }
 
-    if (s_aws_secitem_add_private_key_to_keychain(cf_alloc, key_ref, key_label_ref, application_label_ref)) {
-        goto done;
-    }
+    // if (s_aws_secitem_add_private_key_to_keychain(cf_alloc, key_ref, key_label_ref, application_label_ref)) {
+    //     goto done;
+    // }
 
-    if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, secitem_identity)) {
-        goto done;
-    }
+    // if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, secitem_identity)) {
+    //     goto done;
+    // }
 
     result = AWS_OP_SUCCESS;
 
@@ -826,6 +842,7 @@ done:
     aws_cf_release(key_ref);
     aws_cf_release(key_type);
     aws_cf_release(key_label_ref);
+    aws_cf_release(sec_identity_ref);
 
     // Zero out the array list and release it
     aws_pem_objects_clean_up(&decoded_cert_buffer_list);
