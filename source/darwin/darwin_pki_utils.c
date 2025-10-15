@@ -859,7 +859,7 @@ int aws_secitem_import_cert_and_key(
     dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
     CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
 
-    OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
+    status = SecPKCS12Import(pkcs12_data, dictionary, &items);
 
     if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
