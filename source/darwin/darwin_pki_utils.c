@@ -855,6 +855,7 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
+    CFMutableDictionaryRef dictionary = NULL;
     dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
     CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
 
