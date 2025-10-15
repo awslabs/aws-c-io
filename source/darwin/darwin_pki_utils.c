@@ -848,7 +848,7 @@ int aws_secitem_import_cert_and_key(
     }
 
     CFStringRef password = CFStringCreateWithCString(cf_alloc, "temp_password", kCFStringEncodingUTF8);
-    CFDataRef pkcs12Data = s_aws_create_pkcs12_from_cert_and_key(cert_data, key_data, password);
+    CFDataRef pkcs12_data = s_aws_create_pkcs12_from_cert_and_key(cert_data, key_data, password);
     if (!pkcs12_data) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating pkcs12 data system call.");
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
