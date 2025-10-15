@@ -9,6 +9,7 @@
 #include <aws/io/logging.h>
 #include <aws/io/pem.h>
 #include <aws/io/tls_channel_handler.h>
+#include <openssl/pkcs12.h>
 
 #include <Security/SecCertificate.h>
 #include <Security/SecKey.h>
@@ -616,6 +617,38 @@ done:
     return result;
 }
 
+static CFDataRef s_aws_create_pkcs12_from_cert_and_key(CFDataRef certData, CFDataRef keyData, CFStringRef password) {
+    // Convert CFData to OpenSSL structures
+    const unsigned char *certBytes = CFDataGetBytePtr(certData);
+    X509 *cert = d2i_X509(NULL, &certBytes, CFDataGetLength(certData));
+
+    const unsigned char *keyBytes = CFDataGetBytePtr(keyData);
+    EVP_PKEY *pkey = d2i_PrivateKey(EVP_PKEY_RSA, NULL, &keyBytes, CFDataGetLength(keyData));
+
+    // Convert password
+    char passStr[256];
+    CFStringGetCString(password, passStr, sizeof(passStr), kCFStringEncodingUTF8);
+
+    // Create PKCS#12
+    PKCS12 *p12 = PKCS12_create(passStr, "identity", pkey, cert, NULL, 0, 0, 0, 0, 0);
+
+    // Convert to CFData
+    BIO *bio = BIO_new(BIO_s_mem());
+    i2d_PKCS12_bio(bio, p12);
+
+    BUF_MEM *bioMem;
+    BIO_get_mem_ptr(bio, &bioMem);
+    CFDataRef result = CFDataCreate(NULL, (UInt8 *)bioMem->data, bioMem->length);
+
+    // Cleanup
+    BIO_free(bio);
+    PKCS12_free(p12);
+    X509_free(cert);
+    EVP_PKEY_free(pkey);
+
+    return result;
+}
+
 int aws_secitem_import_cert_and_key(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
@@ -814,9 +847,45 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
+    CFStringRef password = CFStringCreateWithCString(cf_alloc, "temp_password", kCFStringEncodingUTF8);
+    CFDataRef pkcs12Data = s_aws_create_pkcs12_from_cert_and_key(certData, keyData, password);
+    if (!pkcs12_data) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating pkcs12 data system call.");
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
+    CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
+
+    OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
+
+    if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    // Extract the identity from the first item in the array
+    // identity_and_trust does not need to be released as it is not a copy or created CF object.
+    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
+    sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
+
+    if (sec_identity_ref != NULL) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_PKI, "static: Successfully imported PKCS#12 file into keychain and retrieved identity.");
+    } else {
+        status = errSecItemNotFound;
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to retrieve identity from PKCS#12 with OSStatus %d", (int)status);
+        goto done;
+    }
+
+    *secitem_identity = sec_identity_create(sec_identity_ref);
+
     AWS_LOGF_INFO(
         AWS_LS_IO_PKI,
-        "static: Successfully created sec_identity_t for TLS negotiation using provided certificate and private key.");
+        "static: Successfully retrieved sec_identity_t for TLS negotiation using provided certificate and private "
+        "key.");
 
     // Add the certificate and private key to keychain then retrieve identity
     // if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
@@ -846,7 +915,6 @@ done:
     aws_cf_release(key_ref);
     aws_cf_release(key_type);
     aws_cf_release(key_label_ref);
-    aws_cf_release(sec_identity_ref);
 
     // Zero out the array list and release it
     aws_pem_objects_clean_up(&decoded_cert_buffer_list);
