@@ -832,20 +832,20 @@ int aws_secitem_import_cert_and_key(
     }
 
     SecIdentityRef sec_identity_ref = NULL;
-    OSStatus status = SecIdentityCreateWithCertificate(NULL, cert_ref, &sec_identity_ref);
-    if (status != errSecSuccess) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecIdentityCreateWithCertificate failed with OSStatus %d", (int)status);
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
+    // OSStatus status = SecIdentityCreateWithCertificate(NULL, cert_ref, &sec_identity_ref);
+    // if (status != errSecSuccess) {
+    //     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecIdentityCreateWithCertificate failed with OSStatus %d", (int)status);
+    //     aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+    //     goto done;
+    // }
 
-    *secitem_identity = sec_identity_create(sec_identity_ref);
-    if (*secitem_identity == NULL) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "sec_identity_create failed to create sec_identity_t from SecIdentityRef.");
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        aws_cf_release(sec_identity_ref);
-        goto done;
-    }
+    // *secitem_identity = sec_identity_create(sec_identity_ref);
+    // if (*secitem_identity == NULL) {
+    //     AWS_LOGF_ERROR(AWS_LS_IO_PKI, "sec_identity_create failed to create sec_identity_t from SecIdentityRef.");
+    //     aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+    //     aws_cf_release(sec_identity_ref);
+    //     goto done;
+    // }
 
     CFStringRef password = CFStringCreateWithCString(cf_alloc, "temp_password", kCFStringEncodingUTF8);
     CFDataRef pkcs12_data = s_aws_create_pkcs12_from_cert_and_key(cert_data, key_data, password);
