@@ -859,6 +859,7 @@ int aws_secitem_import_cert_and_key(
     dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
     CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
 
+    CFArrayRef items = NULL;
     status = SecPKCS12Import(pkcs12_data, dictionary, &items);
 
     if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
