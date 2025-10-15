@@ -814,6 +814,10 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
+    AWS_LOGF_INFO(
+        AWS_LS_IO_PKI,
+        "static: Successfully created sec_identity_t for TLS negotiation using provided certificate and private key.");
+
     // Add the certificate and private key to keychain then retrieve identity
     // if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
     //     goto done;
