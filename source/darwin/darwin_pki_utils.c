@@ -381,6 +381,7 @@ static int s_aws_secitem_add_certificate_to_keychain(
     CFDictionaryAddValue(add_attributes, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
     CFDictionaryAddValue(add_attributes, kSecValueRef, cert_ref);
+    CFDictionaryAddValue(add_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
 
     // Initial attempt to add certificate to keychain.
     status = SecItemAdd(add_attributes, NULL);
@@ -435,6 +436,7 @@ static int s_aws_secitem_add_certificate_to_keychain(
             CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         CFDictionaryAddValue(delete_query, kSecClass, kSecClassCertificate);
         CFDictionaryAddValue(delete_query, kSecAttrSerialNumber, serial_data);
+        CFDictionaryAddValue(delete_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
 
         // delete the existing certificate from keychain
         status = SecItemDelete(delete_query);
@@ -483,6 +485,7 @@ static int s_aws_secitem_add_private_key_to_keychain(
     CFDictionaryAddValue(add_attributes, kSecAttrApplicationLabel, application_label);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
     CFDictionaryAddValue(add_attributes, kSecValueRef, key_ref);
+    CFDictionaryAddValue(add_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
 
     // Initial attempt to add private key to keychain.
     status = SecItemAdd(add_attributes, NULL);
@@ -535,6 +538,7 @@ static int s_aws_secitem_add_private_key_to_keychain(
         CFDictionaryAddValue(delete_query, kSecClass, kSecClassKey);
         CFDictionaryAddValue(delete_query, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
         CFDictionaryAddValue(delete_query, kSecAttrApplicationLabel, application_label);
+        CFDictionaryAddValue(delete_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
 
         // delete the existing private key from keychain
         status = SecItemDelete(delete_query);
@@ -583,6 +587,7 @@ static int s_aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_
     CFDictionaryAddValue(search_query, kSecClass, kSecClassIdentity);
     CFDictionaryAddValue(search_query, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(search_query, kSecReturnRef, kCFBooleanTrue);
+    CFDictionaryAddValue(search_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
 
     /*
      * Copied or created CF items must have CFRelease called on them or you leak memory. This identity needs to
@@ -774,6 +779,7 @@ int aws_secitem_import_cert_and_key(
         CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
+    CFDictionaryAddValue(key_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
     key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
 
     // Get the hash of the public key stored within the private key by extracting it from the key_ref's attributes
@@ -863,6 +869,7 @@ int aws_secitem_import_pkcs12(
 
     dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
     CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
+    CFDictionaryAddValue(dictionary, kSecUseDataProtectionKeychain, kCFBooleanFalse);
 
     OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
 
