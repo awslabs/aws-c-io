@@ -569,7 +569,11 @@ done:
     return result;
 }
 
-static int s_aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_data, sec_identity_t *out_identity) {
+static int s_aws_secitem_get_identity(
+    CFAllocatorRef cf_alloc,
+    CFDataRef serial_data,
+    CFDataRef public_key_hash_data,
+    sec_identity_t *out_identity) {
 
     int result = AWS_OP_ERR;
     OSStatus status;
@@ -586,6 +590,7 @@ static int s_aws_secitem_get_identity(CFAllocatorRef cf_alloc, CFDataRef serial_
         CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(search_query, kSecClass, kSecClassIdentity);
     CFDictionaryAddValue(search_query, kSecAttrSerialNumber, serial_data);
+    CFDictionaryAddValue(search_query, kSecAttrPublicKeyHash, public_key_hash_data);
     CFDictionaryAddValue(search_query, kSecReturnRef, kCFBooleanTrue);
     CFDictionaryAddValue(search_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
 
@@ -647,6 +652,7 @@ int aws_secitem_import_cert_and_key(
     SecKeyRef key_ref = NULL;
     CFStringRef key_type = NULL;
     CFStringRef key_label_ref = NULL;
+    CFDataRef public_key_data = NULL;
     CFDataRef application_label_ref = NULL;
 
     struct aws_array_list decoded_cert_buffer_list;
@@ -758,6 +764,12 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
+    SecKeyRef public_key_ref = SecCertificateCopyKey(cert_ref);
+    if (public_key_ref) {
+        public_key_data = SecKeyCopyExternalRepresentation(public_key_ref, &error);
+        CFRelease(public_key_ref);
+    }
+
     cert_label_ref = CFStringCreateWithBytes(
         cf_alloc,
         (const UInt8 *)aws_string_bytes(secitem_options->cert_label),
@@ -814,7 +826,7 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-    if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, secitem_identity)) {
+    if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, public_key_data, secitem_identity)) {
         goto done;
     }
 
@@ -831,6 +843,7 @@ done:
     aws_cf_release(key_copied_attributes);
     aws_cf_release(key_data);
     aws_cf_release(key_ref);
+    aws_cf_release(public_key_data);
     aws_cf_release(key_type);
     aws_cf_release(key_label_ref);
 
