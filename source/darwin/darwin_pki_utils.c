@@ -391,9 +391,8 @@ static int s_aws_secitem_add_certificate_to_keychain(
             case errSecMissingEntitlement:
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
-                    "SecItemAdd certificate failed with OSStatus %d : errSecMissingEntitlement. The process attempting "
-                    "to access the keychain is missing the necessary entitlements.",
-                    (int)status);
+                    "SecItemAdd certificate failed with OSStatus %d : errSecMissingEntitlement. The process
+                    attempting " "to access the keychain is missing the necessary entitlements.", (int)status);
                 break;
             default:
                 AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
@@ -419,7 +418,8 @@ static int s_aws_secitem_add_certificate_to_keychain(
      * kSecAttrCertificateType: (CFNumberRef) value indicates the item's certificate type
      *      - values see the CSSM_CERT_TYPE enumeration in cssmtype.h
      * https://opensource.apple.com/source/Security/Security-55471/libsecurity_cssm/lib/cssmtype.h.auto.html
-     *      - default will try to add common value such as X.509. We do not pass this attribute and allow default value
+     *      - default will try to add common value such as X.509. We do not pass this attribute and allow default
+     *        value
      * to be used. If we decide to support other types of certificates, we should set and use this value explicitly.
      * kSecAttrIssuer: (CFStringRef) value indicates the item's issuer
      *      - default will try to extract issuer from the certificate itself.
@@ -493,8 +493,8 @@ static int s_aws_secitem_add_private_key_to_keychain(
             case errSecMissingEntitlement:
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
-                    "SecItemAdd private key failed with OSStatus %d : errSecMissingEntitlement. The process attempting "
-                    "to access the keychain is missing the necessary entitlements.",
+                    "SecItemAdd private key failed with OSStatus %d : errSecMissingEntitlement. The process "
+                    "attempting to access the keychain is missing the necessary entitlements.",
                     (int)status);
                 break;
             default:
@@ -799,7 +799,6 @@ int aws_secitem_import_cert_and_key(
     }
 
     // Add the certificate and private key to keychain then retrieve identity
-
     if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
         goto done;
     }
