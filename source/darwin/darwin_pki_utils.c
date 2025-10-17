@@ -800,22 +800,20 @@ int aws_secitem_import_cert_and_key(
 
     ////////////////////////////////////////////PKCS12 Creation//////////////////////////////////////////////////////
 
-    SecIdentityRef sec_identity_ref = NULL;
-
-    CFStringRef password = CFStringCreateWithCString(cf_alloc, "temp_password", kCFStringEncodingUTF8);
-
     CFMutableArrayRef items = CFArrayCreateMutable(cf_alloc, 0, &kCFTypeArrayCallBacks);
     CFArrayAppendValue(items, cert_ref);
     CFArrayAppendValue(items, key_ref);
 
     SecItemImportExportKeyParameters params = {0};
     params.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION;
+    CFStringRef password = CFStringCreateWithCString(cf_alloc, "temp_password", kCFStringEncodingUTF8);
     params.passphrase = password;
-    CFDataRef pkcs12_data;
+
+    CFDataRef pkcs12_data = NULL;
     OSStatus status = SecItemExport(items, kSecFormatPKCS12, 0, &params, &pkcs12_data);
 
-    if (!pkcs12_data) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating pkcs12 data system call.");
+    if (pkcs12_data == NULL || status != errSecSuccess) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemExport error with OSStatus:%d", (int)status);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -827,7 +825,7 @@ int aws_secitem_import_cert_and_key(
     CFArrayRef items_pkcs12 = NULL;
     status = SecPKCS12Import(pkcs12_data, dictionary, &items_pkcs12);
 
-    if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
+    if (status != errSecSuccess || CFArrayGetCount(items_pkcs12) == 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
@@ -835,9 +833,8 @@ int aws_secitem_import_cert_and_key(
 
     // Extract the identity from the first item in the array
     // identity_and_trust does not need to be released as it is not a copy or created CF object.
-    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
-    sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
-
+    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items_pkcs12, 0);
+    SecIdentityRef sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
     if (sec_identity_ref != NULL) {
         AWS_LOGF_INFO(
             AWS_LS_IO_PKI, "static: Successfully imported PKCS#12 file into keychain and retrieved identity.");
