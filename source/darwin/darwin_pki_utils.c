@@ -419,7 +419,7 @@ static int s_aws_secitem_add_certificate_to_keychain(
      *      - values see the CSSM_CERT_TYPE enumeration in cssmtype.h
      * https://opensource.apple.com/source/Security/Security-55471/libsecurity_cssm/lib/cssmtype.h.auto.html
      *      - default will try to add common value such as X.509. We do not pass this attribute and allow default
-     value
+     *        value
      * to be used. If we decide to support other types of certificates, we should set and use this value explicitly.
      * kSecAttrIssuer: (CFStringRef) value indicates the item's issuer
      *      - default will try to extract issuer from the certificate itself.
@@ -493,8 +493,9 @@ static int s_aws_secitem_add_private_key_to_keychain(
             case errSecMissingEntitlement:
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
-                    "SecItemAdd private key failed with OSStatus %d : errSecMissingEntitlement. The process
-                    attempting " "to access the keychain is missing the necessary entitlements.", (int)status);
+                    "SecItemAdd private key failed with OSStatus %d : errSecMissingEntitlement. The process "
+                    "attempting to access the keychain is missing the necessary entitlements.",
+                    (int)status);
                 break;
             default:
                 AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd private key failed with OSStatus %d", (int)status);
@@ -797,62 +798,6 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-    ////////////////////////////////////////////PKCS12 Creation//////////////////////////////////////////////////////
-
-    CFMutableArrayRef items = CFArrayCreateMutable(cf_alloc, 0, &kCFTypeArrayCallBacks);
-    CFArrayAppendValue(items, cert_ref);
-    CFArrayAppendValue(items, key_ref);
-
-    SecItemImportExportKeyParameters params = {};
-    params.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION;
-    CFStringRef password = CFStringCreateWithCString(cf_alloc, "temp_password", kCFStringEncodingUTF8);
-    params.passphrase = password;
-
-    CFDataRef pkcs12_data = NULL;
-    OSStatus status = SecItemExport(items, kSecFormatPKCS12, 0, &params, &pkcs12_data);
-
-    if (pkcs12_data == NULL || status != errSecSuccess) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemExport error with OSStatus:%d", (int)status);
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    CFMutableDictionaryRef dictionary = NULL;
-    dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
-    CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password);
-
-    CFArrayRef items_pkcs12 = NULL;
-    status = SecPKCS12Import(pkcs12_data, dictionary, &items_pkcs12);
-
-    if (status != errSecSuccess || CFArrayGetCount(items_pkcs12) == 0) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    // Extract the identity from the first item in the array
-    // identity_and_trust does not need to be released as it is not a copy or created CF object.
-    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items_pkcs12, 0);
-    SecIdentityRef sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
-    if (sec_identity_ref != NULL) {
-        AWS_LOGF_INFO(
-            AWS_LS_IO_PKI, "static: Successfully imported PKCS#12 file into keychain and retrieved identity.");
-    } else {
-        status = errSecItemNotFound;
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to retrieve identity from PKCS#12 with OSStatus %d", (int)status);
-        goto done;
-    }
-
-    *secitem_identity = sec_identity_create(sec_identity_ref);
-
-    AWS_LOGF_INFO(
-        AWS_LS_IO_PKI,
-        "static: Successfully retrieved sec_identity_t for TLS negotiation using provided certificate and private "
-        "key.");
-
-    ////////////////////////////////////////////PKCS12 Creation//////////////////////////////////////////////////////
-
-    /* Normal path for iOS and tvOS
     // Add the certificate and private key to keychain then retrieve identity
     if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
         goto done;
@@ -865,7 +810,6 @@ int aws_secitem_import_cert_and_key(
     if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, secitem_identity)) {
         goto done;
     }
-    */
 
     result = AWS_OP_SUCCESS;
 
