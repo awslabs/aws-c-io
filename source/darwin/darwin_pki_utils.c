@@ -14,6 +14,12 @@
 #include <Security/SecKey.h>
 #include <Security/Security.h>
 
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/pkcs12.h>
+#include <openssl/x509.h>
+
 /* SecureTransport is not thread-safe during identity import */
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
@@ -617,6 +623,184 @@ done:
     return result;
 }
 
+int aws_secitem_import_pkcs12(
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *pkcs12_cursor,
+    const struct aws_byte_cursor *password,
+    sec_identity_t *out_identity) {
+
+    int result = AWS_OP_ERR;
+    CFArrayRef items = NULL;
+    CFDataRef pkcs12_data = NULL;
+    CFMutableDictionaryRef dictionary = NULL;
+    SecIdentityRef sec_identity_ref = NULL;
+    CFStringRef password_ref = NULL;
+
+    pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
+    if (!pkcs12_data) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating pkcs12 data system call.");
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    if (password->len) {
+        password_ref = CFStringCreateWithBytes(cf_alloc, password->ptr, password->len, kCFStringEncodingUTF8, false);
+    } else {
+        password_ref = CFStringCreateWithCString(cf_alloc, "", kCFStringEncodingUTF8);
+    }
+
+    dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
+    CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
+
+    OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
+
+    if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    // Extract the identity from the first item in the array
+    // identity_and_trust does not need to be released as it is not a copy or created CF object.
+    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
+    sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
+
+    if (sec_identity_ref != NULL) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_PKI, "static: Successfully imported PKCS#12 file into keychain and retrieved identity.");
+    } else {
+        status = errSecItemNotFound;
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to retrieve identity from PKCS#12 with OSStatus %d", (int)status);
+        goto done;
+    }
+
+    *out_identity = sec_identity_create(sec_identity_ref);
+
+    result = AWS_OP_SUCCESS;
+
+done:
+    // cleanup
+    aws_cf_release(pkcs12_data);
+    aws_cf_release(dictionary);
+    aws_cf_release(password_ref);
+    aws_cf_release(items);
+    return result;
+}
+
+int aws_convert_cert_and_key_to_pkcs12(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *cert_pem,
+    const struct aws_byte_cursor *key_pem,
+    sec_identity_t *out_identity) {
+
+    AWS_PRECONDITION(cert_pem != NULL);
+    AWS_PRECONDITION(key_pem != NULL);
+
+    const char *password = "mypassword123";
+    const struct aws_byte_cursor password_cursor = aws_byte_cursor_from_c_str(password);
+
+    int result = AWS_OP_ERR;
+    BIO *cert_bio = NULL;
+    BIO *key_bio = NULL;
+    BIO *pkcs12_bio = NULL;
+    X509 *cert = NULL;
+    EVP_PKEY *pkey = NULL;
+    PKCS12 *p12 = NULL;
+
+    /* Create BIOs from PEM data */
+    cert_bio = BIO_new_mem_buf(cert_pem->ptr, (int)cert_pem->len);
+    if (!cert_bio) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to create certificate BIO");
+        goto cleanup;
+    }
+
+    key_bio = BIO_new_mem_buf(key_pem->ptr, (int)key_pem->len);
+    if (!key_bio) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to create private key BIO");
+        goto cleanup;
+    }
+
+    /* Parse certificate */
+    cert = PEM_read_bio_X509(cert_bio, NULL, NULL, NULL);
+    if (!cert) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to parse certificate PEM");
+        goto cleanup;
+    }
+
+    /* Parse private key */
+    pkey = PEM_read_bio_PrivateKey(key_bio, NULL, NULL, NULL);
+    if (!pkey) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to parse private key PEM");
+        goto cleanup;
+    }
+
+    /* Create PKCS12 structure */
+    p12 = PKCS12_create(password, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
+    if (!p12) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to create PKCS12 structure");
+        goto cleanup;
+    }
+
+    /* Write PKCS12 to BIO */
+    pkcs12_bio = BIO_new(BIO_s_mem());
+    if (!pkcs12_bio) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to create PKCS12 output BIO");
+        goto cleanup;
+    }
+
+    if (i2d_PKCS12_bio(pkcs12_bio, p12) != 1) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to write PKCS12 to BIO");
+        goto cleanup;
+    }
+
+    /* Get PKCS12 data from BIO */
+    char *pkcs12_data;
+    long pkcs12_len = BIO_get_mem_data(pkcs12_bio, &pkcs12_data);
+    if (pkcs12_len <= 0) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to get PKCS12 data from BIO");
+        goto cleanup;
+    }
+
+    struct aws_byte_buf pkcs12_out;
+    /* Copy to output buffer */
+    if (aws_byte_buf_init(&pkcs12_out, alloc, pkcs12_len)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to initialize output buffer");
+        goto cleanup;
+    }
+
+    if (aws_byte_buf_write(&pkcs12_out, (uint8_t *)pkcs12_data, pkcs12_len)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to write PKCS12 data to output buffer");
+        aws_byte_buf_clean_up(&pkcs12_out);
+        goto cleanup;
+    }
+
+    struct aws_byte_cursor pkcs12_byte_cursor = aws_byte_cursor_from_buf(&pkcs12_out);
+
+    if (aws_secitem_import_pkcs12(cf_alloc, &pkcs12_byte_cursor, &password_cursor, out_identity)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "RUH ROH RORIE");
+        goto cleanup;
+    }
+
+    result = AWS_OP_SUCCESS;
+
+cleanup:
+    if (cert_bio)
+        BIO_free(cert_bio);
+    if (key_bio)
+        BIO_free(key_bio);
+    if (pkcs12_bio)
+        BIO_free(pkcs12_bio);
+    if (cert)
+        X509_free(cert);
+    if (pkey)
+        EVP_PKEY_free(pkey);
+    if (p12)
+        PKCS12_free(p12);
+
+    return result;
+}
+
 int aws_secitem_import_cert_and_key(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
@@ -629,6 +813,12 @@ int aws_secitem_import_cert_and_key(
     AWS_PRECONDITION(private_key != NULL);
 
     int result = AWS_OP_ERR;
+
+    if (aws_convert_cert_and_key_to_pkcs12(alloc, cf_alloc, public_cert_chain, private_key, secitem_identity)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "RUH ROH RORIE 2");
+        return result;
+    }
+    return AWS_OP_SUCCESS;
 
     CFErrorRef error = NULL;
 
@@ -832,70 +1022,6 @@ done:
     aws_pem_objects_clean_up(&decoded_cert_buffer_list);
     aws_pem_objects_clean_up(&decoded_key_buffer_list);
 
-    return result;
-}
-
-int aws_secitem_import_pkcs12(
-    CFAllocatorRef cf_alloc,
-    const struct aws_byte_cursor *pkcs12_cursor,
-    const struct aws_byte_cursor *password,
-    sec_identity_t *out_identity) {
-
-    int result = AWS_OP_ERR;
-    CFArrayRef items = NULL;
-    CFDataRef pkcs12_data = NULL;
-    CFMutableDictionaryRef dictionary = NULL;
-    SecIdentityRef sec_identity_ref = NULL;
-    CFStringRef password_ref = NULL;
-
-    pkcs12_data = CFDataCreate(cf_alloc, pkcs12_cursor->ptr, pkcs12_cursor->len);
-    if (!pkcs12_data) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating pkcs12 data system call.");
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    if (password->len) {
-        password_ref = CFStringCreateWithBytes(cf_alloc, password->ptr, password->len, kCFStringEncodingUTF8, false);
-    } else {
-        password_ref = CFStringCreateWithCString(cf_alloc, "", kCFStringEncodingUTF8);
-    }
-
-    dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
-    CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
-
-    OSStatus status = SecPKCS12Import(pkcs12_data, dictionary, &items);
-
-    if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    // Extract the identity from the first item in the array
-    // identity_and_trust does not need to be released as it is not a copy or created CF object.
-    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
-    sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
-
-    if (sec_identity_ref != NULL) {
-        AWS_LOGF_INFO(
-            AWS_LS_IO_PKI, "static: Successfully imported PKCS#12 file into keychain and retrieved identity.");
-    } else {
-        status = errSecItemNotFound;
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to retrieve identity from PKCS#12 with OSStatus %d", (int)status);
-        goto done;
-    }
-
-    *out_identity = sec_identity_create(sec_identity_ref);
-
-    result = AWS_OP_SUCCESS;
-
-done:
-    // cleanup
-    aws_cf_release(pkcs12_data);
-    aws_cf_release(dictionary);
-    aws_cf_release(password_ref);
-    aws_cf_release(items);
     return result;
 }
 

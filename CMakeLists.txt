@@ -103,6 +103,7 @@ elseif (APPLE)
 
     find_library(SECURITY_LIB Security)
     find_library(NETWORK_LIB Network)
+    find_package(OpenSSL REQUIRED)
 
     if (NOT SECURITY_LIB)
         message(FATAL_ERROR "Security framework not found")
@@ -112,6 +113,7 @@ elseif (APPLE)
     endif()
 
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
+    list(APPEND DEP_AWS_LIBS OpenSSL::SSL OpenSSL::Crypto)
     list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")

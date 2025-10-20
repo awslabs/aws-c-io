@@ -96,6 +96,23 @@ int aws_secitem_import_pkcs12(
     const struct aws_byte_cursor *password,
     sec_identity_t *out_identity);
 
+/**
+ * Converts PEM certificate and private key to PKCS#12 format using OpenSSL.
+ *
+ * @param alloc Allocator for memory management
+ * @param cert_pem PEM-encoded certificate
+ * @param key_pem PEM-encoded private key
+ * @param password Password for PKCS#12 (can be NULL for no password)
+ * @param pkcs12_out Output buffer for PKCS#12 data
+ * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
+ */
+int aws_convert_cert_and_key_to_pkcs12(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *cert_pem,
+    const struct aws_byte_cursor *key_pem,
+    sec_identity_t *out_identity);
+
 #endif /* AWS_OS_APPLE */
 
 #ifdef _WIN32
