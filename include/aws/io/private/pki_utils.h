@@ -107,7 +107,6 @@ int aws_secitem_import_pkcs12(
  * @return AWS_OP_SUCCESS on success, AWS_OP_ERR on failure
  */
 int aws_convert_cert_and_key_to_pkcs12(
-    struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *cert_pem,
     const struct aws_byte_cursor *key_pem,
