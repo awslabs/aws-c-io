@@ -769,11 +769,8 @@ int aws_convert_cert_and_key_to_pkcs12(
         goto cleanup;
     }
 
-    if (aws_byte_buf_write(&pkcs12_out, (uint8_t *)pkcs12_data, pkcs12_len)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to write PKCS12 data to output buffer");
-        aws_byte_buf_clean_up(&pkcs12_out);
-        goto cleanup;
-    }
+    memcpy(pkcs12_out.buffer, pkcs12_data, pkcs12_len);
+    pkcs12_out.len = pkcs12_len;
 
     struct aws_byte_cursor pkcs12_byte_cursor = aws_byte_cursor_from_buf(&pkcs12_out);
 
