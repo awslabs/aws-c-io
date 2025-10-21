@@ -815,7 +815,7 @@ done:
     // cleanup
     aws_cf_release(pkcs12_data_ref);
     aws_cf_release(dictionary);
-    aws_cf_release(password_ref);
+    // aws_cf_release(password_ref);
     aws_cf_release(items);
 
 cleanup:
