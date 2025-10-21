@@ -697,7 +697,7 @@ int aws_convert_cert_and_key_to_pkcs12(
     AWS_PRECONDITION(key_pem != NULL);
 
     // OpenSSL Start
-    const char *password = "";
+    const char *password = "some_password";
     const struct aws_byte_cursor password_cursor = aws_byte_cursor_from_c_str(password);
 
     int result = AWS_OP_ERR;
