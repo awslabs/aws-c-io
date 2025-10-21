@@ -697,8 +697,8 @@ int aws_convert_cert_and_key_to_pkcs12(
     AWS_PRECONDITION(key_pem != NULL);
 
     // OpenSSL Start
-    const char *password = "some_password";
-    const struct aws_byte_cursor password_cursor = aws_byte_cursor_from_c_str(password);
+    // const char *password = "some_password";
+    // const struct aws_byte_cursor password_cursor = aws_byte_cursor_from_c_str(password);
 
     int result = AWS_OP_ERR;
     BIO *cert_bio = NULL;
@@ -736,7 +736,8 @@ int aws_convert_cert_and_key_to_pkcs12(
     }
 
     /* Create PKCS12 structure */
-    p12 = PKCS12_create(password, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
+    // p12 = PKCS12_create(password, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
+    p12 = PKCS12_create(NULL, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
     if (!p12) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to create PKCS12 structure");
         goto cleanup;
@@ -769,7 +770,7 @@ int aws_convert_cert_and_key_to_pkcs12(
     CFDataRef pkcs12_data_ref = NULL;
     CFMutableDictionaryRef dictionary = NULL;
     SecIdentityRef sec_identity_ref = NULL;
-    CFStringRef password_ref = NULL;
+    // CFStringRef password_ref = NULL;
 
     pkcs12_data_ref = CFDataCreate(cf_alloc, (const UInt8 *)pkcs12_data, pkcs12_len);
     if (!pkcs12_data_ref) {
@@ -777,11 +778,11 @@ int aws_convert_cert_and_key_to_pkcs12(
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
-    password_ref =
-        CFStringCreateWithBytes(cf_alloc, password_cursor.ptr, password_cursor.len, kCFStringEncodingUTF8, false);
+    // password_ref =
+    //     CFStringCreateWithBytes(cf_alloc, password_cursor.ptr, password_cursor.len, kCFStringEncodingUTF8, false);
 
     dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
-    CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
+    // CFDictionaryAddValue(dictionary, kSecImportExportPassphrase, password_ref);
 
     OSStatus status = SecPKCS12Import(pkcs12_data_ref, dictionary, &items);
 
