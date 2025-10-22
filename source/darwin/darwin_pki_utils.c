@@ -778,7 +778,7 @@ int aws_convert_cert_and_key_to_pkcs12(
     // compile-time constant string doesn't require cleanup.
     CFStringRef emptyPassphrase = CFSTR("");
     CFDictionarySetValue(dictionary, kSecImportExportPassphrase, emptyPassphrase);
-    // CFDictionaryAddValue(dictionary, kSecImportToMemoryOnly, kCFBooleanTrue);
+    CFDictionaryAddValue(dictionary, kSecImportToMemoryOnly, kCFBooleanTrue);
 
     OSStatus status = SecPKCS12Import(pkcs12_data_ref, dictionary, &items);
 
