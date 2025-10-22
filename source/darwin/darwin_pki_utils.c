@@ -733,7 +733,14 @@ int aws_convert_cert_and_key_to_pkcs12(
     }
 
     /* Create PKCS12 structure */
-    p12 = PKCS12_create(NULL, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
+    /*
+      PKCS12 *PKCS12_create(const char *pass, const char *name, EVP_PKEY *pkey, X509 *cert,
+                      STACK_OF(X509) *ca, int nid_key, int nid_cert, int iter,
+                      int mac_iter, int keytype)
+    */
+    // p12 = PKCS12_create(NULL, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
+    // Try turning off ALL encrpytion
+    p12 = PKCS12_create(NULL, NULL, pkey, cert, NULL, -1, -1, 0, -1, 0);
     if (!p12) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to create PKCS12 structure");
         goto cleanup;
@@ -762,7 +769,7 @@ int aws_convert_cert_and_key_to_pkcs12(
     // OpenSSL End
 
     // SecItem Start
-    CFArrayRef items = NULL;
+    CFArrayRef pkcs12_identity_array = NULL;
     CFDataRef pkcs12_data_ref = NULL;
     CFMutableDictionaryRef dictionary = NULL;
     SecIdentityRef sec_identity_ref = NULL;
@@ -775,14 +782,18 @@ int aws_convert_cert_and_key_to_pkcs12(
     }
 
     dictionary = CFDictionaryCreateMutable(cf_alloc, 0, NULL, NULL);
-    // compile-time constant string doesn't require cleanup.
+    // compile-time constant string doesn't require cleanup. We don't use a password but this
+    // attribute is added to be explicit and consistent across macOS versions.
     CFStringRef emptyPassphrase = CFSTR("");
     CFDictionarySetValue(dictionary, kSecImportExportPassphrase, emptyPassphrase);
+    // kSecImportToMemoryOnly is used to fully bypass the keychain. macOS will still import
+    // the cert/key within a PKCS12 file into the login keychain without this attribute. This
+    // attribute is only available macos(15.0)+
     CFDictionaryAddValue(dictionary, kSecImportToMemoryOnly, kCFBooleanTrue);
 
-    OSStatus status = SecPKCS12Import(pkcs12_data_ref, dictionary, &items);
+    OSStatus status = SecPKCS12Import(pkcs12_data_ref, dictionary, &pkcs12_identity_array);
 
-    if (status != errSecSuccess || CFArrayGetCount(items) == 0) {
+    if (status != errSecSuccess || CFArrayGetCount(pkcs12_identity_array) == 0) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to import PKCS#12 file with OSStatus:%d", (int)status);
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
@@ -790,7 +801,7 @@ int aws_convert_cert_and_key_to_pkcs12(
 
     // Extract the identity from the first item in the array
     // identity_and_trust does not need to be released as it is not a copy or created CF object.
-    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(items, 0);
+    CFDictionaryRef identity_and_trust = CFArrayGetValueAtIndex(pkcs12_identity_array, 0);
     sec_identity_ref = (SecIdentityRef)CFDictionaryGetValue(identity_and_trust, kSecImportItemIdentity);
 
     if (sec_identity_ref != NULL) {
@@ -811,7 +822,7 @@ done:
     // cleanup
     aws_cf_release(pkcs12_data_ref);
     aws_cf_release(dictionary);
-    aws_cf_release(items);
+    aws_cf_release(pkcs12_identity_array);
 
 cleanup:
     if (cert_bio)
