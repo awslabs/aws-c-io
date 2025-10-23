@@ -738,9 +738,7 @@ int aws_convert_cert_and_key_to_pkcs12(
                       STACK_OF(X509) *ca, int nid_key, int nid_cert, int iter,
                       int mac_iter, int keytype)
     */
-    // p12 = PKCS12_create(NULL, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
-    // Try turning off ALL encrpytion
-    p12 = PKCS12_create(NULL, NULL, pkey, cert, NULL, -1, -1, 0, -1, 0);
+    p12 = PKCS12_create(NULL, "aws-c-io", pkey, cert, NULL, 0, 0, 0, 0, 0);
     if (!p12) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed to create PKCS12 structure");
         goto cleanup;
@@ -786,10 +784,11 @@ int aws_convert_cert_and_key_to_pkcs12(
     // attribute is added to be explicit and consistent across macOS versions.
     CFStringRef emptyPassphrase = CFSTR("");
     CFDictionarySetValue(dictionary, kSecImportExportPassphrase, emptyPassphrase);
+
     // kSecImportToMemoryOnly is used to fully bypass the keychain. macOS will still import
     // the cert/key within a PKCS12 file into the login keychain without this attribute. This
     // attribute is only available macos(15.0)+
-    CFDictionaryAddValue(dictionary, kSecImportToMemoryOnly, kCFBooleanTrue);
+    // CFDictionaryAddValue(dictionary, kSecImportToMemoryOnly, kCFBooleanTrue);
 
     OSStatus status = SecPKCS12Import(pkcs12_data_ref, dictionary, &pkcs12_identity_array);
 
