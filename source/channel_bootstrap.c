@@ -1583,6 +1583,8 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
              * when a TLS connection has been successfully established. At that point, we signal a successful TLS
              * handshake, which also makes the server name and protocol available (if provided).
              */
+            // FIXME A code path used in the tls_server_hangup_during_negotiation test needs a slot
+            //   set by s_setup_server_tls.
             s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
             return;
         }

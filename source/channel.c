@@ -1005,7 +1005,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
 }
 
 size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot) {
-    AWS_ASSERT(slot->adj_right);
+    AWS_FATAL_ASSERT(slot->adj_right);
     return slot->channel->read_back_pressure_enabled ? slot->adj_right->window_size : SIZE_MAX;
 }
 
