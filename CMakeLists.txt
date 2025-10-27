@@ -174,6 +174,8 @@ aws_check_headers(${PROJECT_NAME} ${AWS_IO_HEADERS})
 
 aws_add_sanitizers(${PROJECT_NAME})
 
+target_compile_definitions(${PROJECT_NAME} PRIVATE "-DDEBUG_BUILD")
+
 # We are not ABI stable yet
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
