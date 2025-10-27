@@ -423,6 +423,7 @@ generate_test_driver(${TEST_BINARY_NAME})
 if(USE_S2N)
     target_compile_definitions(${PROJECT_NAME}-tests PRIVATE "-DUSE_S2N")
 endif()
+target_compile_definitions(${PROJECT_NAME}-tests PRIVATE "-DDEBUG_BUILD")
 
 # SSL certificates to use for testing.
 add_custom_command(TARGET ${TEST_BINARY_NAME} PRE_BUILD

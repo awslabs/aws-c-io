@@ -208,8 +208,6 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
     AWS_PRECONDITION(creation_args->event_loop);
     AWS_PRECONDITION(creation_args->on_setup_completed);
 
-    AWS_FATAL_ASSERT(false);
-
     struct aws_channel *channel = aws_mem_calloc(alloc, 1, sizeof(struct aws_channel));
     if (!channel) {
         return NULL;
@@ -1007,7 +1005,7 @@ int aws_channel_slot_on_handler_shutdown_complete(
 }
 
 size_t aws_channel_slot_downstream_read_window(struct aws_channel_slot *slot) {
-    AWS_FATAL_ASSERT(slot->adj_right);
+    AWS_ASSERT(slot->adj_right);
     return slot->channel->read_back_pressure_enabled ? slot->adj_right->window_size : SIZE_MAX;
 }
 
