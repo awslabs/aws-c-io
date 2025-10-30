@@ -1539,7 +1539,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             security_policy = "AWS-CRT-SDK-TLSv1.2-2025";
             break;
         case AWS_IO_TLS_CIPHER_PREF_TLSV1_0_2023_06:
-            security_policy = "AWS-CRT-SDK-TLSv1.2-2025";
+            security_policy = "AWS-CRT-SDK-TLSv1.0-2023";
             break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Unrecognized TLS Cipher Preference: %d", options->cipher_pref);

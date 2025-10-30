@@ -182,6 +182,16 @@ foreach(EVENT_LOOP_DEFINE IN LISTS EVENT_LOOP_DEFINES)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_ENABLE_${EVENT_LOOP_DEFINE}")
 endforeach()
 
+if (AWS_USE_SECITEM)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
+endif()
+
+# Darwin means Apple stationary operating systems, e.g. macOS
+if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    # Target file-based keychain on macOS.
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_SECITEM_FILEBASED_KEYCHAIN")
+endif()
+
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
 endif()
