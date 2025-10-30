@@ -395,8 +395,9 @@ static int s_aws_secitem_add_certificate_to_keychain(
             case errSecMissingEntitlement:
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
-                    "SecItemAdd certificate failed with OSStatus %d : errSecMissingEntitlement. The process
-                    attempting " "to access the keychain is missing the necessary entitlements.", (int)status);
+                    "SecItemAdd certificate failed with OSStatus %d : errSecMissingEntitlement. The process "
+                    "attempting to access the keychain is missing the necessary entitlements.",
+                    (int)status);
                 break;
             default:
                 AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemAdd certificate failed with OSStatus %d", (int)status);
