@@ -320,11 +320,6 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
                 goto on_error;
             }
         }
-// Dispatch Queue uses the Grand Central Dispatch. We throw task blocks to GCD which are run on a thread pool
-// managed by Apple. We have no need for more than one Dispatch Queue type event loop.
-#if defined(AWS_ENABLE_DISPATCH_QUEUE)
-        break;
-#endif
     }
 
     if (options->shutdown_options != NULL) {
