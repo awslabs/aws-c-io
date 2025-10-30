@@ -580,11 +580,6 @@ done:
     return result;
 }
 
-static bool s_compare_serial_numbers(CFDataRef a, CFDataRef b) {
-    return CFDataGetLength(a) == CFDataGetLength(b) &&
-           memcmp(CFDataGetBytePtr(a), CFDataGetBytePtr(b), CFDataGetLength(a)) == 0;
-}
-
 static int s_aws_secitem_get_identity(
     CFAllocatorRef cf_alloc,
     CFDataRef serial_data,
@@ -638,6 +633,11 @@ static int s_aws_secitem_get_identity(
     CFIndex identity_num = CFArrayGetCount(sec_identity_array);
     AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "Found %d identities", (int)identity_num);
 
+    struct aws_byte_cursor serial_data_cursor = {
+        .ptr = (uint8_t *)CFDataGetBytePtr(serial_data),
+        .len = (size_t)CFDataGetLength(serial_data),
+    };
+
     /* With the kSecAttrSerialNumber and kSecMatchItemList filters in place, the following additional serial number
      * verification is NOT needed. However, I'll keep it for now to be on the safe side.
      * NOTE: Only public data is processed here, i.e. any logged user already has access to it without any additional
@@ -664,7 +664,12 @@ static int s_aws_secitem_get_identity(
 
         CFDataRef found_cert_serial_data = SecCertificateCopySerialNumberData(found_cert, NULL);
 
-        if (s_compare_serial_numbers(serial_data, found_cert_serial_data)) {
+        struct aws_byte_cursor found_cert_serial_data_cursor = {
+            .ptr = (uint8_t *)CFDataGetBytePtr(found_cert_serial_data),
+            .len = (size_t)CFDataGetLength(found_cert_serial_data),
+        };
+
+        if (aws_byte_cursor_eq(&serial_data_cursor, &found_cert_serial_data_cursor)) {
             AWS_LOGF_TRACE(AWS_LS_IO_PKI, "Found a matching identity");
             *out_identity = sec_identity_create(sec_identity_ref);
             if (*out_identity == NULL) {
