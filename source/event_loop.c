@@ -269,9 +269,6 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
     }
 
     struct aws_event_loop_group *el_group = aws_mem_calloc(allocator, 1, sizeof(struct aws_event_loop_group));
-    if (el_group == NULL) {
-        return NULL;
-    }
 
     el_group->allocator = allocator;
     aws_ref_count_init(
@@ -287,6 +284,8 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
     if (aws_array_list_init_dynamic(&el_group->event_loops, allocator, el_count, sizeof(struct aws_event_loop *))) {
         goto on_error;
     }
+
+    el_group->event_loop_type = options->type;
 
     for (uint16_t i = 0; i < el_count; ++i) {
         /* Don't pin to hyper-threads if a user cared enough to specify a NUMA node */
@@ -396,6 +395,10 @@ void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_l
 
 size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group) {
     return aws_array_list_length(&el_group->event_loops);
+}
+
+enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_loop_group *el_group) {
+    return el_group->event_loop_type;
 }
 
 struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index) {
