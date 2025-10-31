@@ -286,6 +286,9 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
     }
 
     el_group->event_loop_type = options->type;
+    if (el_group->event_loop_type == AWS_EVENT_LOOP_PLATFORM_DEFAULT) {
+        el_group->event_loop_type = aws_event_loop_get_default_type();
+    }
 
     for (uint16_t i = 0; i < el_count; ++i) {
         /* Don't pin to hyper-threads if a user cared enough to specify a NUMA node */
