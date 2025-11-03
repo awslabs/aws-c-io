@@ -216,6 +216,12 @@ AWS_IO_API
 size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group);
 
 /**
+ * Gets the event loop type used by an event loop group.
+ */
+AWS_IO_API
+enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_loop_group *el_group);
+
+/**
  * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
  * this load balancing is done as it is subject to change in the future. Currently it uses the "best-of-two" algorithm
  * based on the load factor of each loop.
