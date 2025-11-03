@@ -2599,27 +2599,24 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     struct aws_byte_buf cert_buf = {0};
     struct aws_byte_buf key_buf = {0};
 
-    // #    if !defined(AWS_USE_SECITEM)
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert0.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey.pem"));
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
 
-    //     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert0.pem"));
-    //     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey.pem"));
-    //     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
-    //     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
-    //     struct aws_tls_ctx_options tls_options = {0};
-    //     AWS_FATAL_ASSERT(
-    //         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+    /* import happens in here */
+    struct aws_tls_ctx *tls = aws_tls_client_ctx_new(allocator, &tls_options);
+    AWS_FATAL_ASSERT(tls);
+    aws_tls_ctx_release(tls);
+    /* import the same certs twice */
+    tls = aws_tls_client_ctx_new(allocator, &tls_options);
+    AWS_FATAL_ASSERT(tls);
+    aws_tls_ctx_release(tls);
 
-    //     /* import happens in here */
-    //     struct aws_tls_ctx *tls = aws_tls_client_ctx_new(allocator, &tls_options);
-    //     AWS_FATAL_ASSERT(tls);
-    //     aws_tls_ctx_release(tls);
-    //     /* import the same certs twice */
-    //     tls = aws_tls_client_ctx_new(allocator, &tls_options);
-    //     AWS_FATAL_ASSERT(tls);
-    //     aws_tls_ctx_release(tls);
-
-    //     aws_tls_ctx_options_clean_up(&tls_options);
-    // #    endif /* !AWS_USE_SECITEM */
+    aws_tls_ctx_options_clean_up(&tls_options);
 
     /* clean up */
     aws_byte_buf_clean_up(&cert_buf);
