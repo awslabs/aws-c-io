@@ -101,15 +101,8 @@ elseif (APPLE)
             "source/darwin/*.c"
             )
 
-    find_library(SECURITY_LIB Security)
-    find_library(NETWORK_LIB Network)
-
-    if (NOT SECURITY_LIB)
-        message(FATAL_ERROR "Security framework not found")
-    endif()
-    if (NOT NETWORK_LIB)
-        message(FATAL_ERROR "Network framework not found")
-    endif()
+    find_library(SECURITY_LIB Security REQUIRED)
+    find_library(NETWORK_LIB Network REQUIRED)
 
     list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
     list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
