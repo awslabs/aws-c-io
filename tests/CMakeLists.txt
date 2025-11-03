@@ -19,19 +19,19 @@ add_test_case(io_library_init_cleanup_init_cleanup)
 add_test_case(io_library_error_order)
 
 # Dispatch Queue does not support pipe
-if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
-add_pipe_test_case(pipe_open_close)
-add_pipe_test_case(pipe_read_write)
-add_pipe_test_case(pipe_read_write_large_buffer)
-add_pipe_test_case(pipe_readable_event_sent_after_write)
-add_pipe_test_case(pipe_readable_event_sent_once)
-add_pipe_test_case(pipe_readable_event_sent_on_subscribe_if_data_present)
-add_pipe_test_case(pipe_readable_event_sent_on_resubscribe_if_data_present)
-add_pipe_test_case(pipe_readable_event_sent_again_after_all_data_read)
-add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
-add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
-add_pipe_test_case(pipe_writes_are_fifo)
-add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
+if(NOT APPLE)
+    add_pipe_test_case(pipe_open_close)
+    add_pipe_test_case(pipe_read_write)
+    add_pipe_test_case(pipe_read_write_large_buffer)
+    add_pipe_test_case(pipe_readable_event_sent_after_write)
+    add_pipe_test_case(pipe_readable_event_sent_once)
+    add_pipe_test_case(pipe_readable_event_sent_on_subscribe_if_data_present)
+    add_pipe_test_case(pipe_readable_event_sent_on_resubscribe_if_data_present)
+    add_pipe_test_case(pipe_readable_event_sent_again_after_all_data_read)
+    add_pipe_test_case(pipe_error_event_sent_after_write_end_closed)
+    add_pipe_test_case(pipe_error_event_sent_on_subscribe_if_write_end_already_closed)
+    add_pipe_test_case(pipe_writes_are_fifo)
+    add_pipe_test_case(pipe_clean_up_cancels_pending_writes)
 endif()
 
 
@@ -40,7 +40,7 @@ add_test_case(event_loop_canceled_tasks_run_in_el_thread)
 
 if(USE_IO_COMPLETION_PORTS)
     add_test_case(event_loop_completion_events)
-elseif(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK) # Dispatch Queue does not support pipe
+elseif(NOT APPLE) # Dispatch Queue does not support pipe
     add_test_case(event_loop_subscribe_unsubscribe)
     add_test_case(event_loop_writable_event_on_subscribe)
     add_test_case(event_loop_no_readable_event_before_write)
@@ -69,7 +69,9 @@ add_test_case(local_socket_communication)
 add_net_test_case(tcp_socket_communication)
 add_net_test_case(udp_socket_communication)
 add_net_test_case(test_socket_with_bind_to_interface)
-add_net_test_case(test_socket_with_bind_to_invalid_interface)
+if(NOT APPLE)
+    add_net_test_case(test_socket_with_bind_to_invalid_interface)
+endif ()
 add_net_test_case(test_is_network_interface_name_valid)
 add_net_test_case(connect_timeout)
 
@@ -95,18 +97,18 @@ add_test_case(parse_ipv4_invalid_addresses)
 add_test_case(parse_ipv6_valid_addresses)
 add_test_case(parse_ipv6_invalid_addresses)
 
-if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
-# Apple Network Framework does not support bind+connect
-add_test_case(udp_bind_connect_communication)
-# The read/write will always run a different thread for Apple Network Framework
-add_test_case(wrong_thread_read_write_fails)
-# Apple Network Framework would not validate the binding endpoint until we start the
-# listen. The test does not apply here.
-add_test_case(incoming_duplicate_tcp_bind_errors)
-# nw_socket does not allow clean up event loop before socket shutdown, thus the following tests triggered
-# by event loop shutdown would not apply to Apple Network Framework
-add_net_test_case(connect_timeout_cancelation)
-add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
+if(NOT APPLE)
+    # Apple Network Framework does not support bind+connect
+    add_test_case(udp_bind_connect_communication)
+    # The read/write will always run a different thread for Apple Network Framework
+    add_test_case(wrong_thread_read_write_fails)
+    # Apple Network Framework would not validate the binding endpoint until we start the
+    # listen. The test does not apply here.
+    add_test_case(incoming_duplicate_tcp_bind_errors)
+    # nw_socket does not allow clean up event loop before socket shutdown, thus the following tests triggered
+    # by event loop shutdown would not apply to Apple Network Framework
+    add_net_test_case(connect_timeout_cancelation)
+    add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 endif()
 
 if(WIN32)
@@ -242,11 +244,11 @@ if(NOT BYO_CRYPTO)
     # to be a way to disable it
     if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
         # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
-        if(NOT AWS_USE_SECITEM)
-        add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
-        # SecItem does not allow use of depricated TLS versions
-        add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
-        add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
+        if(NOT APPLE)
+            add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
+            # SecItem does not allow use of deprecated TLS versions
+            add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
+            add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
         endif()
         add_net_test_case(tls_client_channel_negotiation_error_override_legacy_crypto_tls11)
     endif()
@@ -278,13 +280,20 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
 
     # Misc non-badssl tls tests
-    add_net_test_case(test_duplicate_cert_import)
+    if(NOT APPLE)
+        # Requires entitlement.
+        add_net_test_case(test_duplicate_cert_import)
+    endif()
     add_net_test_case(tls_channel_echo_and_backpressure_test)
     add_net_test_case(tls_channel_shutdown_with_cache_test)
     add_net_test_case(tls_channel_shutdown_with_cache_window_update_after_shutdown_test)
     add_net_test_case(tls_client_channel_negotiation_success)
     add_net_test_case(tls_server_multiple_connections)
-    add_net_test_case(tls_server_hangup_during_negotiation)
+    if(NOT APPLE)
+        # This test checks that server can handle hangup in the middle of TLS negotiation. Since Apple Network framework
+        # hides TLS handshake, this test is not applicable to Apple platforms.
+        add_net_test_case(tls_server_hangup_during_negotiation)
+    endif()
     add_net_test_case(tls_client_channel_no_verify)
     add_net_test_case(test_tls_negotiation_timeout)
     add_net_test_case(alpn_successfully_negotiates)
@@ -292,27 +301,27 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(test_ecc_cert_import)
 
     add_test_case(test_tls_cipher_preference)
-if(NOT AWS_USE_SECITEM)
-    # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
-    # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
-    # valid app bundle.
-    add_net_test_case(test_concurrent_cert_import)
 
-    # PKCS8 is not supported on iOS. We will not support PKCS8 on macOS using SecItem.
-    # PKCS8 support for SecItem can be added in the future but it will require macOS
-    # specific branching of logic and import of the key into the keychain.
-    add_net_test_case(test_pkcs8_import)
+    if(NOT APPLE)
+        # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
+        # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
+        # valid app bundle.
+        add_net_test_case(test_concurrent_cert_import)
 
-    # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
-    # further up the channel. Apple Network Framework's connection handles both the socket connection as well
-    # as the TLS handshake within the same create connection call without external notification that the socket
-    # has succeeded prior to the TLS negotiation. As such, this test will not work for Secitem.
-    add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
+        # PKCS8 is not supported on Apple platforms. PKCS8 support for SecItem can be added in the future but it will
+        # require macOS specific branching of logic and import of the key into the keychain.
+        add_net_test_case(test_pkcs8_import)
 
-    # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
-    # the socket establishment and does not need a separate timeout task for TLS.
-    add_net_test_case(tls_channel_statistics_test)
-endif()
+        # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
+        # further up the channel. Apple Network Framework's connection handles both the socket connection as well
+        # as the TLS handshake within the same create connection call without external notification that the socket
+        # has succeeded prior to the TLS negotiation. As such, this test will not work for Secitem.
+        add_net_test_case(tls_client_channel_negotiation_error_socket_closed)
+
+        # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
+        # the socket establishment and does not need a separate timeout task for TLS.
+        add_net_test_case(tls_channel_statistics_test)
+    endif()
 
     add_test_case(alpn_error_creating_handler)
     add_test_case(tls_destroy_null_context)

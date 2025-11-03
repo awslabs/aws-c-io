@@ -15,13 +15,7 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
-#if defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)
-static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
-#elif defined(AWS_USE_APPLE_DISPATCH_QUEUE)
-static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
-#else
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
-#endif
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
@@ -269,9 +263,6 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
     }
 
     struct aws_event_loop_group *el_group = aws_mem_calloc(allocator, 1, sizeof(struct aws_event_loop_group));
-    if (el_group == NULL) {
-        return NULL;
-    }
 
     el_group->allocator = allocator;
     aws_ref_count_init(
@@ -286,6 +277,11 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
 
     if (aws_array_list_init_dynamic(&el_group->event_loops, allocator, el_count, sizeof(struct aws_event_loop *))) {
         goto on_error;
+    }
+
+    el_group->event_loop_type = options->type;
+    if (el_group->event_loop_type == AWS_EVENT_LOOP_PLATFORM_DEFAULT) {
+        el_group->event_loop_type = aws_event_loop_get_default_type();
     }
 
     for (uint16_t i = 0; i < el_count; ++i) {
@@ -396,6 +392,10 @@ void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_l
 
 size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group) {
     return aws_array_list_length(&el_group->event_loops);
+}
+
+enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_loop_group *el_group) {
+    return el_group->event_loop_type;
 }
 
 struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index) {

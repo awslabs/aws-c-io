@@ -885,7 +885,6 @@ int aws_secitem_import_cert_and_key(
     }
 
     // Add the certificate and private key to keychain then retrieve identity
-
     if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
         goto done;
     }

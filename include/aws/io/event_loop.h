@@ -52,14 +52,14 @@ struct aws_event_loop_vtable {
 
 /**
  * Event Loop Type.  If set to `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s
- * default.
+ * default. The default is determined via the `aws_event_loop_get_default_type()` function based on which event loop
+ * types have been defined.
  *
  * Default Event Loop Type
  * Linux       | AWS_EVENT_LOOP_EPOLL
  * Windows     | AWS_EVENT_LOOP_IOCP
  * BSD Variants| AWS_EVENT_LOOP_KQUEUE
- * macOS       | AWS_EVENT_LOOP_KQUEUE
- * iOS         | AWS_EVENT_LOOP_DISPATCH_QUEUE
+ * Apple       | AWS_EVENT_LOOP_DISPATCH_QUEUE
  */
 enum aws_event_loop_type {
     AWS_EVENT_LOOP_PLATFORM_DEFAULT = 0,
@@ -214,6 +214,12 @@ struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_gr
  */
 AWS_IO_API
 size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group);
+
+/**
+ * Gets the event loop type used by an event loop group.
+ */
+AWS_IO_API
+enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_loop_group *el_group);
 
 /**
  * Fetches the next loop for use. The purpose is to enable load balancing across loops. You should not depend on how
