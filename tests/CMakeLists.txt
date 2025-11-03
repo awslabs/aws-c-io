@@ -286,7 +286,11 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_channel_shutdown_with_cache_window_update_after_shutdown_test)
     add_net_test_case(tls_client_channel_negotiation_success)
     add_net_test_case(tls_server_multiple_connections)
-    add_net_test_case(tls_server_hangup_during_negotiation)
+    if(NOT APPLE)
+        # This test checks that server can handle hangup in the middle of TLS negotiation. Since Apple Network framework
+        # hides TLS handshake, this test is not applicable to Apple platforms.
+        add_net_test_case(tls_server_hangup_during_negotiation)
+    endif()
     add_net_test_case(tls_client_channel_no_verify)
     add_net_test_case(test_tls_negotiation_timeout)
     add_net_test_case(alpn_successfully_negotiates)
