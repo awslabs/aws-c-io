@@ -133,6 +133,7 @@ struct aws_event_loop_group {
     struct aws_array_list event_loops;
     struct aws_ref_count ref_count;
     struct aws_shutdown_callback_options shutdown_options;
+    enum aws_event_loop_type event_loop_type;
 };
 
 AWS_EXTERN_C_BEGIN
