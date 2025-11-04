@@ -191,10 +191,6 @@ if (USE_VSOCK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DUSE_VSOCK")
 endif()
 
-if (AWS_USE_APPLE_DISPATCH_QUEUE)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_APPLE_DISPATCH_QUEUE")
-endif()
-
 if (APPLE)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
 endif()
