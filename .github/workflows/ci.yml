@@ -245,7 +245,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        eventloop: ["dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
@@ -276,7 +275,6 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        eventloop: ["dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
     - uses: aws-actions/configure-aws-credentials@v4

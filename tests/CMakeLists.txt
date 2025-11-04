@@ -280,10 +280,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_success_mozilla_modern)
 
     # Misc non-badssl tls tests
-    if(NOT APPLE)
-        # Requires entitlement.
-        add_net_test_case(test_duplicate_cert_import)
-    endif()
+    add_net_test_case(test_duplicate_cert_import)
     add_net_test_case(tls_channel_echo_and_backpressure_test)
     add_net_test_case(tls_channel_shutdown_with_cache_test)
     add_net_test_case(tls_channel_shutdown_with_cache_window_update_after_shutdown_test)
@@ -302,12 +299,9 @@ if(NOT BYO_CRYPTO)
 
     add_test_case(test_tls_cipher_preference)
 
-    if(NOT APPLE)
-        # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
-        # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
-        # valid app bundle.
-        add_net_test_case(test_concurrent_cert_import)
+    add_net_test_case(test_concurrent_cert_import)
 
+    if(NOT APPLE)
         # PKCS8 is not supported on Apple platforms. PKCS8 support for SecItem can be added in the future but it will
         # require macOS specific branching of logic and import of the key into the keychain.
         add_net_test_case(test_pkcs8_import)
