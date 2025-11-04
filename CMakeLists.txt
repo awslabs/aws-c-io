@@ -92,11 +92,9 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Androi
 
 elseif (APPLE)
 
-    file(GLOB AWS_IO_OS_HEADERS
-            )
+    file(GLOB AWS_IO_OS_HEADERS)
 
     file(GLOB AWS_IO_OS_SRC
-            "source/bsd/*.c"
             "source/posix/*.c"
             "source/darwin/*.c"
             )
