@@ -885,17 +885,25 @@ int aws_secitem_import_cert_and_key(
     }
 
     // Add the certificate and private key to keychain then retrieve identity
+    // Protect the entire SecItem operation with mutex to prevent race conditions
+    aws_mutex_lock(&s_sec_mutex);
+
     if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
+        aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
 
     if (s_aws_secitem_add_private_key_to_keychain(cf_alloc, key_ref, key_label_ref, application_label_ref)) {
+        aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
 
     if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, cert_ref, secitem_identity)) {
+        aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
+
+    aws_mutex_unlock(&s_sec_mutex);
 
     result = AWS_OP_SUCCESS;
 
