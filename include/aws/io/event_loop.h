@@ -52,14 +52,14 @@ struct aws_event_loop_vtable {
 
 /**
  * Event Loop Type.  If set to `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the event loop will automatically use the platform’s
- * default.
+ * default. The default is determined via the `aws_event_loop_get_default_type()` function based on which event loop
+ * types have been defined.
  *
  * Default Event Loop Type
  * Linux       | AWS_EVENT_LOOP_EPOLL
  * Windows     | AWS_EVENT_LOOP_IOCP
  * BSD Variants| AWS_EVENT_LOOP_KQUEUE
- * macOS       | AWS_EVENT_LOOP_KQUEUE
- * iOS         | AWS_EVENT_LOOP_DISPATCH_QUEUE
+ * Apple       | AWS_EVENT_LOOP_DISPATCH_QUEUE
  */
 enum aws_event_loop_type {
     AWS_EVENT_LOOP_PLATFORM_DEFAULT = 0,

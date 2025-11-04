@@ -2599,8 +2599,6 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     struct aws_byte_buf cert_buf = {0};
     struct aws_byte_buf key_buf = {0};
 
-#    if !defined(AWS_USE_SECITEM)
-
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert0.pem"));
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey.pem"));
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
@@ -2619,7 +2617,6 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     aws_tls_ctx_release(tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
-#    endif /* !AWS_USE_SECITEM */
 
     /* clean up */
     aws_byte_buf_clean_up(&cert_buf);
