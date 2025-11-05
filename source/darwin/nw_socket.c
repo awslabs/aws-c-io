@@ -745,11 +745,9 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
     }
     bool setup_tls = false;
 
-    if (aws_is_using_secitem()) {
-        /* If SecItem isn't being used then the nw_parameters should not be setup to handle the TLS Negotiation. */
-        if (nw_socket->tls_ctx) {
-            setup_tls = true;
-        }
+    /* If SecItem isn't being used then the nw_parameters should not be setup to handle the TLS Negotiation. */
+    if (nw_socket->tls_ctx) {
+        setup_tls = true;
     }
 
     if (options->type == AWS_SOCKET_STREAM) {

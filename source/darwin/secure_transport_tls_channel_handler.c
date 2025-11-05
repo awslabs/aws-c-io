@@ -109,6 +109,7 @@ struct secure_transport_handler {
     struct aws_string *server_name;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
+    CFArrayRef ca_certs;
     struct aws_channel_task read_task;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
