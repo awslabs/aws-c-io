@@ -190,7 +190,6 @@ if (USE_VSOCK)
 endif()
 
 if (APPLE)
-    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
         # Target file-based keychain on macOS.
         target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_SECITEM_FILEBASED_KEYCHAIN")
