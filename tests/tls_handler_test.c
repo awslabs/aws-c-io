@@ -2675,7 +2675,7 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
 
     aws_io_library_clean_up();
 
-    return AWS_OP_SUCCESS;
+    return AWS_OP_ERR;
 }
 
 AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
