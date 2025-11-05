@@ -40,27 +40,6 @@ AWS_IO_API const char *aws_determine_default_pki_dir(void);
 AWS_IO_API const char *aws_determine_default_pki_ca_file(void);
 
 #ifdef AWS_OS_APPLE
-/**
- * Imports a PEM armored PKCS#7 public/private key pair
- * into identity for use with SecurityFramework.
- */
-int aws_import_public_and_private_keys_to_identity(
-    struct aws_allocator *alloc,
-    CFAllocatorRef cf_alloc,
-    const struct aws_byte_cursor *public_cert_chain,
-    const struct aws_byte_cursor *private_key,
-    CFArrayRef *identity,
-    const struct aws_string *keychain_path);
-
-/**
- * Imports a PKCS#12 file into identity for use with
- * SecurityFramework
- */
-int aws_import_pkcs12_to_identity(
-    CFAllocatorRef cf_alloc,
-    const struct aws_byte_cursor *pkcs12_cursor,
-    const struct aws_byte_cursor *password,
-    CFArrayRef *identity);
 
 /**
  * Loads PRM armored PKCS#7 certificates into certs

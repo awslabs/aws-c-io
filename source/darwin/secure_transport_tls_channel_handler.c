@@ -109,7 +109,6 @@ struct secure_transport_handler {
     struct aws_string *server_name;
     aws_channel_on_message_write_completed_fn *latest_message_on_completion;
     void *latest_message_completion_user_data;
-    CFArrayRef ca_certs;
     struct aws_channel_task read_task;
     aws_tls_on_negotiation_result_fn *on_negotiation_result;
     aws_tls_on_data_read_fn *on_data_read;
@@ -967,10 +966,6 @@ static struct aws_channel_handler *s_tls_handler_new(
         SSLSetSessionOption(secure_transport_handler->ctx, kSSLSessionOptionBreakOnServerAuth, true);
     }
 
-    if (secure_transport_ctx->certs) {
-        status = SSLSetCertificate(secure_transport_handler->ctx, secure_transport_ctx->certs);
-    }
-
     secure_transport_handler->ca_certs = NULL;
     if (secure_transport_ctx->ca_cert) {
         secure_transport_handler->ca_certs = secure_transport_ctx->ca_cert;
@@ -1037,23 +1032,9 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     return s_tls_handler_new(allocator, options, slot, kSSLServerSide);
 }
 
-void s_aws_release_cert(const void *val, void *context) {
-    (void)context;
-    CFTypeRef cert = (CFTypeRef)val;
-    CFRelease(cert);
-}
-
 static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secure_transport_ctx) {
     if (secure_transport_ctx == NULL) {
         return;
-    }
-
-    if (secure_transport_ctx->certs) {
-        if (secure_transport_ctx->cleanup_cert) {
-            CFRange range = CFRangeMake(0, CFArrayGetCount(secure_transport_ctx->certs));
-            CFArrayApplyFunction(secure_transport_ctx->certs, range, s_aws_release_cert, NULL);
-        }
-        CFRelease(secure_transport_ctx->certs);
     }
 
     if (secure_transport_ctx->secitem_identity) {
@@ -1096,8 +1077,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
     secure_transport_ctx->verify_peer = options->verify_peer;
     secure_transport_ctx->ca_cert = NULL;
-    secure_transport_ctx->certs = NULL;
-    secure_transport_ctx->cleanup_cert = false;
     secure_transport_ctx->secitem_identity = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
@@ -1123,64 +1102,33 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
         struct aws_byte_cursor private_key_cur = aws_byte_cursor_from_buf(&options->private_key);
-        if (aws_is_using_secitem()) {
-            if (aws_secitem_import_cert_and_key(
-                    alloc,
-                    secure_transport_ctx->wrapped_allocator,
-                    &cert_chain_cur,
-                    &private_key_cur,
-                    &secure_transport_ctx->secitem_identity,
-                    &options->secitem_options)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "static: failed to import certificate and private key with error %d.",
-                    aws_last_error());
-                goto cleanup_wrapped_allocator;
-            }
-        } else {
-            if (aws_import_public_and_private_keys_to_identity(
-                    alloc,
-                    secure_transport_ctx->wrapped_allocator,
-                    &cert_chain_cur,
-                    &private_key_cur,
-                    &secure_transport_ctx->certs,
-                    options->keychain_path)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS,
-                    "static: failed to import certificate and private key with error %d.",
-                    aws_last_error());
-                goto cleanup_wrapped_allocator;
-            }
-            secure_transport_ctx->cleanup_cert = true;
+
+        if (aws_secitem_import_cert_and_key(
+                alloc,
+                secure_transport_ctx->wrapped_allocator,
+                &cert_chain_cur,
+                &private_key_cur,
+                &secure_transport_ctx->secitem_identity,
+                &options->secitem_options)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "static: failed to import certificate and private key with error %d.", aws_last_error());
+            goto cleanup_wrapped_allocator;
         }
+
     } else if (aws_tls_options_buf_is_set(&options->pkcs12)) {
 
         struct aws_byte_cursor pkcs12_blob_cur = aws_byte_cursor_from_buf(&options->pkcs12);
         struct aws_byte_cursor password_cur = aws_byte_cursor_from_buf(&options->pkcs12_password);
-        if (aws_is_using_secitem()) {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting up for secitem now.");
-            if (aws_secitem_import_pkcs12(
-                    secure_transport_ctx->wrapped_allocator,
-                    &pkcs12_blob_cur,
-                    &password_cur,
-                    &secure_transport_ctx->secitem_identity)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
-                goto cleanup_wrapped_allocator;
-            }
-        } else {
-            AWS_LOGF_DEBUG(
-                AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting up for secKeychain now.");
-            if (aws_import_pkcs12_to_identity(
-                    secure_transport_ctx->wrapped_allocator,
-                    &pkcs12_blob_cur,
-                    &password_cur,
-                    &secure_transport_ctx->certs)) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
-                goto cleanup_wrapped_allocator;
-            }
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS, "static: a pkcs#12 certificate and key has been set, setting up for secitem now.");
+        if (aws_secitem_import_pkcs12(
+                secure_transport_ctx->wrapped_allocator,
+                &pkcs12_blob_cur,
+                &password_cur,
+                &secure_transport_ctx->secitem_identity)) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
+            goto cleanup_wrapped_allocator;
         }
     }
 
