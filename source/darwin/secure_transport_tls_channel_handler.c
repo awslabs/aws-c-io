@@ -78,11 +78,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     s_SSLSetALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
     s_SSLCopyALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef *))dlsym(RTLD_DEFAULT, "SSLCopyALPNProtocols");
 
-    if (aws_is_using_secitem()) {
-        AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: initializing TLS implementation as Apple SecItem.");
-    } else {
-        AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: initializing TLS implementation as Apple SecureTransport.");
-    }
+    AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: initializing TLS implementation as Apple SecItem.");
 
     if (s_SSLSetALPNProtocols) {
         AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: ALPN support detected.");
@@ -829,29 +825,20 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
-    if (aws_is_using_secitem()) {
-        /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
-         * using it does not have a TLS. The negotiated protocol is stored in the nw_socket and must be retrieved from
-         * the socket rather than a secure_transport_handler. */
-        const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
-        return socket->vtable->socket_get_protocol_fn(socket);
-    }
-    struct secure_transport_handler *secure_transport_handler = handler->impl;
-    return secure_transport_handler->protocol;
+    /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
+     * using it does not have a TLS. The negotiated protocol is stored in the nw_socket and must be retrieved from
+     * the socket rather than a secure_transport_handler. */
+    const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
+    return socket->vtable->socket_get_protocol_fn(socket);
 }
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct aws_string *server_name = NULL;
-    if (aws_is_using_secitem()) {
-        /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
-         * using it does not have a TLS slot. The server_name is stored in the nw_socket and must be retrieved from the
-         * socket rather than a secure_transport_handler. */
-        const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
-        server_name = socket->vtable->socket_get_server_name_fn(socket);
-    } else {
-        struct secure_transport_handler *secure_transport_handler = handler->impl;
-        server_name = secure_transport_handler->server_name;
-    }
+    /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
+     * using it does not have a TLS slot. The server_name is stored in the nw_socket and must be retrieved from the
+     * socket rather than a secure_transport_handler. */
+    const struct aws_socket *socket = aws_socket_handler_get_socket(handler);
+    server_name = socket->vtable->socket_get_server_name_fn(socket);
 
     const uint8_t *bytes = NULL;
     size_t len = 0;
