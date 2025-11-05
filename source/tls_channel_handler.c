@@ -445,7 +445,7 @@ int aws_tls_ctx_options_init_default_server_from_path(
     const char *cert_path,
     const char *pkey_path) {
 
-#if !defined(AWS_OS_IOS)
+#if !defined(__APPLE__)
     if (aws_tls_ctx_options_init_client_mtls_from_path(options, allocator, cert_path, pkey_path)) {
         return AWS_OP_ERR;
     }
@@ -468,7 +468,7 @@ int aws_tls_ctx_options_init_default_server(
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey) {
 
-#if !defined(AWS_OS_IOS)
+#if !defined(__APPLE__)
     if (aws_tls_ctx_options_init_client_mtls(options, allocator, cert, pkey)) {
         return AWS_OP_ERR;
     }
