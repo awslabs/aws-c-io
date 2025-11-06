@@ -26,11 +26,86 @@ void aws_cf_release(CFTypeRef obj) {
     }
 }
 
+#if !defined(AWS_OS_IOS)
+
+/*
+ * Helper function to import ECC private key in PEM format into `import_keychain`. Return
+ * AWS_OP_SUCCESS if successfully imported a private key or find a duplicate key in the
+ * `import_keychain`, otherwise return AWS_OP_ERR.
+ * `private_key`: UTF-8 key data in PEM format. If the key file contains multiple key sections,
+ * the function will only import the first valid key.
+ * `import_keychain`: The keychain to be imported to. `import_keychain` should not be NULL.
+ */
+static int s_import_ecc_key_into_keychain(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *private_key,
+    SecKeychainRef import_keychain) {
+    // Ensure imported_keychain is not NULL
+    // AWS_PRECONDITION(import_keychain != NULL);
+    AWS_PRECONDITION(private_key != NULL);
+
+    int result = AWS_OP_ERR;
+    struct aws_array_list decoded_key_buffer_list;
+
+    /* Decode PEM format file to DER format */
+    if (aws_pem_objects_init_from_file_contents(&decoded_key_buffer_list, alloc, *private_key)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
+        goto ecc_import_cleanup;
+    }
+    AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
+
+    // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
+    // succeed key.
+    for (size_t index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
+        struct aws_pem_object *pem_object_ptr = NULL;
+        /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
+        aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&pem_object_ptr, index);
+        AWS_ASSERT(pem_object_ptr);
+        CFDataRef key_data = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
+        if (!key_data) {
+            AWS_LOGF_WARN(AWS_LS_IO_PKI, "static: error in creating ECC key data system call.");
+            continue;
+        }
+
+        /* Import ECC key data into keychain. */
+        SecExternalFormat format = kSecFormatOpenSSL;
+        SecExternalItemType item_type = kSecItemTypePrivateKey;
+        SecItemImportExportKeyParameters import_params;
+        AWS_ZERO_STRUCT(import_params);
+        import_params.version = SEC_KEY_IMPORT_EXPORT_PARAMS_VERSION;
+        import_params.passphrase = CFSTR("");
+
+        OSStatus key_status =
+            SecItemImport(key_data, NULL, &format, &item_type, 0, &import_params, import_keychain, NULL);
+
+        /* Clean up key buffer */
+        CFRelease(key_data);
+
+        // As long as we found an imported key, ignore the rest of keys
+        if (key_status == errSecSuccess || key_status == errSecDuplicateItem) {
+            result = AWS_OP_SUCCESS;
+            break;
+        } else {
+            // Log the error code for key importing
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC private key with OSStatus %d", (int)key_status);
+        }
+    }
+
+ecc_import_cleanup:
+    // Zero out the array list and release it
+    aws_pem_objects_clean_up(&decoded_key_buffer_list);
+    return result;
+}
+
+#endif
+
 static int s_aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
     SecCertificateRef cert_ref,
     CFDataRef serial_data,
-    CFStringRef label) {
+    CFStringRef label,
+    SecKeychainRef import_keychain) {
 
     int result = AWS_OP_ERR;
     OSStatus status;
@@ -47,6 +122,9 @@ static int s_aws_secitem_add_certificate_to_keychain(
 #ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
     /* Target file-based keychain instead of data protection keychain. */
     CFDictionaryAddValue(add_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
+    if (import_keychain != NULL) {
+        CFDictionaryAddValue(add_attributes, kSecUseKeychain, import_keychain);
+    }
 #endif
 
     // Initial attempt to add certificate to keychain.
@@ -139,7 +217,8 @@ static int s_aws_secitem_add_private_key_to_keychain(
     CFAllocatorRef cf_alloc,
     SecKeyRef key_ref,
     CFStringRef label,
-    CFDataRef application_label) {
+    CFDataRef application_label,
+    SecKeychainRef import_keychain) {
 
     int result = AWS_OP_ERR;
     OSStatus status;
@@ -157,6 +236,9 @@ static int s_aws_secitem_add_private_key_to_keychain(
 #ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
     /* Target file-based keychain instead of data protection keychain. */
     CFDictionaryAddValue(add_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
+    if (import_keychain != NULL) {
+        CFDictionaryAddValue(add_attributes, kSecUseKeychain, import_keychain);
+    }
 #endif
 
     // Initial attempt to add private key to keychain.
@@ -247,7 +329,8 @@ static int s_aws_secitem_get_identity(
     CFAllocatorRef cf_alloc,
     CFDataRef serial_data,
     SecCertificateRef cert_ref,
-    sec_identity_t *out_identity) {
+    sec_identity_t *out_identity,
+    SecKeychainRef import_keychain) {
 
     (void)cert_ref;
 
@@ -255,6 +338,9 @@ static int s_aws_secitem_get_identity(
     OSStatus status;
     CFMutableDictionaryRef search_query = NULL;
     CFArrayRef sec_identity_array = NULL;
+
+    CFArrayRef cert_filter = NULL;
+    CFArrayRef keychain_filter = NULL;
 
     /*
      * SecItem identity is created when a certificate matches a private key in the keychain.
@@ -273,8 +359,13 @@ static int s_aws_secitem_get_identity(
     CFDictionaryAddValue(search_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
     /* The kSecAttrSerialNumber filter attribute does not work for kSecClassIdentity when SecItem targets file-based
      * keychain. So, use additional filtering by a certificate provided by a user. */
-    CFArrayRef cert_filter = CFArrayCreate(cf_alloc, (const void **)&cert_ref, 1L, &kCFTypeArrayCallBacks);
+    cert_filter = CFArrayCreate(cf_alloc, (const void **)&cert_ref, 1L, &kCFTypeArrayCallBacks);
     CFDictionaryAddValue(search_query, kSecMatchItemList, cert_filter);
+
+    if (import_keychain) {
+        keychain_filter = CFArrayCreate(cf_alloc, (const void **)&import_keychain, 1L, &kCFTypeArrayCallBacks);
+        CFDictionaryAddValue(search_query, kSecMatchSearchList, keychain_filter);
+    }
 #endif
 
     /* Though the kSecAttrSerialNumber and kSecMatchItemList attributes filter out unmatching identities, request
@@ -354,92 +445,90 @@ done:
     // cleanup
     aws_cf_release(search_query);
     aws_cf_release(cert_filter);
+    aws_cf_release(keychain_filter);
     // TODO Release elements.
     aws_cf_release(sec_identity_array);
 
     return result;
 }
 
-int aws_secitem_import_cert_and_key(
+/*
+ * Look for a private key in PEM data sections.
+ * Returns the first private key found.
+ */
+struct aws_pem_object *s_find_private_key(const struct aws_array_list *pem_objects_list) {
+    struct aws_pem_object *pem_object_ptr = NULL;
+    for (size_t index = 0; index < aws_array_list_length(pem_objects_list); index++) {
+        aws_array_list_get_at_ptr(pem_objects_list, (void **)&pem_object_ptr, index);
+        switch (pem_object_ptr->type) {
+            case AWS_PEM_TYPE_PRIVATE_RSA_PKCS1:
+            case AWS_PEM_TYPE_EVP_PKEY:
+#ifdef AWS_OS_MACOS
+            case AWS_PEM_TYPE_EC_PRIVATE:
+            case AWS_PEM_TYPE_PRIVATE_PKCS8:
+#endif
+                AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "Found a private key in PEM file.");
+                return pem_object_ptr;
+            default:
+                break;
+        }
+    }
+    return NULL;
+}
+
+/*
+ * Import private key into Apple keychain.
+ *
+ * macOS:
+ *  - imports into file-based keychain.
+ *  - supports RSA with a key size of at least 2048 bits.
+ *  - supports RSA-PSS with a key size of at least 2048 bits.
+ *  - supports ECC NIST P-256/P-384/P-521 keys.
+ * iOS/tvOS:
+ *  - imports into data protection keychain.
+ *  - supports RSA with a key size of at least 2048 bits.
+ */
+int s_import_private_key_into_keychain(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
-    const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
-    sec_identity_t *secitem_identity,
-    const struct aws_secitem_options *secitem_options) {
-
-    AWS_PRECONDITION(public_cert_chain != NULL);
-    AWS_PRECONDITION(private_key != NULL);
+    const struct aws_secitem_options *secitem_options,
+    SecKeychainRef import_keychain) {
 
     int result = AWS_OP_ERR;
 
-    CFErrorRef error = NULL;
-
-    CFDataRef cert_data = NULL;
-    SecCertificateRef cert_ref = NULL;
-    CFDataRef cert_serial_data = NULL;
-    CFStringRef cert_label_ref = NULL;
-
-    CFMutableDictionaryRef key_attributes = NULL;
     CFDictionaryRef key_copied_attributes = NULL;
-    CFDataRef key_data = NULL;
+    CFMutableDictionaryRef key_attributes = NULL;
     SecKeyRef key_ref = NULL;
-    CFStringRef key_type = NULL;
-    CFStringRef key_label_ref = NULL;
-    CFDataRef application_label_ref = NULL;
+    CFDataRef key_data = NULL;
 
-    struct aws_array_list decoded_cert_buffer_list;
-    AWS_ZERO_STRUCT(decoded_cert_buffer_list);
     struct aws_array_list decoded_key_buffer_list;
     AWS_ZERO_STRUCT(decoded_key_buffer_list);
 
+    struct aws_pem_object *pem_key_ptr = NULL;
+
+    CFDataRef application_label_ref = NULL;
+
+    CFStringRef key_type = NULL;
+    CFStringRef key_label_ref = NULL;
+
+    CFErrorRef error = NULL;
+
     /*
-     * iOS SecItem requires DER encoded files so we first convert the provided PEM encoded
+     * SecItem requires DER encoded files so we first convert the provided PEM encoded
      * cert and key into a list of aws_pem_object that strips headers/footers and Base64 decodes
      * the data into a byte buf.
      */
-    if (aws_pem_objects_init_from_file_contents(&decoded_cert_buffer_list, alloc, *public_cert_chain)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM certificate to DER format.");
-        goto done;
-    }
-    AWS_ASSERT(aws_array_list_is_valid(&decoded_cert_buffer_list));
-
     if (aws_pem_objects_init_from_file_contents(&decoded_key_buffer_list, alloc, *private_key)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
         goto done;
     }
     AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
 
-    /*
-     * A PEM certificate file could contains multiple PEM data sections. We currently decode and
-     * use the first certificate data only. Certificate chaining support could be added in the future.
-     */
-    if (aws_array_list_length(&decoded_cert_buffer_list) > 1) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Certificate chains not currently supported on iOS.");
-        result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto done;
-    }
-
-    /* Convert the DER encoded files to the CFDataRef type required for import into keychain */
-    struct aws_pem_object *pem_cert_ptr = NULL;
-    aws_array_list_get_at_ptr(&decoded_cert_buffer_list, (void **)&pem_cert_ptr, 0);
-    AWS_ASSERT(pem_cert_ptr);
-
-    struct aws_pem_object *pem_key_ptr = NULL;
-    aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&pem_key_ptr, 0);
-    AWS_ASSERT(pem_key_ptr);
-
-    cert_data = CFDataCreate(cf_alloc, pem_cert_ptr->data.buffer, pem_cert_ptr->data.len);
-    if (!cert_data) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating certificate data system call.");
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    key_data = CFDataCreate(cf_alloc, pem_key_ptr->data.buffer, pem_key_ptr->data.len);
-    if (!key_data) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating private key data system call.");
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+    pem_key_ptr = s_find_private_key(&decoded_key_buffer_list);
+    if (!pem_key_ptr) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to find a private key in PEM file.");
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto done;
     }
 
@@ -469,11 +558,204 @@ int aws_secitem_import_cert_and_key(
             goto done;
             break;
 
-        case AWS_PEM_TYPE_UNKNOWN:
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Unsupported private key format.");
             aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             goto done;
+    }
+
+    key_data = CFDataCreate(cf_alloc, pem_key_ptr->data.buffer, pem_key_ptr->data.len);
+    if (!key_data) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Error creating private key data system call.");
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    /*
+     * We create a SecKeyRef (key_ref) here using the key_data for the purpose of extracting the public key hash from
+     * the private key. We need the public key hash (application_label_ref) to use as a unique identifier when importing
+     * the private key into the keychain.
+     */
+    key_attributes =
+        CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
+    // TODO Do we need this?
+    CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
+
+#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+    /* Target file-based keychain instead of data protection keychain. */
+    CFDictionaryAddValue(key_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
+#endif
+
+    /*
+     * Try to parse a user-provided private key into a SecKeyRef. On this step, the private key won't be added
+     * to keychain yet.
+     */
+    key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
+    if (error) {
+        char description_buffer[256];
+        aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
+        AWS_LOGF_WARN(AWS_LS_IO_PKI, "Failed importing private key using SecItem: %s", description_buffer);
+
+        /*
+         * If parsing with SecItem fails, we fall back to trying to add the private key via SecKeychain API.
+         */
+        int rc = s_import_ecc_key_into_keychain(alloc, cf_alloc, private_key, import_keychain);
+        if (rc != AWS_OP_SUCCESS) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed importing private key into keychain: %d", rc);
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+        }
+        result = AWS_OP_SUCCESS;
+    } else {
+        /*
+         * Get the hash of the public key stored within the private key by extracting it from the key_ref's attributes
+         */
+        key_copied_attributes = SecKeyCopyAttributes(key_ref);
+
+        /*
+         * application_label_ref does not need to be released. It gets released when key_copied_attributes is released.
+         */
+        application_label_ref = (CFDataRef)CFDictionaryGetValue(key_copied_attributes, kSecAttrApplicationLabel);
+        if (!application_label_ref) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key application label.");
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+        }
+
+        key_label_ref = CFStringCreateWithBytes(
+            cf_alloc,
+            (const UInt8 *)aws_string_bytes(secitem_options->key_label),
+            secitem_options->key_label->len,
+            kCFStringEncodingUTF8,
+            false);
+        if (!key_label_ref) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key label.");
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+        }
+
+        if (s_aws_secitem_add_private_key_to_keychain(
+                cf_alloc, key_ref, key_label_ref, application_label_ref, import_keychain)) {
+            aws_mutex_unlock(&s_sec_mutex);
+            goto done;
+        }
+
+        result = AWS_OP_SUCCESS;
+    }
+
+done:
+    aws_cf_release(key_attributes);
+    aws_cf_release(key_copied_attributes);
+    aws_cf_release(key_type);
+    aws_cf_release(key_label_ref);
+    aws_cf_release(key_data);
+    aws_cf_release(key_ref);
+    aws_pem_objects_clean_up(&decoded_key_buffer_list);
+
+    return result;
+}
+
+int aws_secitem_import_cert_and_key(
+    struct aws_allocator *alloc,
+    CFAllocatorRef cf_alloc,
+    const struct aws_byte_cursor *public_cert_chain,
+    const struct aws_byte_cursor *private_key,
+    sec_identity_t *secitem_identity,
+    const struct aws_secitem_options *secitem_options,
+    const struct aws_string *keychain_path) {
+
+    AWS_PRECONDITION(public_cert_chain != NULL);
+    AWS_PRECONDITION(private_key != NULL);
+
+    int result = AWS_OP_ERR;
+
+    CFErrorRef error = NULL;
+
+    CFDataRef cert_data = NULL;
+    SecCertificateRef cert_ref = NULL;
+    CFDataRef cert_serial_data = NULL;
+    CFStringRef cert_label_ref = NULL;
+
+    // TODO Use keychain
+    SecKeychainRef import_keychain = NULL;
+
+    struct aws_array_list decoded_cert_buffer_list;
+    AWS_ZERO_STRUCT(decoded_cert_buffer_list);
+
+#ifdef AWS_OS_MACOS
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    /*
+     * SecKeychain functions are marked as deprecated. There are no non-deprecated functions for specifying specific
+     * file-based keychains.
+     * Disable compiler warnings for now. This will be removed when we stop supporting file-based keychain altogether.
+     */
+    if (keychain_path) {
+        OSStatus keychain_status = SecKeychainOpen(aws_string_c_str(keychain_path), &import_keychain);
+        if (keychain_status != errSecSuccess) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error opening keychain \"%s\" with OSStatus %d",
+                aws_string_c_str(keychain_path),
+                keychain_status);
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+        }
+        keychain_status = SecKeychainUnlock(import_keychain, 0, "", true);
+        if (keychain_status != errSecSuccess) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI,
+                "static: error unlocking keychain \"%s\" with OSStatus %d",
+                aws_string_c_str(keychain_path),
+                keychain_status);
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+        }
+    } else {
+        OSStatus keychain_status = SecKeychainCopyDefault(&import_keychain);
+        if (keychain_status != errSecSuccess) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: error opening the default keychain with OSStatus %d", keychain_status);
+            result = aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+        }
+    }
+
+#    pragma clang diagnostic pop
+#endif
+
+    /*
+     * SecItem requires DER encoded files so we first convert the provided PEM encoded
+     * cert and key into a list of aws_pem_object that strips headers/footers and Base64 decodes
+     * the data into a byte buf.
+     */
+    if (aws_pem_objects_init_from_file_contents(&decoded_cert_buffer_list, alloc, *public_cert_chain)) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM certificate to DER format.");
+        goto done;
+    }
+    AWS_ASSERT(aws_array_list_is_valid(&decoded_cert_buffer_list));
+
+    /*
+     * A PEM certificate file could contain multiple PEM data sections. We currently decode and
+     * use the first certificate data only. Certificate chaining support could be added in the future.
+     */
+    if (aws_array_list_length(&decoded_cert_buffer_list) > 1) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Certificate chains not currently supported on iOS.");
+        result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto done;
+    }
+
+    /* Convert the DER encoded files to the CFDataRef type required for import into keychain */
+    struct aws_pem_object *pem_cert_ptr = NULL;
+    aws_array_list_get_at_ptr(&decoded_cert_buffer_list, (void **)&pem_cert_ptr, 0);
+    AWS_ASSERT(pem_cert_ptr);
+
+    cert_data = CFDataCreate(cf_alloc, pem_cert_ptr->data.buffer, pem_cert_ptr->data.len);
+    if (!cert_data) {
+        AWS_LOGF_WARN(AWS_LS_IO_PKI, "Error creating certificate data system call.");
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
     }
 
     /* Attributes used for query and adding of cert/key SecItems */
@@ -509,66 +791,22 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-    /*
-     * We create a SecKeyRef (key_ref) here using the key_data for the purpose of extracting the public key hash from
-     * the private key. We need the public key hash (application_label_ref) to use as a unique identifier when importing
-     * the private key into the keychain.
-     */
-    key_attributes =
-        CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
-    CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
-    /* Target file-based keychain instead of data protection keychain. */
-    CFDictionaryAddValue(key_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
-#endif
-
-    key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
-    if (error) {
-        char description_buffer[256];
-        aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating SecKeyRef from key_data: %s", description_buffer);
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    // Get the hash of the public key stored within the private key by extracting it from the key_ref's attributes
-    key_copied_attributes = SecKeyCopyAttributes(key_ref);
-    // application_label_ref does not need to be released. It gets released when key_copied_attributes is released.
-    application_label_ref = (CFDataRef)CFDictionaryGetValue(key_copied_attributes, kSecAttrApplicationLabel);
-    if (!application_label_ref) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key application label.");
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
-    key_label_ref = CFStringCreateWithBytes(
-        cf_alloc,
-        (const UInt8 *)aws_string_bytes(secitem_options->key_label),
-        secitem_options->key_label->len,
-        kCFStringEncodingUTF8,
-        false);
-    if (!key_label_ref) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key label.");
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
-
     // Add the certificate and private key to keychain then retrieve identity
     // Protect the entire SecItem operation with mutex to prevent race conditions
     aws_mutex_lock(&s_sec_mutex);
 
-    if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
+    if (s_import_private_key_into_keychain(alloc, cf_alloc, private_key, secitem_options, import_keychain)) {
         aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
 
-    if (s_aws_secitem_add_private_key_to_keychain(cf_alloc, key_ref, key_label_ref, application_label_ref)) {
+    if (s_aws_secitem_add_certificate_to_keychain(
+            cf_alloc, cert_ref, cert_serial_data, cert_label_ref, import_keychain)) {
         aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
 
-    if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, cert_ref, secitem_identity)) {
+    if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, cert_ref, secitem_identity, import_keychain)) {
         aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
@@ -584,16 +822,9 @@ done:
     aws_cf_release(cert_ref);
     aws_cf_release(cert_serial_data);
     aws_cf_release(cert_label_ref);
-    aws_cf_release(key_attributes);
-    aws_cf_release(key_copied_attributes);
-    aws_cf_release(key_data);
-    aws_cf_release(key_ref);
-    aws_cf_release(key_type);
-    aws_cf_release(key_label_ref);
 
     // Zero out the array list and release it
     aws_pem_objects_clean_up(&decoded_cert_buffer_list);
-    aws_pem_objects_clean_up(&decoded_key_buffer_list);
 
     return result;
 }

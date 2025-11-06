@@ -1444,6 +1444,7 @@ static int s_verify_good_host(
     return AWS_OP_SUCCESS;
 }
 
+// TODO Rename, no mqtt.
 static int s_verify_good_host_mqtt_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
@@ -2645,7 +2646,6 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     (void)allocator;
 
-#    ifndef AWS_OS_APPLE
     aws_io_library_init(allocator);
 
     struct aws_byte_buf cert_buf;
@@ -2672,7 +2672,6 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
     aws_byte_buf_clean_up(&key_buf);
 
     aws_io_library_clean_up();
-#    endif /* AWS_OS_APPLE */
 
     return AWS_OP_SUCCESS;
 }

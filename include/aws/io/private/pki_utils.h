@@ -62,7 +62,8 @@ int aws_secitem_import_cert_and_key(
     const struct aws_byte_cursor *public_cert_chain,
     const struct aws_byte_cursor *private_key,
     sec_identity_t *secitem_identity,
-    const struct aws_secitem_options *secitem_options);
+    const struct aws_secitem_options *secitem_options,
+    const struct aws_string *keychain_path);
 
 /**
  * Imports a PKCS#12 file into protected data keychain for use with
