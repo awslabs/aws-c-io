@@ -14,6 +14,8 @@
 #include <Security/SecKey.h>
 #include <Security/Security.h>
 
+#include "darwin_shared_private.h"
+
 /* SecureTransport is not thread-safe during identity import */
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
@@ -522,6 +524,13 @@ int aws_secitem_import_cert_and_key(
 #endif
 
     key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
+    if (error) {
+        char description_buffer[256];
+        aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating SecKeyRef from key_data: %s", description_buffer);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
 
     // Get the hash of the public key stored within the private key by extracting it from the key_ref's attributes
     key_copied_attributes = SecKeyCopyAttributes(key_ref);
