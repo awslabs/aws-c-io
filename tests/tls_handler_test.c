@@ -2679,6 +2679,33 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
 
 AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
 
+static int s_test_pkcs12_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    aws_io_library_init(allocator);
+
+    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS ==
+        aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(&tls_options, allocator, "unittests.p12", &pwd_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+
+    aws_tls_ctx_release(tls_context);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_pkcs12_import, s_test_pkcs12_import)
+
 static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     (void)allocator;

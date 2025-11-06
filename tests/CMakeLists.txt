@@ -315,6 +315,9 @@ if(NOT BYO_CRYPTO)
         # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
         # the socket establishment and does not need a separate timeout task for TLS.
         add_net_test_case(tls_channel_statistics_test)
+    else ()
+        # PKCS12 is primarily supported on APPLE platforms.
+        add_test_case(test_pkcs12_import)
     endif()
 
     add_test_case(alpn_error_creating_handler)
