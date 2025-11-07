@@ -844,7 +844,7 @@ AWS_TEST_CASE(test_pem_dsa_private_key_parse, s_test_pem_dsa_private_key_parse)
 static int s_test_pem_dsa_public_key_parse(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     static const char *s_public_key_pem = "-----BEGIN DSA PUBLIC KEY-----\n"
-                                           "-----END DSA PUBLIC KEY-----";
+                                          "-----END DSA PUBLIC KEY-----";
 
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_public_key_pem);
     struct aws_array_list output_list;
