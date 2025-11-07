@@ -69,6 +69,31 @@ static int s_ensure_buffer_has_capacity(
     return AWS_OP_SUCCESS;
 }
 
+/* Normalizes IPv4/IPv6 literals by stripping RFC-3986 decorations such as
+ * surrounding brackets and scope identifiers (e.g. "%eth0"). Operates in-place
+ * on a null-terminated buffer. */
+static void s_normalize_ip_literal(char *address_buffer) {
+    if (!address_buffer || address_buffer[0] == '\0') {
+        return;
+    }
+
+    size_t buf_len = strlen(address_buffer);
+    if (buf_len > 1 && address_buffer[0] == '[') {
+        char *closing = strchr(address_buffer, ']');
+        if (closing && closing > address_buffer) {
+            size_t literal_len = (size_t)(closing - (address_buffer + 1));
+            memmove(address_buffer, address_buffer + 1, literal_len);
+            address_buffer[literal_len] = '\0';
+            buf_len = literal_len;
+        }
+    }
+
+    char *zone_delimiter = strchr(address_buffer, '%');
+    if (zone_delimiter) {
+        *zone_delimiter = '\0';
+    }
+}
+
 /* Helper for converting auth method enum to string for logging */
 static struct aws_string *s_auth_method_to_string(enum aws_socks5_auth_method method) {
     switch (method) {
@@ -248,18 +273,7 @@ AWS_IO_API enum aws_socks5_address_type aws_socks5_infer_address_type(
     memcpy(address_buffer, target_host.ptr, host_len);
     address_buffer[host_len] = '\0';
 
-    if (address_buffer[0] == '[') {
-        size_t buf_len = strlen(address_buffer);
-        if (buf_len > 1 && address_buffer[buf_len - 1] == ']') {
-            memmove(address_buffer, address_buffer + 1, buf_len - 2);
-            address_buffer[buf_len - 2] = '\0';
-        }
-    }
-
-    char *zone_delimiter = strchr(address_buffer, '%');
-    if (zone_delimiter) {
-        *zone_delimiter = '\0';
-    }
+    s_normalize_ip_literal(address_buffer);
 
     unsigned char ipv4_buffer[4];
     unsigned char ipv6_buffer[16];
@@ -833,6 +847,7 @@ int aws_socks5_write_connect_request(
                 size_t copy_len = target_len < 127 ? target_len : 127;
                 memcpy(ip_str, s_string_bytes(context->endpoint_host), copy_len);
                 ip_str[copy_len] = '\0';
+                s_normalize_ip_literal(ip_str);
 
                 if (inet_pton(AF_INET, ip_str, binary_addr) != 1) {
                     AWS_LOGF_ERROR(
@@ -867,6 +882,7 @@ int aws_socks5_write_connect_request(
                 size_t copy_len = target_len < 127 ? target_len : 127;
                 memcpy(ip_str, s_string_bytes(context->endpoint_host), copy_len);
                 ip_str[copy_len] = '\0';
+                s_normalize_ip_literal(ip_str);
 
                 if (inet_pton(AF_INET6, ip_str, binary_addr) != 1) {
                     AWS_LOGF_ERROR(
