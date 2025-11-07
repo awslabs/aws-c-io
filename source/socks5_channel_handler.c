@@ -72,6 +72,19 @@ void aws_socks5_channel_handler_set_system_vtable(const struct aws_socks5_system
     }
 }
 
+/* SOCKS5 URIs follow RFC-3986, where IPv6 literals are enclosed in brackets.
+ * DNS APIs expect bare literals, so strip a single leading '[' and trailing ']'. */
+static struct aws_byte_cursor s_normalize_proxy_host_cursor(struct aws_byte_cursor host_cursor) {
+    if (host_cursor.len >= 2 && host_cursor.ptr[0] == '[') {
+        size_t last_index = host_cursor.len - 1;
+        if (host_cursor.ptr[last_index] == ']') {
+            host_cursor.ptr += 1;
+            host_cursor.len -= 2;
+        }
+    }
+    return host_cursor;
+}
+
 /**
  * State machine for the SOCKS5 channel handler
  * 
@@ -114,26 +127,6 @@ static inline const char *s_socks5_channel_state_to_string(enum aws_socks5_chann
             return "ESTABLISHED";
         case AWS_SOCKS5_CHANNEL_STATE_ERROR:
             return "ERROR";
-        default:
-            return "UNKNOWN";
-    }
-}
-
-/**
- * Returns a human-readable name for SOCKS5 message types used in logging.
- * This aids in debugging by providing context about the type of message
- * being processed in the SOCKS5 protocol.
- */
-static inline const char *s_get_socks5_message_type_name(int message_type) {
-    switch (message_type) {
-        case 0:
-            return "INIT";
-        case 1:
-            return "GREETING";
-        case 2:
-            return "AUTH";
-        case 3:
-            return "CONNECT";
         default:
             return "UNKNOWN";
     }
@@ -2889,6 +2882,7 @@ static int s_socks5_bootstrap_set_socks5_proxy_options(
     }
 
     struct aws_byte_cursor endpoint_host_cursor = aws_byte_cursor_from_c_str(host_name);
+    struct aws_byte_cursor normalized_host_cursor = s_normalize_proxy_host_cursor(endpoint_host_cursor);
 
     aws_string_destroy(socks5_bootstrap->endpoint_host);
     socks5_bootstrap->endpoint_host = NULL;
@@ -2897,7 +2891,7 @@ static int s_socks5_bootstrap_set_socks5_proxy_options(
 
     socks5_bootstrap->endpoint_port = port;
     enum aws_socks5_address_type inferred_type =
-        aws_socks5_infer_address_type(endpoint_host_cursor, AWS_SOCKS5_ATYP_DOMAIN);
+        aws_socks5_infer_address_type(normalized_host_cursor, AWS_SOCKS5_ATYP_DOMAIN);
     socks5_bootstrap->host_resolution_mode =
         aws_socks5_proxy_options_get_host_resolution_mode(socks5_proxy_options);
     socks5_bootstrap->resolution_error_code = AWS_ERROR_SUCCESS;
@@ -2908,7 +2902,7 @@ static int s_socks5_bootstrap_set_socks5_proxy_options(
     if (socks5_bootstrap->host_resolution_mode == AWS_SOCKS5_HOST_RESOLUTION_CLIENT &&
         inferred_type != AWS_SOCKS5_ATYP_DOMAIN) {
         socks5_bootstrap->endpoint_host =
-            aws_string_new_from_cursor(allocator, &endpoint_host_cursor);
+            aws_string_new_from_cursor(allocator, &normalized_host_cursor);
         if (!socks5_bootstrap->endpoint_host) {
             aws_socks5_proxy_options_clean_up(socks5_proxy_options);
             aws_mem_release(allocator, socks5_proxy_options);
@@ -2937,7 +2931,7 @@ static int s_socks5_bootstrap_set_socks5_proxy_options(
         socks5_bootstrap->endpoint_ready = false;
     } else {
         socks5_bootstrap->endpoint_host =
-            aws_string_new_from_cursor(allocator, &endpoint_host_cursor);
+            aws_string_new_from_cursor(allocator, &normalized_host_cursor);
         if (!socks5_bootstrap->endpoint_host) {
             aws_socks5_proxy_options_clean_up(socks5_proxy_options);
             aws_mem_release(allocator, socks5_proxy_options);

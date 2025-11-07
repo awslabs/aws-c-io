@@ -25,6 +25,17 @@ AWS_STATIC_STRING_FROM_LITERAL(s_socks_none_method, "NONE");
 AWS_STATIC_STRING_FROM_LITERAL(s_socks_username_password_method, "USERNAME_PASSWORD");
 AWS_STATIC_STRING_FROM_LITERAL(s_socks_gssapi_method, "GSSAPI");
 
+static struct aws_byte_cursor s_trim_ipv6_brackets(struct aws_byte_cursor host_cursor) {
+    if (host_cursor.len >= 2 && host_cursor.ptr && host_cursor.ptr[0] == '[') {
+        size_t last_index = host_cursor.len - 1;
+        if (host_cursor.ptr[last_index] == ']') {
+            host_cursor.ptr += 1;
+            host_cursor.len -= 2;
+        }
+    }
+    return host_cursor;
+}
+
 /* Buffer size constants for SOCKS5 protocol operations */
 #define AWS_SOCKS5_SEND_BUFFER_INITIAL_SIZE 256
 #define AWS_SOCKS5_RECV_BUFFER_INITIAL_SIZE 512
@@ -128,7 +139,8 @@ int aws_socks5_proxy_options_init(
 
     aws_socks5_proxy_options_init_default(options);
     options->port = port;
-    options->host = aws_string_new_from_cursor(allocator, &host);
+    struct aws_byte_cursor normalized_host = s_trim_ipv6_brackets(host);
+    options->host = aws_string_new_from_cursor(allocator, &normalized_host);
     if (options->host == NULL) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKS5,
