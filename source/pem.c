@@ -100,8 +100,8 @@ static struct aws_byte_cursor s_pem_type_private_rsa_pkcs1_cur =
     AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PRIVATE KEY");
 static struct aws_byte_cursor s_pem_type_public_rsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PUBLIC KEY");
 static struct aws_byte_cursor s_pem_type_private_dsa_pkcs1_cur =
-    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PRIVATE KEY");
-static struct aws_byte_cursor s_pem_type_public_dsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("RSA PUBLIC KEY");
+    AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("DSA PRIVATE KEY");
+static struct aws_byte_cursor s_pem_type_public_dsa_pkcs1_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("DSA PUBLIC KEY");
 static struct aws_byte_cursor s_pem_type_pkcs7_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PKCS7");
 static struct aws_byte_cursor s_pem_type_pkcs7_signed_data_cur =
     AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("PKCS #7 SIGNED DATA");

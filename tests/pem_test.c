@@ -819,6 +819,50 @@ static int s_test_pem_private_key_parse(struct aws_allocator *allocator, void *c
 }
 AWS_TEST_CASE(test_pem_private_key_parse, s_test_pem_private_key_parse)
 
+static int s_test_pem_dsa_private_key_parse(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    static const char *s_private_key_pem = "-----BEGIN DSA PRIVATE KEY-----\n"
+                                           "-----END DSA PRIVATE KEY-----";
+
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_private_key_pem);
+    struct aws_array_list output_list;
+
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
+    ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
+
+    struct aws_pem_object *pem_object = NULL;
+    aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "DSA PRIVATE KEY");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_PRIVATE_DSA_PKCS1, pem_object->type);
+
+    aws_pem_objects_clean_up(&output_list);
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_pem_dsa_private_key_parse, s_test_pem_dsa_private_key_parse)
+
+static int s_test_pem_dsa_public_key_parse(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    static const char *s_public_key_pem = "-----BEGIN DSA PUBLIC KEY-----\n"
+                                          "-----END DSA PUBLIC KEY-----";
+
+    struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_public_key_pem);
+    struct aws_array_list output_list;
+
+    ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
+    ASSERT_UINT_EQUALS(1, aws_array_list_length(&output_list));
+
+    struct aws_pem_object *pem_object = NULL;
+    aws_array_list_get_at_ptr(&output_list, (void **)&pem_object, 0);
+    ASSERT_CURSOR_VALUE_CSTRING_EQUALS(aws_byte_cursor_from_string(pem_object->type_string), "DSA PUBLIC KEY");
+    ASSERT_INT_EQUALS(AWS_PEM_TYPE_PUBLIC_DSA_PKCS1, pem_object->type);
+
+    aws_pem_objects_clean_up(&output_list);
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(test_pem_dsa_public_key_parse, s_test_pem_dsa_public_key_parse)
+
 static int s_test_pem_cert_chain_comments_and_whitespace(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
