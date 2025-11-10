@@ -1521,6 +1521,7 @@ static void s_in_event_loop_scheduling_task(struct aws_task *task, void *arg, en
         aws_mutex_lock(&scheduling_task->test_context->lock);
         scheduling_task->test_context->synced_data.el_scheduling_finished = true;
         aws_mutex_unlock(&scheduling_task->test_context->lock);
+        aws_thread_current_sleep(2000000000);
         aws_condition_variable_notify_all(&scheduling_task->test_context->signal);
     }
 
