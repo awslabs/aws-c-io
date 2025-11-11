@@ -2643,6 +2643,8 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
 AWS_TEST_CASE(tls_destroy_null_context, s_tls_destroy_null_context);
 
 static int s_test_ecc_import(struct aws_allocator *allocator, const char *key_path, const char *cert_path) {
+    aws_io_library_init(allocator);
+
     struct aws_byte_buf cert_buf;
     struct aws_byte_buf key_buf;
 

@@ -42,7 +42,7 @@ static int s_import_ecc_key_into_keychain(
     const struct aws_byte_cursor *private_key,
     SecKeychainRef import_keychain) {
     // Ensure imported_keychain is not NULL
-    // AWS_PRECONDITION(import_keychain != NULL);
+    AWS_PRECONDITION(import_keychain != NULL);
     AWS_PRECONDITION(private_key != NULL);
 
     int result = AWS_OP_ERR;
