@@ -48,9 +48,10 @@ static int s_import_key_into_keychain_with_seckeychain(
 
 #ifdef AWS_OS_MACOS
 
-    /* SecItemImport used here for importing private key into keychain requires  */
-    AWS_PRECONDITION(import_keychain != NULL);
     AWS_PRECONDITION(private_key != NULL);
+    /* SecItemImport used here for importing private key into keychain requires SecKeychainRef in order to actually put
+     * a private key into keychain. */
+    AWS_PRECONDITION(import_keychain != NULL);
 
     int result = AWS_OP_ERR;
 
@@ -95,11 +96,12 @@ static int s_import_key_into_keychain_with_seckeychain(
 
         // As long as we found an imported key, ignore the rest of keys
         if (key_status == errSecSuccess || key_status == errSecDuplicateItem) {
+            AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported private key into keychain with SecKeychain.");
             result = AWS_OP_SUCCESS;
             break;
         } else {
             // Log the error code for key importing
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: error importing ECC private key with OSStatus %d", (int)key_status);
+            AWS_LOGF_WARN(AWS_LS_IO_PKI, "static: Failed to import private key with OSStatus %d", (int)key_status);
         }
     }
 
@@ -329,7 +331,7 @@ static int s_aws_secitem_add_private_key_to_keychain(
         }
     }
 
-    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported private key into SecItem keychain.");
+    AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully imported private key into keychain with SecItem.");
 
     result = AWS_OP_SUCCESS;
 
@@ -462,7 +464,6 @@ done:
     aws_cf_release(search_query);
     aws_cf_release(cert_filter);
     aws_cf_release(keychain_filter);
-    // TODO Release elements.
     aws_cf_release(sec_identity_array);
 
     return result;
@@ -481,7 +482,7 @@ struct aws_pem_object *s_find_private_key(const struct aws_array_list *pem_objec
             case AWS_PEM_TYPE_EVP_PKEY:
             case AWS_PEM_TYPE_EC_PRIVATE:
             case AWS_PEM_TYPE_PRIVATE_PKCS8:
-                AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "Found a private key in PEM file.");
+                AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: Found a private key in PEM file.");
                 return pem_object_ptr;
             default:
                 break;
@@ -619,9 +620,8 @@ int s_import_private_key_into_keychain(
          * This API is available on macOS only.
          */
         AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: Falling back to SecKeychain API for private key import");
-        int rc = s_import_key_into_keychain_with_seckeychain(alloc, cf_alloc, private_key, import_keychain);
-        if (rc != AWS_OP_SUCCESS) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed importing private key into keychain: %d", rc);
+        if (s_import_key_into_keychain_with_seckeychain(alloc, cf_alloc, private_key, import_keychain)) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed importing private key into keychain with SecKeychain API");
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
