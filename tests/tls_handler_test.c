@@ -1444,8 +1444,7 @@ static int s_verify_good_host(
     return AWS_OP_SUCCESS;
 }
 
-// TODO Rename, no mqtt.
-static int s_verify_good_host_mqtt_connect(
+static int s_verify_good_host_mtls_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
     uint32_t port,
@@ -1622,16 +1621,16 @@ static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
 AWS_TEST_CASE(
     tls_client_channel_negotiation_success_ecc384_deprecated,
     s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
-#    endif
+#    endif /* _WIN32 */
 
 static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
 }
 
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_mtls_host_name, "127.0.0.1");
 static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
+    return s_verify_good_host_mtls_connect(allocator, s_aws_mtls_host_name, 59443, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
@@ -2642,7 +2641,7 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
 }
 AWS_TEST_CASE(tls_destroy_null_context, s_tls_destroy_null_context);
 
-static int s_test_ecc_import(struct aws_allocator *allocator, const char *key_path, const char *cert_path) {
+static int s_test_cert_key_import(struct aws_allocator *allocator, const char *key_path, const char *cert_path) {
     aws_io_library_init(allocator);
 
     struct aws_byte_buf cert_buf;
@@ -2675,17 +2674,24 @@ static int s_test_ecc_import(struct aws_allocator *allocator, const char *key_pa
 
 static int s_test_ecc_p256_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_test_ecc_import(allocator, "ecc-key.pem", "ecc-cert.pem");
+    return s_test_cert_key_import(allocator, "ecc-p256-key.pem", "ecc-p256-cert.pem");
 }
 
 AWS_TEST_CASE(test_ecc_p256_cert_import, s_test_ecc_p256_cert_import)
 
 static int s_test_ecc_p384_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_test_ecc_import(allocator, "ecc-key-384.pem", "ecc-cert-384.pem");
+    return s_test_cert_key_import(allocator, "ecc-p384-key.pem", "ecc-p384-cert.pem");
 }
 
 AWS_TEST_CASE(test_ecc_p384_cert_import, s_test_ecc_p384_cert_import)
+
+static int s_test_ecc_p521_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_cert_key_import(allocator, "ecc-p521-key.pem", "ecc-p521-cert.pem");
+}
+
+AWS_TEST_CASE(test_ecc_p521_cert_import, s_test_ecc_p521_cert_import)
 
 static int s_test_pkcs12_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

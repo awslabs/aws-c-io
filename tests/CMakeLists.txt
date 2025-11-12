@@ -297,6 +297,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_p256_cert_import)
     add_net_test_case(test_ecc_p384_cert_import)
+    add_net_test_case(test_ecc_p521_cert_import)
 
     add_test_case(test_tls_cipher_preference)
 
