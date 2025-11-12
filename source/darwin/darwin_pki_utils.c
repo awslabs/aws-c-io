@@ -20,13 +20,17 @@
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
+#if defined(AWS_OS_MACOS)
+static bool s_is_macos = true;
+#else
+static bool s_is_macos = false;
+#endif
+
 void aws_cf_release(CFTypeRef obj) {
     if (obj != NULL) {
         CFRelease(obj);
     }
 }
-
-#if !defined(AWS_OS_IOS)
 
 /*
  * Helper function to import ECC private key in PEM format into `import_keychain`. Return
@@ -36,16 +40,20 @@ void aws_cf_release(CFTypeRef obj) {
  * the function will only import the first valid key.
  * `import_keychain`: The keychain to be imported to. `import_keychain` should not be NULL.
  */
-static int s_import_ecc_key_into_keychain(
+static int s_import_key_into_keychain_with_seckeychain(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *private_key,
     SecKeychainRef import_keychain) {
-    // Ensure imported_keychain is not NULL
+
+#ifdef AWS_OS_MACOS
+
+    /* SecItemImport used here for importing private key into keychain requires  */
     AWS_PRECONDITION(import_keychain != NULL);
     AWS_PRECONDITION(private_key != NULL);
 
     int result = AWS_OP_ERR;
+
     struct aws_array_list decoded_key_buffer_list;
 
     /* Decode PEM format file to DER format */
@@ -53,18 +61,21 @@ static int s_import_ecc_key_into_keychain(
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
         goto ecc_import_cleanup;
     }
-    AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
+    AWS_FATAL_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
 
-    // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
-    // succeed key.
+    /* A PEM file may contain multiple PEM data sections. Try importing each PEM section until we successfully find
+     * a key. */
     for (size_t index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
         struct aws_pem_object *pem_object_ptr = NULL;
-        /* We only check the first pem section. Currently, we dont support key with multiple pem section. */
+        /* We only check individual PEM sections and do not currently support keys with multiple PEM sections. */
         aws_array_list_get_at_ptr(&decoded_key_buffer_list, (void **)&pem_object_ptr, index);
-        AWS_ASSERT(pem_object_ptr);
+        if (!pem_object_ptr) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to get PEM object at index %zu", index);
+            continue;
+        }
         CFDataRef key_data = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
         if (!key_data) {
-            AWS_LOGF_WARN(AWS_LS_IO_PKI, "static: error in creating ECC key data system call.");
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Error in creating ECC key data system call at index %zu", index);
             continue;
         }
 
@@ -96,9 +107,14 @@ ecc_import_cleanup:
     // Zero out the array list and release it
     aws_pem_objects_clean_up(&decoded_key_buffer_list);
     return result;
-}
 
-#endif
+#else /* AWS_OS_MACOS */
+
+    aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
+    return AWS_OP_ERR;
+
+#endif /* AWS_OS_MACOS */
+}
 
 static int s_aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
@@ -463,10 +479,8 @@ struct aws_pem_object *s_find_private_key(const struct aws_array_list *pem_objec
         switch (pem_object_ptr->type) {
             case AWS_PEM_TYPE_PRIVATE_RSA_PKCS1:
             case AWS_PEM_TYPE_EVP_PKEY:
-#ifdef AWS_OS_MACOS
             case AWS_PEM_TYPE_EC_PRIVATE:
             case AWS_PEM_TYPE_PRIVATE_PKCS8:
-#endif
                 AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "Found a private key in PEM file.");
                 return pem_object_ptr;
             default:
@@ -497,21 +511,18 @@ int s_import_private_key_into_keychain(
 
     int result = AWS_OP_ERR;
 
-    CFDictionaryRef key_copied_attributes = NULL;
-    CFMutableDictionaryRef key_attributes = NULL;
-    SecKeyRef key_ref = NULL;
-    CFDataRef key_data = NULL;
-
     struct aws_array_list decoded_key_buffer_list;
     AWS_ZERO_STRUCT(decoded_key_buffer_list);
 
     struct aws_pem_object *pem_key_ptr = NULL;
 
+    CFDictionaryRef key_copied_attributes = NULL;
+    CFMutableDictionaryRef key_attributes = NULL;
+    SecKeyRef key_ref = NULL;
+    CFDataRef key_data = NULL;
     CFDataRef application_label_ref = NULL;
-
     CFStringRef key_type = NULL;
     CFStringRef key_label_ref = NULL;
-
     CFErrorRef error = NULL;
 
     /*
@@ -543,6 +554,13 @@ int s_import_private_key_into_keychain(
 
         case AWS_PEM_TYPE_EC_PRIVATE:
             key_type = kSecAttrKeyTypeEC;
+            if (!s_is_macos) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_PKI,
+                    "static: The ECC private key format is currently unsupported for use on iOS or tvOS");
+                aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+                goto done;
+            }
             break;
 
         case AWS_PEM_TYPE_PRIVATE_PKCS8:
@@ -553,13 +571,13 @@ int s_import_private_key_into_keychain(
              */
             key_type = kSecAttrKeyTypeRSA;
             AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "The PKCS8 private key format is currently unsupported for use with SecItem.");
+                AWS_LS_IO_PKI, "static: The PKCS8 private key format is currently unsupported for use with SecItem");
             aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             goto done;
             break;
 
         default:
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Unsupported private key format.");
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Unsupported private key format %d", (int)pem_key_ptr->type);
             aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
             goto done;
     }
@@ -579,13 +597,7 @@ int s_import_private_key_into_keychain(
     key_attributes =
         CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
-    // TODO Do we need this?
     CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
-
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
-    /* Target file-based keychain instead of data protection keychain. */
-    CFDictionaryAddValue(key_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
-#endif
 
     /*
      * Try to parse a user-provided private key into a SecKeyRef. On this step, the private key won't be added
@@ -595,14 +607,21 @@ int s_import_private_key_into_keychain(
     if (error) {
         char description_buffer[256];
         aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
-        AWS_LOGF_WARN(AWS_LS_IO_PKI, "Failed importing private key using SecItem: %s", description_buffer);
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed importing private key using SecItem: %s", description_buffer);
+
+        if (!s_is_macos) {
+            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+            goto done;
+        }
 
         /*
          * If parsing with SecItem fails, we fall back to trying to add the private key via SecKeychain API.
+         * This API is available on macOS only.
          */
-        int rc = s_import_ecc_key_into_keychain(alloc, cf_alloc, private_key, import_keychain);
+        AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "static: Falling back to SecKeychain API for private key import");
+        int rc = s_import_key_into_keychain_with_seckeychain(alloc, cf_alloc, private_key, import_keychain);
         if (rc != AWS_OP_SUCCESS) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed importing private key into keychain: %d", rc);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed importing private key into keychain: %d", rc);
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
@@ -618,7 +637,7 @@ int s_import_private_key_into_keychain(
          */
         application_label_ref = (CFDataRef)CFDictionaryGetValue(key_copied_attributes, kSecAttrApplicationLabel);
         if (!application_label_ref) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key application label.");
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed creating private key application label.");
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
@@ -630,7 +649,7 @@ int s_import_private_key_into_keychain(
             kCFStringEncodingUTF8,
             false);
         if (!key_label_ref) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating private key label.");
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed creating private key label.");
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
@@ -671,13 +690,10 @@ int aws_secitem_import_cert_and_key(
     int result = AWS_OP_ERR;
 
     CFErrorRef error = NULL;
-
     CFDataRef cert_data = NULL;
     SecCertificateRef cert_ref = NULL;
     CFDataRef cert_serial_data = NULL;
     CFStringRef cert_label_ref = NULL;
-
-    // TODO Use keychain
     SecKeychainRef import_keychain = NULL;
 
     struct aws_array_list decoded_cert_buffer_list;
@@ -723,7 +739,14 @@ int aws_secitem_import_cert_and_key(
     }
 
 #    pragma clang diagnostic pop
-#endif
+
+#else  /* AWS_OS_MACOS */
+    if (keychain_path) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Keychain path is supported only on macOS");
+        result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        goto done;
+    }
+#endif /* AWS_OS_MACOS */
 
     /*
      * SecItem requires DER encoded files so we first convert the provided PEM encoded
