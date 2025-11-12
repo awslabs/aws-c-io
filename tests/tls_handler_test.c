@@ -2641,7 +2641,7 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
 }
 AWS_TEST_CASE(tls_destroy_null_context, s_tls_destroy_null_context);
 
-static int s_test_cert_key_import(struct aws_allocator *allocator, const char *key_path, const char *cert_path) {
+static int s_test_key_cert_import(struct aws_allocator *allocator, const char *key_path, const char *cert_path) {
     aws_io_library_init(allocator);
 
     struct aws_byte_buf cert_buf;
@@ -2674,21 +2674,21 @@ static int s_test_cert_key_import(struct aws_allocator *allocator, const char *k
 
 static int s_test_ecc_p256_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_test_cert_key_import(allocator, "ecc-p256-key.pem", "ecc-p256-cert.pem");
+    return s_test_key_cert_import(allocator, "ecc-p256-key.pem", "ecc-p256-cert.pem");
 }
 
 AWS_TEST_CASE(test_ecc_p256_cert_import, s_test_ecc_p256_cert_import)
 
 static int s_test_ecc_p384_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_test_cert_key_import(allocator, "ecc-p384-key.pem", "ecc-p384-cert.pem");
+    return s_test_key_cert_import(allocator, "ecc-p384-key.pem", "ecc-p384-cert.pem");
 }
 
 AWS_TEST_CASE(test_ecc_p384_cert_import, s_test_ecc_p384_cert_import)
 
 static int s_test_ecc_p521_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_test_cert_key_import(allocator, "ecc-p521-key.pem", "ecc-p521-cert.pem");
+    return s_test_key_cert_import(allocator, "ecc-p521-key.pem", "ecc-p521-cert.pem");
 }
 
 AWS_TEST_CASE(test_ecc_p521_cert_import, s_test_ecc_p521_cert_import)
@@ -2722,7 +2722,7 @@ AWS_TEST_CASE(test_pkcs12_import, s_test_pkcs12_import)
 
 static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_test_cert_key_import(allocator, "unittests.crt", "unittests.p8");
+    return s_test_key_cert_import(allocator, "unittests.p8", "unittests.crt");
 }
 
 AWS_TEST_CASE(test_pkcs8_import, s_test_pkcs8_import)
