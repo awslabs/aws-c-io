@@ -8,7 +8,7 @@
 #include <aws/common/clock.h>
 #include <aws/io/tls_channel_handler.h>
 
-#if defined(AWS_USE_SECITEM)
+#ifdef __APPLE__
 static bool s_is_use_secitem = true;
 #else
 static bool s_is_use_secitem = false;
