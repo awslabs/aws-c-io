@@ -308,6 +308,11 @@ if(NOT BYO_CRYPTO)
         add_net_test_case(test_pkcs8_import)
     endif()
 
+    if(APPLE)
+        # PKCS12 is primarily supported on APPLE platforms.
+        add_test_case(test_pkcs12_import)
+    endif()
+
     if(NOT APPLE)
         # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
         # further up the channel. Apple Network Framework's connection handles both the socket connection as well
@@ -318,9 +323,6 @@ if(NOT BYO_CRYPTO)
         # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
         # the socket establishment and does not need a separate timeout task for TLS.
         add_net_test_case(tls_channel_statistics_test)
-    else ()
-        # PKCS12 is primarily supported on APPLE platforms.
-        add_test_case(test_pkcs12_import)
     endif()
 
     add_test_case(alpn_error_creating_handler)
