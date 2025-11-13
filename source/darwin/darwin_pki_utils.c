@@ -45,7 +45,7 @@ static int s_import_key_into_keychain_with_seckeychain(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *private_key,
-    SecKeychainRef import_keychain) {
+    AwsSecKeychainRef import_keychain) {
 
     (void)alloc;
     (void)cf_alloc;
@@ -130,7 +130,7 @@ static int s_aws_secitem_add_certificate_to_keychain(
     SecCertificateRef cert_ref,
     CFDataRef serial_data,
     CFStringRef label,
-    SecKeychainRef import_keychain) {
+    AwsSecKeychainRef import_keychain) {
 
     (void)import_keychain;
 
@@ -245,7 +245,7 @@ static int s_aws_secitem_add_private_key_to_keychain(
     SecKeyRef key_ref,
     CFStringRef label,
     CFDataRef application_label,
-    SecKeychainRef import_keychain) {
+    AwsSecKeychainRef import_keychain) {
 
     (void)import_keychain;
 
@@ -359,7 +359,7 @@ static int s_aws_secitem_get_identity(
     CFDataRef serial_data,
     SecCertificateRef cert_ref,
     sec_identity_t *out_identity,
-    SecKeychainRef import_keychain) {
+    AwsSecKeychainRef import_keychain) {
 
     (void)cert_ref;
     (void)import_keychain;
@@ -520,7 +520,7 @@ int s_import_private_key_into_keychain(
     CFAllocatorRef cf_alloc,
     const struct aws_byte_cursor *private_key,
     const struct aws_secitem_options *secitem_options,
-    SecKeychainRef import_keychain) {
+    AwsSecKeychainRef import_keychain) {
 
     int result = AWS_OP_ERR;
 
