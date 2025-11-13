@@ -32,14 +32,6 @@ void aws_cf_release(CFTypeRef obj) {
     }
 }
 
-/*
- * Helper function to import ECC private key in PEM format into `import_keychain`. Return
- * AWS_OP_SUCCESS if successfully imported a private key or find a duplicate key in the
- * `import_keychain`, otherwise return AWS_OP_ERR.
- * `private_key`: UTF-8 key data in PEM format. If the key file contains multiple key sections,
- * the function will only import the first valid key.
- * `import_keychain`: The keychain to be imported to. `import_keychain` should not be NULL.
- */
 static int s_import_key_into_keychain_with_seckeychain(
     struct aws_allocator *alloc,
     CFAllocatorRef cf_alloc,
@@ -56,11 +48,12 @@ static int s_import_key_into_keychain_with_seckeychain(
     int result = AWS_OP_ERR;
 
     struct aws_array_list decoded_key_buffer_list;
+    AWS_ZERO_STRUCT(decoded_key_buffer_list);
 
     /* Decode PEM format file to DER format */
     if (aws_pem_objects_init_from_file_contents(&decoded_key_buffer_list, alloc, *private_key)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed to decode PEM private key to DER format.");
-        goto ecc_import_cleanup;
+        goto done;
     }
     AWS_FATAL_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
 
@@ -76,12 +69,12 @@ static int s_import_key_into_keychain_with_seckeychain(
         }
         CFDataRef key_data = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
         if (!key_data) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Error in creating ECC key data system call at index %zu", index);
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Error in creating private key data system call at index %zu", index);
             continue;
         }
 
-        /* Import ECC key data into keychain. */
-        SecExternalFormat format = kSecFormatOpenSSL;
+        /* Import private key data into keychain. */
+        SecExternalFormat format = kSecFormatUnknown;
         SecExternalItemType item_type = kSecItemTypePrivateKey;
         SecItemImportExportKeyParameters import_params;
         AWS_ZERO_STRUCT(import_params);
@@ -105,7 +98,7 @@ static int s_import_key_into_keychain_with_seckeychain(
         }
     }
 
-ecc_import_cleanup:
+done:
     // Zero out the array list and release it
     aws_pem_objects_clean_up(&decoded_key_buffer_list);
     return result;
@@ -571,10 +564,13 @@ int s_import_private_key_into_keychain(
              * different import strategy than the currently shared one.
              */
             key_type = kSecAttrKeyTypeRSA;
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "static: The PKCS8 private key format is currently unsupported for use with SecItem");
-            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-            goto done;
+            if (!s_is_macos) {
+                AWS_LOGF_ERROR(
+                    AWS_LS_IO_PKI,
+                    "static: The PKCS8 private key format is currently unsupported for use with SecItem");
+                aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+                goto done;
+            }
             break;
 
         default:

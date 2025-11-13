@@ -303,11 +303,12 @@ if(NOT BYO_CRYPTO)
 
     add_net_test_case(test_concurrent_cert_import)
 
-    if(NOT APPLE)
-        # PKCS8 is not supported on Apple platforms. PKCS8 support for SecItem can be added in the future but it will
-        # require macOS specific branching of logic and import of the key into the keychain.
+    if(NOT APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+        # PKCS8 is not supported on iOS and tvOS.
         add_net_test_case(test_pkcs8_import)
+    endif()
 
+    if(NOT APPLE)
         # This test shuts down the channel after a socket is established but while the TLS handshake is taking place
         # further up the channel. Apple Network Framework's connection handles both the socket connection as well
         # as the TLS handshake within the same create connection call without external notification that the socket
