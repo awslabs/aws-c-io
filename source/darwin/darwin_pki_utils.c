@@ -20,11 +20,20 @@
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
-#if defined(AWS_OS_MACOS)
-static bool s_is_macos = true;
-#else
-static bool s_is_macos = false;
-#endif
+#if defined(AWS_SECITEM_FILEBASED_KEYCHAIN)
+
+#    define AwsSecKeychainRef SecKeychainRef
+static bool s_is_filebased_keychain = true;
+
+#else /* AWS_SECITEM_FILEBASED_KEYCHAIN */
+
+/* Among Apple platforms only macOS supports file-based keychain represented by SecKeychainRef type. On iOS, tvOS, and
+ * watchOS this type is unavailable. To keep code consistent on all platforms we use void* type when file-based keychain
+ * is not available. */
+#    define AwsSecKeychainRef void *
+static bool s_is_filebased_keychain = false;
+
+#endif /* AWS_SECITEM_FILEBASED_KEYCHAIN */
 
 void aws_cf_release(CFTypeRef obj) {
     if (obj != NULL) {
@@ -38,7 +47,12 @@ static int s_import_key_into_keychain_with_seckeychain(
     const struct aws_byte_cursor *private_key,
     SecKeychainRef import_keychain) {
 
-#ifdef AWS_OS_MACOS
+    (void)alloc;
+    (void)cf_alloc;
+    (void)private_key;
+    (void)import_keychain;
+
+#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
 
     AWS_PRECONDITION(private_key != NULL);
     /* SecItemImport used here for importing private key into keychain requires SecKeychainRef in order to actually put
@@ -103,12 +117,12 @@ done:
     aws_pem_objects_clean_up(&decoded_key_buffer_list);
     return result;
 
-#else /* AWS_OS_MACOS */
+#else /* AWS_SECITEM_FILEBASED_KEYCHAIN */
 
     aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
     return AWS_OP_ERR;
 
-#endif /* AWS_OS_MACOS */
+#endif /* AWS_SECITEM_FILEBASED_KEYCHAIN */
 }
 
 static int s_aws_secitem_add_certificate_to_keychain(
@@ -117,6 +131,8 @@ static int s_aws_secitem_add_certificate_to_keychain(
     CFDataRef serial_data,
     CFStringRef label,
     SecKeychainRef import_keychain) {
+
+    (void)import_keychain;
 
     int result = AWS_OP_ERR;
     OSStatus status;
@@ -231,6 +247,8 @@ static int s_aws_secitem_add_private_key_to_keychain(
     CFDataRef application_label,
     SecKeychainRef import_keychain) {
 
+    (void)import_keychain;
+
     int result = AWS_OP_ERR;
     OSStatus status;
 
@@ -344,6 +362,7 @@ static int s_aws_secitem_get_identity(
     SecKeychainRef import_keychain) {
 
     (void)cert_ref;
+    (void)import_keychain;
 
     int result = AWS_OP_ERR;
     OSStatus status;
@@ -548,7 +567,7 @@ int s_import_private_key_into_keychain(
 
         case AWS_PEM_TYPE_EC_PRIVATE:
             key_type = kSecAttrKeyTypeEC;
-            if (!s_is_macos) {
+            if (!s_is_filebased_keychain) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
                     "static: The ECC private key format is currently unsupported for use on iOS or tvOS");
@@ -564,7 +583,7 @@ int s_import_private_key_into_keychain(
              * different import strategy than the currently shared one.
              */
             key_type = kSecAttrKeyTypeRSA;
-            if (!s_is_macos) {
+            if (!s_is_filebased_keychain) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_PKI,
                     "static: The PKCS8 private key format is currently unsupported for use with SecItem");
@@ -606,7 +625,7 @@ int s_import_private_key_into_keychain(
         aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed importing private key using SecItem: %s", description_buffer);
 
-        if (!s_is_macos) {
+        if (!s_is_filebased_keychain) {
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
@@ -690,14 +709,15 @@ int aws_secitem_import_cert_and_key(
     SecCertificateRef cert_ref = NULL;
     CFDataRef cert_serial_data = NULL;
     CFStringRef cert_label_ref = NULL;
-    SecKeychainRef import_keychain = NULL;
+    AwsSecKeychainRef import_keychain = NULL;
 
     struct aws_array_list decoded_cert_buffer_list;
     AWS_ZERO_STRUCT(decoded_cert_buffer_list);
 
-#ifdef AWS_OS_MACOS
+#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wdeprecated-declarations"
+
     /*
      * SecKeychain functions are marked as deprecated. There are no non-deprecated functions for specifying specific
      * file-based keychains.
@@ -736,13 +756,13 @@ int aws_secitem_import_cert_and_key(
 
 #    pragma clang diagnostic pop
 
-#else  /* AWS_OS_MACOS */
+#else  /* AWS_SECITEM_FILEBASED_KEYCHAIN */
     if (keychain_path) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Keychain path is supported only on macOS");
         result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto done;
     }
-#endif /* AWS_OS_MACOS */
+#endif /* AWS_SECITEM_FILEBASED_KEYCHAIN */
 
     /*
      * SecItem requires DER encoded files so we first convert the provided PEM encoded
@@ -810,8 +830,8 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-    // Add the certificate and private key to keychain then retrieve identity
-    // Protect the entire SecItem operation with mutex to prevent race conditions
+    /* Add the certificate and private key to keychain then retrieve identity.
+     * Protect the entire SecItem operation with mutex to prevent race conditions. */
     aws_mutex_lock(&s_sec_mutex);
 
     if (s_import_private_key_into_keychain(alloc, cf_alloc, private_key, secitem_options, import_keychain)) {
@@ -835,14 +855,14 @@ int aws_secitem_import_cert_and_key(
     result = AWS_OP_SUCCESS;
 
 done:
-    // cleanup
+    /* cleanup */
     aws_cf_release(error);
     aws_cf_release(cert_data);
     aws_cf_release(cert_ref);
     aws_cf_release(cert_serial_data);
     aws_cf_release(cert_label_ref);
 
-    // Zero out the array list and release it
+    /* Zero out the array list and release it */
     aws_pem_objects_clean_up(&decoded_cert_buffer_list);
 
     return result;
