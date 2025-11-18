@@ -5,11 +5,12 @@
 #include <aws/io/io.h>
 
 #include <aws/io/logging.h>
+#include <aws/io/socks5.h>
 
 #include <aws/cal/cal.h>
 #include <aws/io/private/tracing.h>
 
-#define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE) - 0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
+#define AWS_DEFINE_ERROR_INFO_IO(CODE, STR) [(CODE)-0x0400] = AWS_DEFINE_ERROR_INFO(CODE, STR, "aws-c-io")
 
 #define AWS_DEFINE_ERROR_PKCS11_CKR(CKR)                                                                               \
     AWS_DEFINE_ERROR_INFO_IO(                                                                                          \
@@ -306,6 +307,7 @@ static struct aws_error_info s_errors[] = {
         AWS_IO_TLS_ERROR_READ_FAILURE,
         "Failure during TLS read."),
     AWS_DEFINE_ERROR_INFO_IO(AWS_ERROR_PEM_MALFORMED, "Malformed PEM object encountered."),
+
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKET_MISSING_EVENT_LOOP,
         "Socket is missing its event loop."),
@@ -351,6 +353,87 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_HOST_NAME_MISMATCH,
         "Channel shutdown due to certificate's host name does not match the endpoint host name."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_INIT,
+        "Failed to initialize SOCKS5 proxy connection."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_UNSUPPORTED_AUTH_METHOD,
+        "SOCKS5 proxy server doesn't support any of the client's authentication methods."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_AUTH_FAILED,
+        "Authentication with SOCKS5 proxy server failed."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_CONNECTION_FAILED,
+        "Failed to establish connection through SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_REQUEST_FAILED,
+        "SOCKS5 proxy request failed."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_MALFORMED_RESPONSE,
+        "Received malformed response from SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_UNSUPPORTED_ADDRESS_TYPE,
+        "SOCKS5 proxy doesn't support the requested address type."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_BAD_ADDRESS,
+        "Invalid address format for SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_BAD_HANDSHAKE,
+        "SOCKS5 handshake failed."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_REJECTED,
+        "Connection rejected by SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_GENERAL_FAILURE,
+        "General failure reported by SOCKS5 proxy server."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_TTL_EXPIRED,
+        "TTL expired for connection through SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_COMMAND_NOT_SUPPORTED,
+        "Command not supported by SOCKS5 proxy server."),
+
+
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_INIT,
+        "Failed to initialize SOCKS5 proxy connection."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_UNSUPPORTED_AUTH_METHOD,
+        "SOCKS5 proxy server doesn't support any of the client's authentication methods."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_AUTH_FAILED,
+        "Authentication with SOCKS5 proxy server failed."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_CONNECTION_FAILED,
+        "Failed to establish connection through SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_REQUEST_FAILED,
+        "SOCKS5 proxy request failed."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_MALFORMED_RESPONSE,
+        "Received malformed response from SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_UNSUPPORTED_ADDRESS_TYPE,
+        "SOCKS5 proxy doesn't support the requested address type."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_BAD_ADDRESS,
+        "Invalid address format for SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_BAD_HANDSHAKE,
+        "SOCKS5 handshake failed."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_REJECTED,
+        "Connection rejected by SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_GENERAL_FAILURE,
+        "General failure reported by SOCKS5 proxy server."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_TTL_EXPIRED,
+        "TTL expired for connection through SOCKS5 proxy."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROXY_ERROR_COMMAND_NOT_SUPPORTED,
+        "Command not supported by SOCKS5 proxy server."),
+
 };
 /* clang-format on */
 

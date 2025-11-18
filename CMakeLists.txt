@@ -161,10 +161,16 @@ file(GLOB IO_HEADERS
         ${AWS_IO_PRIV_HEADERS}
         )
 
+file(GLOB AWS_IO_SOCKS5_SRC
+        "source/socks5.c"
+        "source/socks5_channel_handler.c"
+        )
+
 file(GLOB IO_SRC
         ${AWS_IO_SRC}
         ${AWS_IO_OS_SRC}
         ${AWS_IO_TLS_SRC}
+        ${AWS_IO_SOCKS5_SRC}
         )
 
 add_library(${PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
