@@ -1444,7 +1444,7 @@ static int s_verify_good_host(
     return AWS_OP_SUCCESS;
 }
 
-static int s_verify_good_host_mqtt_connect(
+static int s_verify_good_host_mtls_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
     uint32_t port,
@@ -1621,16 +1621,16 @@ static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
 AWS_TEST_CASE(
     tls_client_channel_negotiation_success_ecc384_deprecated,
     s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
-#    endif
+#    endif /* _WIN32 */
 
 static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
 }
 
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_mtls_host_name, "127.0.0.1");
 static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
+    return s_verify_good_host_mtls_connect(allocator, s_aws_mtls_host_name, 59443, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
@@ -2641,18 +2641,14 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
 }
 AWS_TEST_CASE(tls_destroy_null_context, s_tls_destroy_null_context);
 
-static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    (void)allocator;
-
-#    ifndef AWS_OS_APPLE
+static int s_test_cert_key_import(struct aws_allocator *allocator, const char *cert_path, const char *key_path) {
     aws_io_library_init(allocator);
 
     struct aws_byte_buf cert_buf;
     struct aws_byte_buf key_buf;
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ecc-cert.pem"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ecc-key.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, cert_path));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, key_path));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
@@ -2672,30 +2668,49 @@ static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
     aws_byte_buf_clean_up(&key_buf);
 
     aws_io_library_clean_up();
-#    endif /* AWS_OS_APPLE */
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
+static int s_test_ecc_p256_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_cert_key_import(allocator, "ecc-p256-cert.pem", "ecc-p256-key.pem");
+}
+
+AWS_TEST_CASE(test_ecc_p256_cert_import, s_test_ecc_p256_cert_import)
+
+static int s_test_ecc_p384_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_cert_key_import(allocator, "ecc-p384-cert.pem", "ecc-p384-key.pem");
+}
+
+AWS_TEST_CASE(test_ecc_p384_cert_import, s_test_ecc_p384_cert_import)
+
+static int s_test_ecc_p521_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_cert_key_import(allocator, "ecc-p521-cert.pem", "ecc-p521-key.pem");
+}
+
+AWS_TEST_CASE(test_ecc_p521_cert_import, s_test_ecc_p521_cert_import)
 
 static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+    return s_test_cert_key_import(allocator, "unittests.crt", "unittests.p8");
+}
+
+AWS_TEST_CASE(test_pkcs8_import, s_test_pkcs8_import)
+
+static int s_test_pkcs12_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
     (void)allocator;
 
     aws_io_library_init(allocator);
 
-    struct aws_byte_buf cert_buf;
-    struct aws_byte_buf key_buf;
-
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "unittests.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "unittests.p8"));
-
-    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
-    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
     struct aws_tls_ctx_options tls_options = {0};
     AWS_FATAL_ASSERT(
-        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+        AWS_OP_SUCCESS ==
+        aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(&tls_options, allocator, "unittests.p12", &pwd_cur));
 
     /* import happens in here */
     struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
@@ -2705,15 +2720,12 @@ static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
 
     aws_tls_ctx_options_clean_up(&tls_options);
 
-    aws_byte_buf_clean_up(&cert_buf);
-    aws_byte_buf_clean_up(&key_buf);
-
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(test_pkcs8_import, s_test_pkcs8_import)
+AWS_TEST_CASE(test_pkcs12_import, s_test_pkcs12_import)
 
 static int s_test_tls_cipher_preference_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
