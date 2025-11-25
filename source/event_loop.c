@@ -302,7 +302,7 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
 
             /* Thread name should be <= 15 characters */
             char thread_name[32] = {0};
-            int thread_name_len = snprintf(thread_name, sizeof(thread_name), "AwsEventLoop %d", (int)i + 1);
+            int thread_name_len = snprintf(thread_name, sizeof(thread_name), "AwsEventLoop%d", (int)i + 1);
             if (thread_name_len > AWS_THREAD_NAME_RECOMMENDED_STRLEN) {
                 snprintf(thread_name, sizeof(thread_name), "AwsEventLoop");
             }
