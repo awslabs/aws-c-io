@@ -59,6 +59,7 @@ jobs:
   linux-compiler-compat:
     runs-on: ubuntu-24.04 # latest
     strategy:
+      fail-fast: false
       matrix:
         compiler:
           - name: clang-6
@@ -145,21 +146,6 @@ jobs:
         aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
 
-  # Test downstream repos.
-  # This should not be required because we can run into a chicken and egg problem if there is a change that needs some fix in a downstream repo.
-  downstream:
-    runs-on: ubuntu-24.04 # latest
-    steps:
-    - uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ env.CRT_CI_ROLE }}
-        aws-region: ${{ env.AWS_DEFAULT_REGION }}
-    # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
-    - name: Build ${{ env.PACKAGE_NAME }}
-      run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
-        ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build downstream -p ${{ env.PACKAGE_NAME }}
-
   windows:
     runs-on: windows-2025 # latest
     steps:
@@ -201,6 +187,7 @@ jobs:
   windows-vc17:
     runs-on: windows-2025 # latest
     strategy:
+      fail-fast: false
       matrix:
         arch: [x86, x64]
     steps:

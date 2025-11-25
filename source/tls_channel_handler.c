@@ -27,10 +27,8 @@ void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options
 
 #ifdef __APPLE__
 
-    if (aws_is_using_secitem()) {
-        options->secitem_options.cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
-        options->secitem_options.key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
-    }
+    options->secitem_options.cert_label = aws_string_new_from_c_str(allocator, "aws-crt-default-certificate-label");
+    options->secitem_options.key_label = aws_string_new_from_c_str(allocator, "aws-crt-default-key-label");
 
 #endif /* __APPLE__ */
 }
@@ -278,36 +276,32 @@ int aws_tls_ctx_options_set_keychain_path(
 int aws_tls_ctx_options_set_secitem_options(
     struct aws_tls_ctx_options *tls_ctx_options,
     const struct aws_secitem_options *secitem_options) {
-    if (aws_is_using_secitem()) {
 
-        if (secitem_options->cert_label != NULL) {
-            aws_string_destroy(tls_ctx_options->secitem_options.cert_label);
-            tls_ctx_options->secitem_options.cert_label = NULL;
-            tls_ctx_options->secitem_options.cert_label =
-                aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->cert_label);
-            if (tls_ctx_options->secitem_options.cert_label == NULL) {
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option certificate label is invalid.");
-                return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-            }
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: Secitem option certificate label set.");
+    if (secitem_options->cert_label != NULL) {
+        aws_string_destroy(tls_ctx_options->secitem_options.cert_label);
+        tls_ctx_options->secitem_options.cert_label = NULL;
+        tls_ctx_options->secitem_options.cert_label =
+            aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->cert_label);
+        if (tls_ctx_options->secitem_options.cert_label == NULL) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option certificate label is invalid.");
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         }
-
-        if (secitem_options->key_label != NULL) {
-            aws_string_destroy(tls_ctx_options->secitem_options.key_label);
-            tls_ctx_options->secitem_options.key_label = NULL;
-            tls_ctx_options->secitem_options.key_label =
-                aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->key_label);
-            if (tls_ctx_options->secitem_options.key_label == NULL) {
-                AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option key label is invalid.");
-                return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-            }
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: Secitem option key label set.");
-        }
-        return AWS_OP_SUCCESS;
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: Secitem option certificate label set.");
     }
 
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Secitem options can only be set when using Secitem.");
-    return AWS_OP_ERR;
+    if (secitem_options->key_label != NULL) {
+        aws_string_destroy(tls_ctx_options->secitem_options.key_label);
+        tls_ctx_options->secitem_options.key_label = NULL;
+        tls_ctx_options->secitem_options.key_label =
+            aws_string_new_from_string(tls_ctx_options->allocator, secitem_options->key_label);
+        if (tls_ctx_options->secitem_options.key_label == NULL) {
+            AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Secitem option key label is invalid.");
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: Secitem option key label set.");
+    }
+
+    return AWS_OP_SUCCESS;
 }
 
 #else /* __APPLE__ */
@@ -451,7 +445,7 @@ int aws_tls_ctx_options_init_default_server_from_path(
     const char *cert_path,
     const char *pkey_path) {
 
-#if !defined(AWS_OS_IOS)
+#if !defined(__APPLE__)
     if (aws_tls_ctx_options_init_client_mtls_from_path(options, allocator, cert_path, pkey_path)) {
         return AWS_OP_ERR;
     }
@@ -474,7 +468,7 @@ int aws_tls_ctx_options_init_default_server(
     struct aws_byte_cursor *cert,
     struct aws_byte_cursor *pkey) {
 
-#if !defined(AWS_OS_IOS)
+#if !defined(__APPLE__)
     if (aws_tls_ctx_options_init_client_mtls(options, allocator, cert, pkey)) {
         return AWS_OP_ERR;
     }
