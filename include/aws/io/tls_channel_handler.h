@@ -255,8 +255,8 @@ struct aws_tls_ctx_options {
     struct aws_secitem_options secitem_options;
 
     /**
-     * On macOS, you can also use a custom keychain instead of
-     * the default keychain of the account. This is NOT supported on iOS or tvOS.
+     * On macOS, you can use a custom keychain instead of the default keychain of the account. This is NOT supported on
+     * iOS or tvOS.
      */
     struct aws_string *keychain_path;
 
