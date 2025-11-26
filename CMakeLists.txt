@@ -189,13 +189,6 @@ if (USE_VSOCK)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DUSE_VSOCK")
 endif()
 
-if (APPLE)
-    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-        # Target file-based keychain on macOS.
-        target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_SECITEM_FILEBASED_KEYCHAIN")
-    endif()
-endif()
-
 target_include_directories(${PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
