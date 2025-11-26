@@ -21,21 +21,6 @@
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
-#if !TARGET_OS_IPHONE
-
-#    define AwsSecKeychainRef SecKeychainRef
-static bool s_is_filebased_keychain = true;
-
-#else /* TARGET_OS_IPHONE */
-
-/* Among Apple platforms only macOS supports file-based keychain represented by SecKeychainRef type. On iOS, tvOS, and
- * watchOS this type is unavailable. To keep code consistent on all platforms we use void* type when file-based keychain
- * is not available. */
-#    define AwsSecKeychainRef void *
-static bool s_is_filebased_keychain = false;
-
-#endif /* !TARGET_OS_IPHONE */
-
 void aws_cf_release(CFTypeRef obj) {
     if (obj != NULL) {
         CFRelease(obj);
@@ -568,13 +553,12 @@ int s_import_private_key_into_keychain(
 
         case AWS_PEM_TYPE_EC_PRIVATE:
             key_type = kSecAttrKeyTypeEC;
-            if (!s_is_filebased_keychain) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_PKI,
-                    "static: The ECC private key format is currently unsupported for use on iOS or tvOS");
-                aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-                goto done;
-            }
+#if !TARGET_OS_IPHONE
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: The ECC private key format is currently unsupported for use on iOS or tvOS");
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto done;
+#endif
             break;
 
         case AWS_PEM_TYPE_PRIVATE_PKCS8:
@@ -584,13 +568,12 @@ int s_import_private_key_into_keychain(
              * different import strategy than the currently shared one.
              */
             key_type = kSecAttrKeyTypeRSA;
-            if (!s_is_filebased_keychain) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_PKI,
-                    "static: The PKCS8 private key format is currently unsupported for use with SecItem");
-                aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-                goto done;
-            }
+#if !TARGET_OS_IPHONE
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: The PKCS8 private key format is currently unsupported for use with SecItem");
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto done;
+#endif
             break;
 
         default:
@@ -626,10 +609,10 @@ int s_import_private_key_into_keychain(
         aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed importing private key using SecItem: %s", description_buffer);
 
-        if (!s_is_filebased_keychain) {
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
-        }
+#if !TARGET_OS_IPHONE
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+#endif
 
         /*
          * If parsing with SecItem fails, we fall back to trying to add the private key via SecKeychain API.
