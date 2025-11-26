@@ -21,6 +21,15 @@
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
+#if !TARGET_OS_IPHONE
+#    define AwsSecKeychainRef SecKeychainRef
+#else /* TARGET_OS_IPHONE */
+/* Among Apple platforms only macOS supports file-based keychain represented by SecKeychainRef type. On iOS, tvOS, and
+ * watchOS this type is unavailable. To keep code consistent on all platforms we use void* type when file-based keychain
+ * is not available. */
+#    define AwsSecKeychainRef void *
+#endif /* !TARGET_OS_IPHONE */
+
 void aws_cf_release(CFTypeRef obj) {
     if (obj != NULL) {
         CFRelease(obj);
