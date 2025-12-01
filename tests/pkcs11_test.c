@@ -1650,6 +1650,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(
     ASSERT_SUCCESS(s_reload_hsm());
 
     /* Set up resources that aren't specific to server or client */
+    AWS_ZERO_STRUCT(s_tls_tester);
     ASSERT_SUCCESS(aws_mutex_init(&s_tls_tester.synced.mutex));
     ASSERT_SUCCESS(aws_condition_variable_init(&s_tls_tester.synced.cvar));
 
@@ -1815,6 +1816,7 @@ static int s_test_pkcs11_tls_negotiation_succeeds_common(
 
     aws_condition_variable_clean_up(&s_tls_tester.synced.cvar);
     aws_mutex_clean_up(&s_tls_tester.synced.mutex);
+    AWS_ZERO_STRUCT(s_tls_tester);
     s_pkcs11_tester_clean_up();
     return AWS_OP_SUCCESS;
 }
