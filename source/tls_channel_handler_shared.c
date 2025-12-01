@@ -8,15 +8,6 @@
 #include <aws/common/clock.h>
 #include <aws/io/tls_channel_handler.h>
 
-#ifdef __APPLE__
-static bool s_is_use_secitem = true;
-#else
-static bool s_is_use_secitem = false;
-#endif
-bool aws_is_using_secitem(void) {
-    return s_is_use_secitem;
-}
-
 static void s_tls_timeout_task_fn(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
     (void)channel_task;
 

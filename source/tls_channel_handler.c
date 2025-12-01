@@ -11,6 +11,10 @@
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/tls_channel_handler.h>
 
+#if defined(__APPLE__)
+#    include <TargetConditionals.h>
+#endif
+
 #define AWS_DEFAULT_TLS_TIMEOUT_MS 10000
 
 #include "./pkcs11_private.h"
@@ -248,12 +252,7 @@ int aws_tls_ctx_options_set_keychain_path(
     struct aws_tls_ctx_options *options,
     struct aws_byte_cursor *keychain_path_cursor) {
 
-#if defined(__APPLE__)
-
-    if (aws_is_using_secitem()) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Keychain path cannot be set when using Secitem.");
-        return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-    }
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 
     AWS_LOGF_WARN(AWS_LS_IO_TLS, "static: Keychain path is deprecated.");
 
@@ -263,7 +262,7 @@ int aws_tls_ctx_options_set_keychain_path(
     }
     return AWS_OP_SUCCESS;
 
-#endif /* __APPLE__*/
+#endif /* __APPLE__ && !TARGET_OS_IPHONE */
 
     (void)options;
     (void)keychain_path_cursor;

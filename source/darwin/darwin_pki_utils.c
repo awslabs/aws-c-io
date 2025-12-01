@@ -13,6 +13,7 @@
 #include <Security/SecCertificate.h>
 #include <Security/SecKey.h>
 #include <Security/Security.h>
+#include <TargetConditionals.h>
 
 #include "darwin_shared_private.h"
 
@@ -20,20 +21,14 @@
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
 
-#if defined(AWS_SECITEM_FILEBASED_KEYCHAIN)
-
+#if !TARGET_OS_IPHONE
 #    define AwsSecKeychainRef SecKeychainRef
-static bool s_is_filebased_keychain = true;
-
-#else /* AWS_SECITEM_FILEBASED_KEYCHAIN */
-
+#else /* TARGET_OS_IPHONE */
 /* Among Apple platforms only macOS supports file-based keychain represented by SecKeychainRef type. On iOS, tvOS, and
  * watchOS this type is unavailable. To keep code consistent on all platforms we use void* type when file-based keychain
  * is not available. */
 #    define AwsSecKeychainRef void *
-static bool s_is_filebased_keychain = false;
-
-#endif /* AWS_SECITEM_FILEBASED_KEYCHAIN */
+#endif /* !TARGET_OS_IPHONE */
 
 void aws_cf_release(CFTypeRef obj) {
     if (obj != NULL) {
@@ -52,7 +47,7 @@ static int s_import_key_into_keychain_with_seckeychain(
     (void)private_key;
     (void)import_keychain;
 
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+#if !TARGET_OS_IPHONE
 
     AWS_PRECONDITION(private_key != NULL);
     /* SecItemImport used here for importing private key into keychain requires SecKeychainRef in order to actually put
@@ -117,12 +112,12 @@ done:
     aws_pem_objects_clean_up(&decoded_key_buffer_list);
     return result;
 
-#else /* AWS_SECITEM_FILEBASED_KEYCHAIN */
+#else /* TARGET_OS_IPHONE */
 
     aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
     return AWS_OP_ERR;
 
-#endif /* AWS_SECITEM_FILEBASED_KEYCHAIN */
+#endif /* !TARGET_OS_IPHONE */
 }
 
 static int s_aws_secitem_add_certificate_to_keychain(
@@ -146,13 +141,13 @@ static int s_aws_secitem_add_certificate_to_keychain(
     CFDictionaryAddValue(add_attributes, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
     CFDictionaryAddValue(add_attributes, kSecValueRef, cert_ref);
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+#if !TARGET_OS_IPHONE
     /* Target file-based keychain instead of data protection keychain. */
     CFDictionaryAddValue(add_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
     if (import_keychain != NULL) {
         CFDictionaryAddValue(add_attributes, kSecUseKeychain, import_keychain);
     }
-#endif
+#endif // !TARGET_OS_IPHONE
 
     // Initial attempt to add certificate to keychain.
     status = SecItemAdd(add_attributes, NULL);
@@ -207,10 +202,10 @@ static int s_aws_secitem_add_certificate_to_keychain(
             CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         CFDictionaryAddValue(delete_query, kSecClass, kSecClassCertificate);
         CFDictionaryAddValue(delete_query, kSecAttrSerialNumber, serial_data);
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+#if !TARGET_OS_IPHONE
         /* Target file-based keychain instead of data protection keychain. */
         CFDictionaryAddValue(delete_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
-#endif
+#endif // !TARGET_OS_IPHONE
 
         // delete the existing certificate from keychain
         status = SecItemDelete(delete_query);
@@ -262,13 +257,13 @@ static int s_aws_secitem_add_private_key_to_keychain(
     CFDictionaryAddValue(add_attributes, kSecAttrApplicationLabel, application_label);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
     CFDictionaryAddValue(add_attributes, kSecValueRef, key_ref);
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+#if !TARGET_OS_IPHONE
     /* Target file-based keychain instead of data protection keychain. */
     CFDictionaryAddValue(add_attributes, kSecUseDataProtectionKeychain, kCFBooleanFalse);
     if (import_keychain != NULL) {
         CFDictionaryAddValue(add_attributes, kSecUseKeychain, import_keychain);
     }
-#endif
+#endif // !TARGET_OS_IPHONE
 
     // Initial attempt to add private key to keychain.
     status = SecItemAdd(add_attributes, NULL);
@@ -321,11 +316,11 @@ static int s_aws_secitem_add_private_key_to_keychain(
         CFDictionaryAddValue(delete_query, kSecClass, kSecClassKey);
         CFDictionaryAddValue(delete_query, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
         CFDictionaryAddValue(delete_query, kSecAttrApplicationLabel, application_label);
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+#if !TARGET_OS_IPHONE
         /* Target file-based keychain instead of data protection keychain. */
         CFDictionaryAddValue(delete_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
-#endif
-        // delete the existing private key from keychain
+#endif // !TARGET_OS_IPHONE
+       // delete the existing private key from keychain
         status = SecItemDelete(delete_query);
         if (status != errSecSuccess) {
             AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemDelete private key failed with OSStatus %d", (int)status);
@@ -384,7 +379,7 @@ static int s_aws_secitem_get_identity(
     CFDictionaryAddValue(search_query, kSecAttrSerialNumber, serial_data);
     CFDictionaryAddValue(search_query, kSecReturnRef, kCFBooleanTrue);
 
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+#if !TARGET_OS_IPHONE
     /* Target file-based keychain instead of data protection keychain. */
     CFDictionaryAddValue(search_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
     /* The kSecAttrSerialNumber filter attribute does not work for kSecClassIdentity when SecItem targets file-based
@@ -396,7 +391,7 @@ static int s_aws_secitem_get_identity(
         keychain_filter = CFArrayCreate(cf_alloc, (const void **)&import_keychain, 1L, &kCFTypeArrayCallBacks);
         CFDictionaryAddValue(search_query, kSecMatchSearchList, keychain_filter);
     }
-#endif
+#endif // !TARGET_OS_IPHONE
 
     /* Though the kSecAttrSerialNumber and kSecMatchItemList attributes filter out unmatching identities, request
      * SecItemCopyMatching to return all results. */
@@ -567,13 +562,12 @@ int s_import_private_key_into_keychain(
 
         case AWS_PEM_TYPE_EC_PRIVATE:
             key_type = kSecAttrKeyTypeEC;
-            if (!s_is_filebased_keychain) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_PKI,
-                    "static: The ECC private key format is currently unsupported for use on iOS or tvOS");
-                aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-                goto done;
-            }
+#if TARGET_OS_IPHONE
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: The ECC private key format is currently unsupported for use on iOS or tvOS");
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto done;
+#endif
             break;
 
         case AWS_PEM_TYPE_PRIVATE_PKCS8:
@@ -583,13 +577,12 @@ int s_import_private_key_into_keychain(
              * different import strategy than the currently shared one.
              */
             key_type = kSecAttrKeyTypeRSA;
-            if (!s_is_filebased_keychain) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_PKI,
-                    "static: The PKCS8 private key format is currently unsupported for use with SecItem");
-                aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-                goto done;
-            }
+#if TARGET_OS_IPHONE
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "static: The PKCS8 private key format is currently unsupported for use with SecItem");
+            aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+            goto done;
+#endif
             break;
 
         default:
@@ -625,10 +618,10 @@ int s_import_private_key_into_keychain(
         aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Failed importing private key using SecItem: %s", description_buffer);
 
-        if (!s_is_filebased_keychain) {
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
-        }
+#if TARGET_OS_IPHONE
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+#endif
 
         /*
          * If parsing with SecItem fails, we fall back to trying to add the private key via SecKeychain API.
@@ -714,7 +707,7 @@ int aws_secitem_import_cert_and_key(
     struct aws_array_list decoded_cert_buffer_list;
     AWS_ZERO_STRUCT(decoded_cert_buffer_list);
 
-#ifdef AWS_SECITEM_FILEBASED_KEYCHAIN
+#if !TARGET_OS_IPHONE
 #    pragma clang diagnostic push
 #    pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
@@ -756,13 +749,13 @@ int aws_secitem_import_cert_and_key(
 
 #    pragma clang diagnostic pop
 
-#else  /* AWS_SECITEM_FILEBASED_KEYCHAIN */
+#else  /* TARGET_OS_IPHONE */
     if (keychain_path) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: Keychain path is supported only on macOS");
         result = aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto done;
     }
-#endif /* AWS_SECITEM_FILEBASED_KEYCHAIN */
+#endif /* !TARGET_OS_IPHONE */
 
     /*
      * SecItem requires DER encoded files so we first convert the provided PEM encoded
