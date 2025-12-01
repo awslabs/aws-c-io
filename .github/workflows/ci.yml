@@ -6,8 +6,8 @@ on:
       - 'main'
 
 env:
-  BUILDER_VERSION: ubuntu-update
-  BUILDER_SOURCE: channels
+  BUILDER_VERSION: v0.9.88
+  BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-io
   LINUX_BASE_IMAGE: ubuntu-18-x64
