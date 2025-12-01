@@ -233,7 +233,10 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh480)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh512)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_null)
-    add_net_test_case(tls_client_channel_negotiation_error_tls1_3_to_tls1_2_server)
+    if (NOT APPLE)
+        # Currently, this test doesn't work. It will be enabled when dispatch queue is used on macOS.
+        add_net_test_case(tls_client_channel_negotiation_error_tls1_3_to_tls1_2_server)
+    endif()
 
     # Badssl - Legacy crypto suite, includes both negative and positive tests, with override checks where appropriate
     # Our current baseline/default is platform-specific, whereas badssl expects a baseline of 1.2
