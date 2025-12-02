@@ -2776,6 +2776,13 @@ static int s_test_cert_key_import(struct aws_allocator *allocator, const char *c
     return AWS_OP_SUCCESS;
 }
 
+static int s_test_rsa_2048_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_test_cert_key_import(allocator, "unittests.crt", "unittests.key");
+}
+
+AWS_TEST_CASE(test_rsa_2048_cert_import, s_test_rsa_2048_cert_import)
+
 static int s_test_ecc_p256_cert_import(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     return s_test_cert_key_import(allocator, "ecc-p256-cert.pem", "ecc-p256-key.pem");
