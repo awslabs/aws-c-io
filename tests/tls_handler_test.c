@@ -1761,9 +1761,7 @@ AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls13, s_tls_client_ch
 
 /* In this test, a client sets minimum TLS to 1.3 and then tries to connect to a server supporting TLS 1.2 only.
  * The TLS connection should fail. */
-static int s_tls_client_channel_negotiation_error_tls13_to_tls12_server_fn(
-    struct aws_allocator *allocator,
-    void *ctx) {
+static int s_tls_client_channel_negotiation_error_tls13_to_tls12_server_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     uint32_t server_tls12_port = 58443;
     return s_verify_negotiation_fails_connect(
