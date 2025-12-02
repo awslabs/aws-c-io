@@ -241,7 +241,6 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_dh512)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_null)
     if (WIN32 OR APPLE)
-        # Currently, this test doesn't work on macOS. It will be enabled when migration to dispatch queue is done.
         add_net_test_case(tls_client_channel_negotiation_error_tls13_to_tls12_server)
     endif()
 
