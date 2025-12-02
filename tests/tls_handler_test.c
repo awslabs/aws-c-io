@@ -1736,10 +1736,6 @@ AWS_TEST_CASE(
     s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
 #    endif /* _WIN32 */
 
-static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
-}
-
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_local_tls_server_host_name, "127.0.0.1");
 
 static int s_tls_client_channel_negotiation_success_mtls_tls12_fn(struct aws_allocator *allocator, void *ctx) {
