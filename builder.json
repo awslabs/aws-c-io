@@ -13,6 +13,7 @@
         { "name": "aws-c-mqtt" },
         { "name": "aws-c-event-stream" }
     ],
+    "pre_build_steps": ["tls-server-setup"],
     "targets": {
         "linux": {
             "_comment": "set up SoftHSM2 for PKCS#11 tests (see: ./builder/actions/pkcs11_test_setup.py)",
