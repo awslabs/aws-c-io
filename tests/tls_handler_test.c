@@ -31,6 +31,9 @@
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
+#    define AWS_TEST_LOCAL_TLS12_PORT 58443
+#    define AWS_TEST_LOCAL_TLS13_PORT 59443
+
 bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
     if (strstr(aws_string_c_str(host_name), "badssl.com") != NULL) {
         if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
@@ -1740,17 +1743,16 @@ AWS_STATIC_STRING_FROM_LITERAL(s_aws_local_tls_server_host_name, "127.0.0.1");
 
 static int s_tls_client_channel_negotiation_success_mtls_tls12_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    uint32_t server_tls12_port = 58443;
-    return s_verify_mtls_good_host_connect(allocator, s_aws_local_tls_server_host_name, server_tls12_port, NULL);
+    return s_verify_mtls_good_host_connect(
+        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS12_PORT, NULL);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls12, s_tls_client_channel_negotiation_success_mtls_tls12_fn)
 
 static int s_tls_client_channel_negotiation_success_mtls_tls13_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    uint32_t server_tls13_port = 59443;
     return s_verify_mtls_good_host_connect(
-        allocator, s_aws_local_tls_server_host_name, server_tls13_port, s_raise_tls_version_to_13);
+        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls13, s_tls_client_channel_negotiation_success_mtls_tls13_fn)
@@ -1759,9 +1761,8 @@ AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls13, s_tls_client_ch
  * The TLS connection should fail. */
 static int s_tls_client_channel_negotiation_error_tls13_to_tls12_server_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    uint32_t server_tls12_port = 58443;
     return s_verify_negotiation_fails_connect(
-        allocator, s_aws_local_tls_server_host_name, server_tls12_port, s_raise_tls_version_to_13);
+        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS12_PORT, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
