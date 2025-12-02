@@ -20,7 +20,9 @@
         },
         "windows": {
             "+pre_build_steps": ["tls-server-setup"]
-
+        },
+        "macos": {
+            "+pre_build_steps": ["tls-server-setup"]
         }
     },
     "build_env": {
