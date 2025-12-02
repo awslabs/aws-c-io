@@ -1451,7 +1451,7 @@ static int s_verify_good_host(
     return AWS_OP_SUCCESS;
 }
 
-static int s_verify_mtls_good_host_connect(
+static int s_verify_good_host_mtls_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
     uint32_t port,
@@ -1743,7 +1743,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_aws_local_tls_server_host_name, "127.0.0.1");
 
 static int s_tls_client_channel_negotiation_success_mtls_tls12_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_mtls_good_host_connect(
+    return s_verify_good_host_mtls_connect(
         allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS12_PORT, NULL);
 }
 
@@ -1751,7 +1751,7 @@ AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls12, s_tls_client_ch
 
 static int s_tls_client_channel_negotiation_success_mtls_tls13_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_mtls_good_host_connect(
+    return s_verify_good_host_mtls_connect(
         allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, s_raise_tls_version_to_13);
 }
 
