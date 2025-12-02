@@ -111,6 +111,10 @@ if(NOT APPLE)
     add_net_test_case(cleanup_before_connect_or_timeout_doesnt_explode)
 endif()
 
+if (WIN32 OR APPLE)
+    add_net_test_case(tls_client_channel_negotiation_success_mtls_tls12)
+endif()
+
 if(WIN32)
     string(REPLACE "." ";" BUILD_VERSION ${CMAKE_HOST_SYSTEM_VERSION})
     list(GET BUILD_VERSION 2 BUILD_V)
@@ -118,7 +122,7 @@ if(WIN32)
 
     if(${BUILD_V} GREATER_EQUAL 20348)
         message("Building for version 20348 or higher: supporting TLS1.3")
-        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls1_3)
+        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls13)
     endif()
     add_test_case(local_socket_pipe_connected_race)
     add_test_case(tls_client_channel_negotiation_success_ecc384_deprecated)
@@ -235,7 +239,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_error_broken_crypto_null)
     if (WIN32)
         # Currently, this test doesn't work on macOS. It will be enabled when migration to dispatch queue is done.
-        add_net_test_case(tls_client_channel_negotiation_error_tls1_3_to_tls1_2_server)
+        add_net_test_case(tls_client_channel_negotiation_error_tls13_to_tls12_server)
     endif()
 
     # Badssl - Legacy crypto suite, includes both negative and positive tests, with override checks where appropriate
