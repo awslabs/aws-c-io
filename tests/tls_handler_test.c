@@ -1461,9 +1461,9 @@ static int s_verify_good_host_mtls_connect(
     struct aws_byte_buf key_buf = {0};
     struct aws_byte_buf ca_buf = {0};
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "tls13_device.pem.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "tls13_device.key"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "tls13_server_root_ca.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "mtls_server_root_ca.pem.crt"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
@@ -1499,7 +1499,7 @@ static int s_verify_good_host_mtls_connect(
     AWS_FATAL_ASSERT(
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
 
-    /* tls13_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
+    /* mtls_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
     aws_tls_ctx_options_set_verify_peer(&tls_options, false);
 
     if (override_tls_options_fn) {
@@ -1587,9 +1587,9 @@ static int s_verify_negotiation_fails_connect(
     struct aws_byte_buf key_buf = {0};
     struct aws_byte_buf ca_buf = {0};
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "tls13_device.pem.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "tls13_device.key"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "tls13_server_root_ca.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "mtls_server_root_ca.pem.crt"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
@@ -1626,7 +1626,7 @@ static int s_verify_negotiation_fails_connect(
     AWS_FATAL_ASSERT(
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
 
-    /* tls13_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
+    /* mtls_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
     aws_tls_ctx_options_set_verify_peer(&tls_options, false);
 
     if (override_tls_options_fn) {
