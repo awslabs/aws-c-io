@@ -1583,29 +1583,7 @@ static int s_verify_negotiation_fails_connect(
     uint32_t port,
     void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
 
-    struct aws_byte_buf cert_buf = {0};
-    struct aws_byte_buf key_buf = {0};
-    struct aws_byte_buf ca_buf = {0};
-
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "mtls_server_root_ca.pem.crt"));
-
-    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
-    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
-    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
-
-    aws_io_library_init(allocator);
-
     ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
-
-    uint8_t outgoing_received_message[128] = {0};
-
-    struct tls_test_rw_args outgoing_rw_args;
-    ASSERT_SUCCESS(s_tls_rw_args_init(
-        &outgoing_rw_args,
-        &c_tester,
-        aws_byte_buf_from_empty_array(outgoing_received_message, sizeof(outgoing_received_message))));
 
     struct tls_test_args outgoing_args = {
         .mutex = &c_tester.mutex,
@@ -1623,8 +1601,7 @@ static int s_verify_negotiation_fails_connect(
     struct aws_tls_ctx_options tls_options = {0};
     AWS_ZERO_STRUCT(tls_options);
 
-    AWS_FATAL_ASSERT(
-        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+    aws_tls_ctx_options_init_default_client(&tls_options, allocator);
 
     /* mtls_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
     aws_tls_ctx_options_set_verify_peer(&tls_options, false);
@@ -1639,8 +1616,6 @@ static int s_verify_negotiation_fails_connect(
     struct aws_tls_connection_options tls_client_conn_options;
     aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, tls_context);
     aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
-
-    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
@@ -1685,9 +1660,6 @@ static int s_verify_negotiation_fails_connect(
     ASSERT_TRUE(aws_error_code_is_tls(outgoing_args.last_error_code));
 
     /* cleanups */
-    aws_byte_buf_clean_up(&cert_buf);
-    aws_byte_buf_clean_up(&key_buf);
-    aws_byte_buf_clean_up(&ca_buf);
     aws_tls_ctx_release(tls_context);
     aws_tls_ctx_options_clean_up(&tls_options);
     aws_client_bootstrap_release(client_bootstrap);

@@ -42,8 +42,8 @@ args = parser.parse_args()
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.minimum_version = parse_tls(args.min_tls)
 context.maximum_version = parse_tls(args.max_tls)
-context.load_cert_chain(args.resource_dir / 'tls13_server.pem.crt', args.resource_dir / 'tls13_server.key')
-context.load_verify_locations(args.resource_dir / 'tls13_device_root_ca.pem.crt')
+context.load_cert_chain(args.resource_dir / 'mtls_server.pem.crt', args.resource_dir / 'mtls_server.key')
+context.load_verify_locations(args.resource_dir / 'mtls_device_root_ca.pem.crt')
 context.verify_mode = ssl.CERT_REQUIRED
 
 
