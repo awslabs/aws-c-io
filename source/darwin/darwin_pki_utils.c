@@ -366,7 +366,7 @@ static int s_aws_secitem_get_identity(
     int result = AWS_OP_ERR;
     OSStatus status;
     CFMutableDictionaryRef search_query = NULL;
-    CFArrayRef sec_identity_array = NULL;
+    SecIdentityRef sec_identity_ref = NULL;
 
     CFArrayRef cert_filter = NULL;
     CFArrayRef keychain_filter = NULL;
@@ -398,15 +398,11 @@ static int s_aws_secitem_get_identity(
     }
 #endif // !TARGET_OS_IPHONE
 
-    /* Though the kSecAttrSerialNumber and kSecMatchItemList attributes filter out unmatching identities, request
-     * SecItemCopyMatching to return all results. */
-    CFDictionaryAddValue(search_query, kSecMatchLimit, kSecMatchLimitAll);
-
     /*
      * Copied or created CF items must have CFRelease called on them or you leak memory. This identity needs to
      * have CFRelease called on it at some point or it will leak.
      */
-    status = SecItemCopyMatching(search_query, (CFTypeRef *)&sec_identity_array);
+    status = SecItemCopyMatching(search_query, (CFTypeRef *)&sec_identity_ref);
 
     if (status != errSecSuccess) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecItemCopyMatching identity failed with OSStatus %d", (int)status);
@@ -414,32 +410,24 @@ static int s_aws_secitem_get_identity(
         goto done;
     }
 
-    CFIndex identity_num = CFArrayGetCount(sec_identity_array);
-
-    if (identity_num == 1) {
-        const SecIdentityRef sec_identity_ref = (const SecIdentityRef)CFArrayGetValueAtIndex(sec_identity_array, 0);
-        *out_identity = sec_identity_create(sec_identity_ref);
-        if (*out_identity == NULL) {
-            AWS_LOGF_ERROR(
-                AWS_LS_IO_PKI, "sec_identity_create failed to create a sec_identity_t from provided SecIdentityRef.");
-            aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-            goto done;
-        }
-    } else {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Found %d identities, expected 1", (int)identity_num);
+    *out_identity = sec_identity_create(sec_identity_ref);
+    if (*out_identity == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "sec_identity_create failed to create a sec_identity_t from provided SecIdentityRef.");
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully retrieved identity from keychain.");
+
     result = AWS_OP_SUCCESS;
 
 done:
     // cleanup
     aws_cf_release(search_query);
+    aws_cf_release(sec_identity_ref);
     aws_cf_release(cert_filter);
     aws_cf_release(keychain_filter);
-    aws_cf_release(sec_identity_array);
 
     return result;
 }
