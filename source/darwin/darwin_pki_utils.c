@@ -779,12 +779,7 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-    cert_issuer_data = SecCertificateCopyIssuerData(cert_ref, &error);
-    if (error) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed extracting issuer data from cert_ref.");
-        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-        goto done;
-    }
+    cert_issuer_data = SecCertificateCopyNormalizedIssuerSequence(cert_ref);
 
     cert_label_ref = CFStringCreateWithBytes(
         cf_alloc,
