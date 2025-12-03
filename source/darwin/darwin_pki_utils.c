@@ -124,6 +124,7 @@ static int s_aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
     SecCertificateRef cert_ref,
     CFDataRef serial_data,
+    CFDataRef issuer_data,
     CFStringRef label,
     AwsSecKeychainRef import_keychain) {
 
@@ -139,6 +140,7 @@ static int s_aws_secitem_add_certificate_to_keychain(
         CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(add_attributes, kSecClass, kSecClassCertificate);
     CFDictionaryAddValue(add_attributes, kSecAttrSerialNumber, serial_data);
+    CFDictionaryAddValue(add_attributes, kSecAttrIssuer, issuer_data);
     CFDictionaryAddValue(add_attributes, kSecAttrLabel, label);
     CFDictionaryAddValue(add_attributes, kSecValueRef, cert_ref);
 #if !TARGET_OS_IPHONE
@@ -179,7 +181,10 @@ static int s_aws_secitem_add_certificate_to_keychain(
      * Certificate item primary keys used for the query:
      * kSecAttrSerialNumber: (CFStringRef) value indicates the item's serial number
      *      - We explicity set this value, extracted from the certificate itself as our primary method of determining
-     * uniqueness of the certificate.
+     *        uniqueness of the certificate.
+     * kSecAttrIssuer: (CFStringRef) value indicates the item's issuer
+     *      - We explicitly set this value, extracted from the certificate itself. This additional primary key will be
+     *        used to determine uniqueness of the certificate.
      *
      * Certificate primary keys we do not use for the query:
      * These can be added in the future if we require a more specified search query.
@@ -188,9 +193,6 @@ static int s_aws_secitem_add_certificate_to_keychain(
      * https://opensource.apple.com/source/Security/Security-55471/libsecurity_cssm/lib/cssmtype.h.auto.html
      *      - default will try to add common value such as X.509. We do not pass this attribute and allow default value
      * to be used. If we decide to support other types of certificates, we should set and use this value explicitly.
-     * kSecAttrIssuer: (CFStringRef) value indicates the item's issuer
-     *      - default will try to extract issuer from the certificate itself.
-     *        We will not set this attribute and allow default value to be used.
      */
     if (status == errSecDuplicateItem) {
         AWS_LOGF_INFO(
@@ -202,6 +204,7 @@ static int s_aws_secitem_add_certificate_to_keychain(
             CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
         CFDictionaryAddValue(delete_query, kSecClass, kSecClassCertificate);
         CFDictionaryAddValue(delete_query, kSecAttrSerialNumber, serial_data);
+        CFDictionaryAddValue(delete_query, kSecAttrIssuer, issuer_data);
 #if !TARGET_OS_IPHONE
         /* Target file-based keychain instead of data protection keychain. */
         CFDictionaryAddValue(delete_query, kSecUseDataProtectionKeychain, kCFBooleanFalse);
@@ -352,6 +355,7 @@ done:
 static int s_aws_secitem_get_identity(
     CFAllocatorRef cf_alloc,
     CFDataRef serial_data,
+    CFDataRef issuer_data,
     SecCertificateRef cert_ref,
     sec_identity_t *out_identity,
     AwsSecKeychainRef import_keychain) {
@@ -371,12 +375,13 @@ static int s_aws_secitem_get_identity(
      * SecItem identity is created when a certificate matches a private key in the keychain.
      * Since a private key may be associated with multiple certificates, searching for the
      * identity using a unique attribute of the certificate is required. This is why we use
-     * the serial_data from the certificate as the search parameter.
+     * the serial_data and issuer from the certificate as the search parameter.
      */
     search_query =
         CFDictionaryCreateMutable(cf_alloc, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionaryAddValue(search_query, kSecClass, kSecClassIdentity);
     CFDictionaryAddValue(search_query, kSecAttrSerialNumber, serial_data);
+    CFDictionaryAddValue(search_query, kSecAttrIssuer, issuer_data);
     CFDictionaryAddValue(search_query, kSecReturnRef, kCFBooleanTrue);
 
 #if !TARGET_OS_IPHONE
@@ -410,57 +415,20 @@ static int s_aws_secitem_get_identity(
     }
 
     CFIndex identity_num = CFArrayGetCount(sec_identity_array);
-    AWS_LOGF_DEBUG(AWS_LS_IO_PKI, "Found %d identities", (int)identity_num);
 
-    struct aws_byte_cursor serial_data_cursor = {
-        .ptr = (uint8_t *)CFDataGetBytePtr(serial_data),
-        .len = (size_t)CFDataGetLength(serial_data),
-    };
-
-    /* With the kSecAttrSerialNumber and kSecMatchItemList filters in place, the following additional serial number
-     * verification is NOT needed. However, I'll keep it for now to be on the safe side.
-     * NOTE: Only public data is processed here, i.e. any logged user already has access to it without any additional
-     * verification. */
-    for (CFIndex i = 0; i < identity_num; i++) {
-        /* The identity object here is basically two references: one to a cert and one to a private key. No actual
-         * data is retrieved from keychain yet. We can use special functions provided by Security framework to get them:
-         * SecIdentityCopyCertificate and SecIdentityCopyPrivateKey.
-         * Certificate data can be obtained with no additional verification since it's public. Private key data can be
-         * obtained only if the user has access to the keychain (i.e. either provide password into keychain's popup or
-         * add the app to a list of allowed in the Keychain Access app).
-         * Since we process only certificate here, no user verification will be requested in this function. Later,
-         * during establishing a TLS connection, user verification will be done when Network framework will try to
-         * retrieve private key data from the provided identity. That part remains the same. */
-        const SecIdentityRef sec_identity_ref = (const SecIdentityRef)CFArrayGetValueAtIndex(sec_identity_array, i);
-
-        SecCertificateRef found_cert = NULL;
-        OSStatus copy_cert_status = SecIdentityCopyCertificate(sec_identity_ref, &found_cert);
-        if (copy_cert_status != errSecSuccess) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "SecIdentityCopyCertificate failed with OSStatus %d", (int)copy_cert_status);
+    if (identity_num == 1) {
+        const SecIdentityRef sec_identity_ref = (const SecIdentityRef)CFArrayGetValueAtIndex(sec_identity_array, 0);
+        *out_identity = sec_identity_create(sec_identity_ref);
+        if (*out_identity == NULL) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_PKI, "sec_identity_create failed to create a sec_identity_t from provided SecIdentityRef.");
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
             goto done;
         }
-
-        CFDataRef found_cert_serial_data = SecCertificateCopySerialNumberData(found_cert, NULL);
-
-        struct aws_byte_cursor found_cert_serial_data_cursor = {
-            .ptr = (uint8_t *)CFDataGetBytePtr(found_cert_serial_data),
-            .len = (size_t)CFDataGetLength(found_cert_serial_data),
-        };
-
-        if (aws_byte_cursor_eq(&serial_data_cursor, &found_cert_serial_data_cursor)) {
-            AWS_LOGF_TRACE(AWS_LS_IO_PKI, "Found a matching identity");
-            *out_identity = sec_identity_create(sec_identity_ref);
-            if (*out_identity == NULL) {
-                AWS_LOGF_ERROR(
-                    AWS_LS_IO_PKI,
-                    "sec_identity_create failed to create a sec_identity_t from provided SecIdentityRef.");
-                aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
-                goto done;
-            }
-
-            break;
-        }
+    } else {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Found %d identities, expected 1", (int)identity_num);
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_PKI, "static: Successfully retrieved identity from keychain.");
@@ -504,7 +472,6 @@ struct aws_pem_object *s_find_private_key(const struct aws_array_list *pem_objec
  * macOS:
  *  - imports into file-based keychain.
  *  - supports RSA with a key size of at least 2048 bits.
- *  - supports RSA-PSS with a key size of at least 2048 bits.
  *  - supports ECC NIST P-256/P-384/P-521 keys.
  * iOS/tvOS:
  *  - imports into data protection keychain.
@@ -701,6 +668,7 @@ int aws_secitem_import_cert_and_key(
     CFDataRef cert_data = NULL;
     SecCertificateRef cert_ref = NULL;
     CFDataRef cert_serial_data = NULL;
+    CFDataRef cert_issuer_data = NULL;
     CFStringRef cert_label_ref = NULL;
     AwsSecKeychainRef import_keychain = NULL;
 
@@ -793,9 +761,9 @@ int aws_secitem_import_cert_and_key(
     /* Attributes used for query and adding of cert/key SecItems */
 
     /*
-     * We create a SecCertificateRef here to use with the kSecValueRef key as well as to extract the serial number for
-     * use as a unique identifier when storing the certificate in the keychain. The serial number is also used as the
-     * identifier when retrieving the identity
+     * We create a SecCertificateRef here to use with the kSecValueRef key as well as to extract the serial number and
+     * issuer for use as a unique identifier when storing the certificate in the keychain. The serial number and issuer
+     * are also used as the identifier when retrieving the identity
      */
     cert_ref = SecCertificateCreateWithData(cf_alloc, cert_data);
     if (!cert_ref) {
@@ -807,6 +775,13 @@ int aws_secitem_import_cert_and_key(
     cert_serial_data = SecCertificateCopySerialNumberData(cert_ref, &error);
     if (error) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed extracting serial number data from cert_ref.");
+        aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
+        goto done;
+    }
+
+    cert_issuer_data = SecCertificateCopyIssuerData(cert_ref, &error);
+    if (error) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed extracting issuer data from cert_ref.");
         aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         goto done;
     }
@@ -833,12 +808,13 @@ int aws_secitem_import_cert_and_key(
     }
 
     if (s_aws_secitem_add_certificate_to_keychain(
-            cf_alloc, cert_ref, cert_serial_data, cert_label_ref, import_keychain)) {
+            cf_alloc, cert_ref, cert_serial_data, cert_issuer_data, cert_label_ref, import_keychain)) {
         aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
 
-    if (s_aws_secitem_get_identity(cf_alloc, cert_serial_data, cert_ref, secitem_identity, import_keychain)) {
+    if (s_aws_secitem_get_identity(
+            cf_alloc, cert_serial_data, cert_issuer_data, cert_ref, secitem_identity, import_keychain)) {
         aws_mutex_unlock(&s_sec_mutex);
         goto done;
     }
@@ -853,6 +829,7 @@ done:
     aws_cf_release(cert_data);
     aws_cf_release(cert_ref);
     aws_cf_release(cert_serial_data);
+    aws_cf_release(cert_issuer_data);
     aws_cf_release(cert_label_ref);
 
     /* Zero out the array list and release it */
