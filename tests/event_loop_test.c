@@ -1568,10 +1568,11 @@ static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocat
     aws_thread_join(&external_thread);
     aws_thread_clean_up(&external_thread);
 
-    s_serialized_scheduling_context_clean_up(&context);
     aws_event_loop_group_release(event_loop_group);
 
     aws_io_library_clean_up();
+
+    s_serialized_scheduling_context_clean_up(&context);
 
     return AWS_OP_SUCCESS;
 }
