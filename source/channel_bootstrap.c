@@ -490,17 +490,17 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         }
 
         if (connection_args->channel_data.use_tls) {
-            if (aws_is_using_secitem()) {
-                /*
-                 * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
-                 * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
-                 * together, eliminating the need for a separate TLS configuration in the channel. This code is reached
-                 * only when a TLS connection has been successfully established. At that point, we signal a successful
-                 * TLS handshake, which also makes the server name and protocol available (if provided).
-                 */
-                s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
-                return;
-            }
+#ifdef __APPLE__
+            /*
+             * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
+             * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
+             * together, eliminating the need for a separate TLS configuration in the channel. This code is reached
+             * only when a TLS connection has been successfully established. At that point, we signal a successful
+             * TLS handshake, which also makes the server name and protocol available (if provided).
+             */
+            s_tls_client_on_negotiation_result(socket_channel_handler, socket_slot, err_code, connection_args);
+            return;
+#endif /* __APPLE__ */
 
             /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
              * for the negotiation callback and handle it then.*/
@@ -668,27 +668,27 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                 (void *)socket,
                 error_code,
                 aws_error_name(error_code));
-            if (aws_is_using_secitem()) {
-                /*
-                 * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful
-                 * TCP connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a
-                 * TLS related failure we store it to properly handle TLS failure rather than treating it as a TCP
-                 * connection failure. We also assign the socket and flip the connection_chosen to true as a TCP
-                 * connection must sucessfully be established before a TLS failure can occur.
-                 */
-                if (aws_error_code_is_tls(error_code)) {
-                    AWS_LOGF_DEBUG(
-                        AWS_LS_IO_CHANNEL_BOOTSTRAP,
-                        "id=%p: Storing socket %p error_code %d as this socket's TCP connection has succeeded but was "
-                        "followed up by a TLS neotiation error.",
-                        (void *)connection_args->bootstrap,
-                        (void *)socket,
-                        error_code);
-                    connection_args->tls_error_code = error_code;
-                    connection_args->connection_chosen = true;
-                    connection_args->channel_data.socket = socket;
-                }
+#ifdef __APPLE__
+            /*
+             * When using Apple Network Framework with SecItem, it's possible that we arrived here with a successful
+             * TCP connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a
+             * TLS related failure we store it to properly handle TLS failure rather than treating it as a TCP
+             * connection failure. We also assign the socket and flip the connection_chosen to true as a TCP
+             * connection must sucessfully be established before a TLS failure can occur.
+             */
+            if (aws_error_code_is_tls(error_code)) {
+                AWS_LOGF_DEBUG(
+                    AWS_LS_IO_CHANNEL_BOOTSTRAP,
+                    "id=%p: Storing socket %p error_code %d as this socket's TCP connection has succeeded but was "
+                    "followed up by a TLS neotiation error.",
+                    (void *)connection_args->bootstrap,
+                    (void *)socket,
+                    error_code);
+                connection_args->tls_error_code = error_code;
+                connection_args->connection_chosen = true;
+                connection_args->channel_data.socket = socket;
             }
+#endif /* __APPLE__ */
         } else {
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_CHANNEL_BOOTSTRAP,
@@ -831,12 +831,12 @@ static void s_attempt_connection(struct aws_task *task, void *arg, enum aws_task
     /*
      * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
      */
-    if (aws_is_using_secitem()) {
-        struct client_connection_args *connection_args = task_data->args;
-        if (connection_args->channel_data.use_tls) {
-            connect_options.tls_connection_options = &connection_args->channel_data.tls_options;
-        }
+#ifdef __APPLE__
+    struct client_connection_args *connection_args = task_data->args;
+    if (connection_args->channel_data.use_tls) {
+        connect_options.tls_connection_options = &connection_args->channel_data.tls_options;
     }
+#endif /* __APPLE__ */
 
     if (aws_socket_connect(outgoing_socket, &connect_options)) {
         goto socket_connect_failed;
@@ -1153,14 +1153,14 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
             .on_connection_result = s_on_client_connection_established,
             .user_data = client_connection_args};
 
+#ifdef __APPLE__
         /*
          * Apple Network connections using SecItem require TLS related options at point of aws_socket_connect()
          */
-        if (aws_is_using_secitem()) {
-            if (client_connection_args->channel_data.use_tls) {
-                connect_options.tls_connection_options = &client_connection_args->channel_data.tls_options;
-            }
+        if (client_connection_args->channel_data.use_tls) {
+            connect_options.tls_connection_options = &client_connection_args->channel_data.tls_options;
         }
+#endif /* __APPLE__ */
 
         if (aws_socket_connect(outgoing_socket, &connect_options)) {
 
@@ -1575,17 +1575,17 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
     }
 
     if (channel_data->server_connection_args->use_tls) {
-        if (aws_is_using_secitem()) {
-            /*
-             * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
-             * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
-             * together, eliminating the need for a separate TLS configuration in the channel. This code is reached only
-             * when a TLS connection has been successfully established. At that point, we signal a successful TLS
-             * handshake, which also makes the server name and protocol available (if provided).
-             */
-            s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
-            return;
-        }
+#ifdef __APPLE__
+        /*
+         * When using Secitem, we use Apple Network Framework’s built-in TLS handling. In this mode, the network
+         * parameters (along with their options and verification block) manage both the TCP and TLS handshakes
+         * together, eliminating the need for a separate TLS configuration in the channel. This code is reached only
+         * when a TLS connection has been successfully established. At that point, we signal a successful TLS
+         * handshake, which also makes the server name and protocol available (if provided).
+         */
+        s_tls_server_on_negotiation_result(socket_channel_handler, socket_slot, err_code, channel_data);
+        return;
+#endif /* __APPLE__ */
         /* incoming callback will be invoked upon the negotiation completion so don't do it
          * here. */
         if (s_setup_server_tls(channel_data, channel)) {
@@ -1939,10 +1939,10 @@ struct aws_socket *aws_server_bootstrap_new_socket_listener(
     struct aws_socket_bind_options socket_bind_options = {
         .local_endpoint = &endpoint, .user_data = server_connection_args};
 
-    if (aws_is_using_secitem()) {
-        socket_bind_options.event_loop = connection_loop;
-        socket_bind_options.tls_connection_options = &server_connection_args->tls_options;
-    }
+#ifdef __APPLE__
+    socket_bind_options.event_loop = connection_loop;
+    socket_bind_options.tls_connection_options = &server_connection_args->tls_options;
+#endif /* __APPLE__ */
 
     if (aws_socket_bind(&server_connection_args->listener, &socket_bind_options)) {
         goto cleanup_listener;
