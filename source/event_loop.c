@@ -404,7 +404,7 @@ enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_lo
     return el_group->event_loop_type;
 }
 
-struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index) {
+struct aws_event_loop *aws_event_loop_group_get_loop_at(const struct aws_event_loop_group *el_group, size_t index) {
     struct aws_event_loop *el = NULL;
     aws_array_list_get_at(&el_group->event_loops, &el, index);
     return el;
@@ -444,6 +444,21 @@ struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_
     size_t load_b = aws_event_loop_get_load_factor(random_loop_b);
 
     return load_a < load_b ? random_loop_a : random_loop_b;
+}
+
+bool aws_event_loop_group_any_thread_is_callers_thread(const struct aws_event_loop_group *el_group) {
+    AWS_FATAL_ASSERT(el_group);
+
+    size_t loop_count = aws_event_loop_group_get_loop_count(el_group);
+    AWS_FATAL_ASSERT(loop_count > 0);
+
+    for (size_t i = 0; i < loop_count; ++i) {
+        struct aws_event_loop *loop = aws_event_loop_group_get_loop_at(el_group, i);
+        if (aws_event_loop_thread_is_callers_thread(loop)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 static void s_object_removed(void *value) {

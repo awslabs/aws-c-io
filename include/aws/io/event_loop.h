@@ -207,7 +207,7 @@ void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_l
  * Returns the event loop at a particular index.  If the index is out of bounds, null is returned.
  */
 AWS_IO_API
-struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
+struct aws_event_loop *aws_event_loop_group_get_loop_at(const struct aws_event_loop_group *el_group, size_t index);
 
 /**
  * Gets the number of event loops managed by an event loop group.
@@ -228,6 +228,12 @@ enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_lo
  */
 AWS_IO_API
 struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
+
+/**
+ * Returns true if one of the event loop groups' threads is the same thread that called this function, otherwise false.
+ */
+AWS_IO_API
+bool aws_event_loop_group_any_thread_is_callers_thread(const struct aws_event_loop_group *el_group);
 
 /**
  * @deprecated - use aws_event_loop_group_new() instead
