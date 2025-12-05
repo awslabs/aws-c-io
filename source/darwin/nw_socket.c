@@ -3,19 +3,20 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/private/socket_impl.h>
-#include <aws/io/socket.h>
-
 #include <aws/common/clock.h>
 #include <aws/common/mutex.h>
 #include <aws/common/string.h>
 #include <aws/common/uuid.h>
+#include <aws/io/future.h>
 #include <aws/io/logging.h>
+#include <aws/io/socket.h>
 
 #include "./darwin_shared_private.h"             // private header
 #include "./dispatch_queue_event_loop_private.h" // private header
 #include <Network/Network.h>
+
 #include <aws/io/private/event_loop_impl.h>
+#include <aws/io/private/socket_impl.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 
 #include <arpa/inet.h>
@@ -334,6 +335,8 @@ struct nw_socket {
          * nw_socket->state instead of socket->state to verify the socket_state.
          */
         enum aws_nw_socket_state state;
+        /* Indicate whether the setup_future of the base_socket has been completed */
+        bool is_setup_future_set;
         struct aws_mutex lock;
     } synced_data;
 
@@ -393,6 +396,26 @@ static int s_unlock_socket_synced_data(struct nw_socket *nw_socket) {
 
 static bool s_validate_event_loop(struct aws_event_loop *event_loop) {
     return event_loop && event_loop->vtable && event_loop->impl_data;
+}
+
+/* This MUST be called while nw_socket->synced_data.lock is held */
+static void s_setup_future_set_result(struct nw_socket *nw_socket) {
+    if (!nw_socket->synced_data.is_setup_future_set) {
+        s_lock_base_socket(nw_socket);
+        aws_future_void_set_result(nw_socket->base_socket_synced_data.base_socket->setup_future);
+        s_unlock_base_socket(nw_socket);
+        nw_socket->synced_data.is_setup_future_set = true;
+    }
+}
+
+/* This MUST be called while nw_socket->synced_data.lock is held */
+static void s_setup_future_set_error(struct nw_socket *nw_socket) {
+    if (!nw_socket->synced_data.is_setup_future_set) {
+        s_lock_base_socket(nw_socket);
+        aws_future_void_set_error(nw_socket->base_socket_synced_data.base_socket->setup_future, aws_last_error());
+        s_unlock_base_socket(nw_socket);
+        nw_socket->synced_data.is_setup_future_set = true;
+    }
 }
 
 static int s_set_event_loop(struct aws_socket *aws_socket, struct aws_event_loop *event_loop) {
@@ -895,7 +918,7 @@ static struct aws_socket_vtable s_vtable = {
 };
 
 static int s_schedule_next_read(struct nw_socket *socket);
-
+// TODO WIP should we clean up the setup_future here?
 static void s_socket_cleanup_fn(struct aws_socket *socket) {
     if (!socket->impl) {
         /* protect from double clean */
@@ -1115,6 +1138,7 @@ int aws_socket_init_apple_nw_socket(
     nw_socket->allocator = alloc;
 
     socket->allocator = alloc;
+    socket->setup_future = aws_future_void_new(socket->allocator);
     socket->options = *options;
     socket->impl = nw_socket;
     socket->vtable = &s_vtable;
@@ -1989,8 +2013,8 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
     s_lock_socket_synced_data(nw_socket);
     if (nw_socket->synced_data.state != AWS_NW_SOCKET_STATE_INIT) {
         AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: invalid state for bind operation.", (void *)socket);
-        s_unlock_socket_synced_data(nw_socket);
-        return aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
+        goto error;
     }
 
     socket->local_endpoint = *local_endpoint;
@@ -2005,7 +2029,7 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
 
         /* We take what we need for TLS negotiation from the tls_connection_options */
         if (s_setup_tls_options_from_tls_connection_options(nw_socket, socket_bind_options->tls_connection_options)) {
-            return AWS_OP_ERR;
+            goto error;
         }
 
         if (nw_socket->tls_ctx != NULL) {
@@ -2049,8 +2073,8 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
             break;
         }
         default: {
-            s_unlock_socket_synced_data(nw_socket);
-            return aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+            aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+            goto error;
         }
     }
 
@@ -2062,14 +2086,16 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
             local_endpoint->address,
             (int)local_endpoint->port);
         s_unlock_socket_synced_data(nw_socket);
-        return aws_raise_error(s_convert_pton_error(pton_err));
+        aws_raise_error(s_convert_pton_error(pton_err));
+        goto error;
     }
 
     nw_endpoint_t endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
 
     if (!endpoint) {
         s_unlock_socket_synced_data(nw_socket);
-        return aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+        aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+        goto error;
     }
 
     nw_parameters_set_local_endpoint(nw_socket->nw_parameters, endpoint);
@@ -2088,6 +2114,10 @@ static int s_socket_bind_fn(struct aws_socket *socket, struct aws_socket_bind_op
         socket->local_endpoint.port);
 
     return AWS_OP_SUCCESS;
+error:
+    s_setup_future_set_error(nw_socket);
+    s_unlock_socket_synced_data(nw_socket);
+    return AWS_OP_ERR;
 }
 
 static void s_listener_set_dispatch_queue(struct aws_io_handle *handle, void *queue) {
@@ -2104,7 +2134,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET, "id=%p: invalid state for listen operation. You must call bind first.", (void *)socket);
         aws_raise_error(AWS_IO_SOCKET_ILLEGAL_OPERATION_FOR_STATE);
-        goto done;
+        goto error;
     }
 
     if (nw_socket->nw_parameters == NULL) {
@@ -2113,7 +2143,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
             "id=%p: socket nw_parameters needs to be set before creating a listener from socket.",
             (void *)socket);
         aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
-        goto done;
+        goto error;
     }
 
     socket->io_handle.data.handle = nw_listener_create(nw_socket->nw_parameters);
@@ -2123,7 +2153,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
             "id=%p:  listener creation failed, please verify the socket options are setup properly.",
             (void *)socket);
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
-        goto done;
+        goto error;
     }
 
     socket->io_handle.set_queue = s_listener_set_dispatch_queue;
@@ -2137,10 +2167,12 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
         socket->io_handle.data.handle);
 
     s_set_socket_state(nw_socket, AWS_NW_SOCKET_STATE_LISTENING);
+    s_setup_future_set_result(nw_socket);
     s_unlock_socket_synced_data(nw_socket);
     return AWS_OP_SUCCESS;
 
-done:
+error:
+    s_setup_future_set_error(nw_socket);
     s_unlock_socket_synced_data(nw_socket);
     return AWS_OP_ERR;
 }

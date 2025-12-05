@@ -24,6 +24,7 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
+#include <aws/io/future.h>
 #include <aws/io/logging.h>
 #include <aws/io/pipe.h>
 #include <aws/io/private/event_loop_impl.h>
@@ -494,6 +495,10 @@ static void s_socket_clean_up(struct aws_socket *socket) {
 
     if (socket_impl->read_io_data) {
         aws_mem_release(socket->allocator, socket_impl->read_io_data);
+    }
+
+    if (socket->setup_future) {
+        aws_future_void_release(socket->setup_future);
     }
 
     aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;

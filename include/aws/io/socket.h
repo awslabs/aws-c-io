@@ -165,6 +165,8 @@ struct aws_socket {
     aws_socket_on_accept_result_fn *accept_result_fn;
     void *connect_accept_user_data;
     void *impl;
+    /* This is only used for async dispatch queue setup of a server listener */
+    struct aws_future_void *setup_future;
 };
 
 struct aws_socket_connect_options {
