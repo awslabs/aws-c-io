@@ -1578,3 +1578,73 @@ static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocat
 }
 
 AWS_TEST_CASE(event_loop_serialized_scheduling, s_test_event_loop_serialized_scheduling)
+
+struct aws_elg_callers_context {
+    struct aws_event_loop_group *elg;
+    bool is_callers_thread;
+    struct aws_mutex mutex;
+    struct aws_condition_variable condition_variable;
+    bool invoked;
+};
+
+static void s_test_elg_callers_task(struct aws_task *task, void *user_data, enum aws_task_status status) {
+    (void)task;
+    (void)status;
+    struct aws_elg_callers_context *context = user_data;
+    aws_mutex_lock(&context->mutex);
+    context->is_callers_thread = aws_event_loop_group_any_thread_is_callers_thread(context->elg);
+    context->invoked = true;
+    aws_mutex_unlock(&context->mutex);
+    aws_condition_variable_notify_one(&context->condition_variable);
+}
+
+static bool s_test_elg_callers_task_invoked(void *args) {
+    struct aws_elg_callers_context *context = args;
+    return context->invoked;
+}
+
+static int s_test_event_loop_group_is_callers_thread(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 4,
+    };
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
+
+    ASSERT_FALSE(aws_event_loop_group_any_thread_is_callers_thread(event_loop_group));
+
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(event_loop_group);
+
+    struct aws_thread external_thread;
+    aws_thread_init(&external_thread, allocator);
+
+    struct aws_elg_callers_context context = {
+        .elg = event_loop_group,
+        .is_callers_thread = false,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .mutex = AWS_MUTEX_INIT,
+    };
+
+    struct aws_task task;
+    aws_task_init(&task, s_test_elg_callers_task, &context, "check_elg_callers_thread");
+
+    aws_event_loop_schedule_task_now(event_loop, &task);
+
+    aws_mutex_lock(&context.mutex);
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &context.condition_variable, &context.mutex, s_test_elg_callers_task_invoked, &context));
+    aws_mutex_unlock(&context.mutex);
+
+    ASSERT_TRUE(context.is_callers_thread);
+
+    aws_event_loop_group_release(event_loop_group);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_group_is_callers_thread, s_test_event_loop_group_is_callers_thread)

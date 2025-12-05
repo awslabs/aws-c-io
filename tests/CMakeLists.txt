@@ -60,6 +60,7 @@ add_test_case(event_loop_iocp_creation)
 add_test_case(event_loop_kqueue_creation)
 add_test_case(event_loop_dispatch_queue_creation)
 add_test_case(event_loop_serialized_scheduling)
+add_test_case(event_loop_group_is_callers_thread)
 
 add_test_case(io_testing_channel)
 
