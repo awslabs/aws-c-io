@@ -152,7 +152,7 @@ Platform | Implementation
 --- | ---
 Linux | Edge-Triggered Epoll
 BSD Variants | KQueue
-Apple Devices | KQueue or Apple Dispatch Queue
+Apple Devices | Apple Dispatch Queue
 Windows | IOCP (IO Completion Ports)
 
 Also, you can always implement your own as well.
@@ -211,7 +211,7 @@ Platform | Implementation
 --- | ---
 Linux | Signal-to-noise (s2n) see: https://github.com/aws/s2n-tls
 BSD Variants | s2n
-Apple Devices | Security Framework/ Secure Transport. See https://developer.apple.com/documentation/security/secure_transport
+Apple Devices | Apple Network Framework and Secure Transport. See https://developer.apple.com/documentation/network?language=objc 
 Windows | Secure Channel. See https://msdn.microsoft.com/en-us/library/windows/desktop/aa380123(v=vs.85).aspx
 
 In addition, you can always write your own handler around your favorite implementation and use that. To provide your own
@@ -360,24 +360,40 @@ only via its API.
 
 #### Layout
     struct aws_event_loop {
-        struct aws_event_loop_vtable vtable;
-        aws_clock clock;
-        struct aws_allocator *allocator;
-        struct aws_common_hash_table local_storage;
+        struct aws_event_loop_vtable *vtable;
+        struct aws_allocator *alloc;
+        aws_io_clock_fn *clock;
+        struct aws_hash_table local_data;
+        struct aws_atomic_var current_load_factor;
+        uint64_t latest_tick_start;
+        size_t current_tick_latency_sum;
+        struct aws_atomic_var next_flush_time;
+        struct aws_event_loop_group *base_elg;
         void *impl_data;
     };
 
 #### V-Table
 
     struct aws_event_loop_vtable {
-        void (*destroy)(struct aws_event_loop *);
-        int (*run) (struct aws_event_loop *);
-        int (*stop) (struct aws_event_loop *, void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
-        int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
-        int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events,
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *user_data);
-        int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
-        BOOL (*is_on_callers_thread) (struct aws_event_loop *);
+        void (*start_destroy)(struct aws_event_loop *event_loop);
+        void (*complete_destroy)(struct aws_event_loop *event_loop);
+        int (*run)(struct aws_event_loop *event_loop);
+        int (*stop)(struct aws_event_loop *event_loop);
+        int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
+        void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+        void (*schedule_task_now_serialized)(struct aws_event_loop *event_loop, struct aws_task *task);
+        void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+        void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
+        int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+        int (*subscribe_to_io_events)(
+            struct aws_event_loop *event_loop,
+            struct aws_io_handle *handle,
+            int events,
+            aws_event_loop_on_event_fn *on_event,
+            void *user_data);
+        int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+        void (*free_io_event_resources)(void *user_data);
+        bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
     };
 
 Every implementation of aws_event_loop must implement this table. Let's look at some details for what each entry does.
