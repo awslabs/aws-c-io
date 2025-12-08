@@ -24,7 +24,6 @@ below, clang-format doesn't work (at least on my version) with the c-style comme
 #include <aws/common/task_scheduler.h>
 
 #include <aws/io/event_loop.h>
-#include <aws/io/future.h>
 #include <aws/io/logging.h>
 #include <aws/io/pipe.h>
 #include <aws/io/private/event_loop_impl.h>
