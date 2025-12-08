@@ -932,6 +932,10 @@ static void s_socket_cleanup_fn(struct aws_socket *socket) {
         aws_socket_close(socket);
     }
 
+    if (socket->setup_future) {
+        aws_future_void_release(socket->setup_future);
+    }
+
     struct nw_socket *nw_socket = socket->impl;
 
     if (s_validate_event_loop(socket->event_loop) && !aws_event_loop_thread_is_callers_thread(socket->event_loop)) {

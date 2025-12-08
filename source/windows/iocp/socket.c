@@ -497,10 +497,6 @@ static void s_socket_clean_up(struct aws_socket *socket) {
         aws_mem_release(socket->allocator, socket_impl->read_io_data);
     }
 
-    if (socket->setup_future) {
-        aws_future_void_release(socket->setup_future);
-    }
-
     aws_socket_on_shutdown_complete_fn *on_cleanup_complete = socket_impl->on_cleanup_complete;
     void *cleanup_user_data = socket_impl->cleanup_user_data;
 
