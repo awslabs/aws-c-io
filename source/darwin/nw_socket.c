@@ -918,7 +918,7 @@ static struct aws_socket_vtable s_vtable = {
 };
 
 static int s_schedule_next_read(struct nw_socket *socket);
-// TODO WIP should we clean up the setup_future here?
+
 static void s_socket_cleanup_fn(struct aws_socket *socket) {
     if (!socket->impl) {
         /* protect from double clean */
