@@ -211,7 +211,7 @@ Platform | Implementation
 --- | ---
 Linux | Signal-to-noise (s2n) see: https://github.com/aws/s2n-tls
 BSD Variants | s2n
-Apple Devices | Apple Network Framework and Secure Transport. See https://developer.apple.com/documentation/network?language=objc 
+Apple Devices | Apple Network Framework and Secure Transport. Apple's socket implementation handles both socket and TLS within a singular handler. See https://developer.apple.com/documentation/network?language=objc 
 Windows | Secure Channel. See https://msdn.microsoft.com/en-us/library/windows/desktop/aa380123(v=vs.85).aspx
 
 In addition, you can always write your own handler around your favorite implementation and use that. To provide your own
