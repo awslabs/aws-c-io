@@ -487,43 +487,164 @@ This function is thread-safe.
 
 #### API
 
-    int aws_event_loop_init_base (struct aws_allocator *, aws_clock clock, ...);
+    struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
-Initializes common data for all event-loops regardless of implementation. All implementations must call this function before returning from their allocation function.
+Creates an instance of the default event loop implementation for the current architecture and operating system.
 
-    struct aws_event_loop *aws_event_loop_new_default (struct aws_allocator *, aws_clock clock, ...);
+    struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
 
-Allocates and initializes the default event-loop implementation for the current platform. Calls `aws_event_loop_init_base` before returning.
+Creates an instance of the default event loop implementation for the current architecture and operating system using extendable options.
 
-    struct aws_event_loop *aws_event_loop_destroy (struct aws_event_loop *);
+    int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
-Cleans up internal state of the event-loop implementation, and then calls the v-table `destroy` function.
+Initializes common event-loop data structures. This is only called from the new() function of event loop implementations.
 
-    int aws_event_loop_fetch_local_object ( struct aws_event_loop *, void *key, void **item);
+    void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
 
-All event-loops contain local storage for all users of the event-loop to store common data into. This function is for fetching one of those objects by key. The key for this
-store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
-the caller must first schedule a task on the event-loop to enter the correct thread.
+Common cleanup code for all implementations. This is only called from the destroy() function of event loop implementations.
 
-    int aws_event_loop_put_local_object ( struct aws_event_loop *, void *key, void *item);
+    void aws_event_loop_destroy(struct aws_event_loop *event_loop);
 
-All event-loops contain local storage for all users of the event-loop to store common data into. This function is for putting one of those objects by key. The key for this
-store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
-the caller must first schedule a task on the event-loop to enter the correct thread.
+Destroys an event loop implementation. If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
+Internally, this calls aws_event_loop_start_destroy() followed by aws_event_loop_complete_destroy().
 
-    int aws_event_loop_remove_local_object ( struct aws_event_loop *, void *key, void **item);
+    void aws_event_loop_start_destroy(struct aws_event_loop *event_loop);
 
-All event loops contain local storage for all users of the event loop to store common data into. This function is for removing one of those objects by key. The key for this
-store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case,
-the caller must first schedule a task on the event loop to enter the correct thread. If found, and item is not NULL, the removed item is moved to `item`.
-It is the removers responsibility to free the memory pointed to by item. If it is NULL, the default deallocation strategy for the event loop will be used.
+Signals an event loop to begin its destruction process. If an event loop's implementation of this API does anything, it must be quick and non-blocking.
 
-    int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks);
+    void aws_event_loop_complete_destroy(struct aws_event_loop *event_loop);
 
-Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
+Waits for an event loop to complete its destruction process. aws_event_loop_start_destroy() must have been called previously for this function to not deadlock.
 
-#### V-Table Shims
-The remaining exported functions on event loop simply invoke the v-table functions and return. See the v-table section for more details.
+    int aws_event_loop_run(struct aws_event_loop *event_loop);
+
+Triggers the running of the event loop. This function must not block. The event loop is not active until this function is invoked.
+This function can be called again on an event loop after calling aws_event_loop_stop() and aws_event_loop_wait_for_stop_completion().
+
+    int aws_event_loop_stop(struct aws_event_loop *event_loop);
+
+Triggers the event loop to stop, but does not wait for the loop to stop completely. This function may be called from outside or inside the event loop thread.
+It is safe to call multiple times. If you do not call destroy(), an event loop can be run again by calling stop(), wait_for_stop_completion(), run().
+
+    int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
+
+Blocks until the event loop stops completely. If you want to call aws_event_loop_run() again, you must call this after aws_event_loop_stop().
+It is not safe to call this function from inside the event loop thread.
+
+    void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+
+The event loop will schedule the task and run it on the event loop thread as soon as possible. Note that cancelled tasks may execute outside the event loop thread.
+This function may be called from outside or inside the event loop thread. The task should not be cleaned up or modified until its function is executed.
+
+    void aws_event_loop_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task);
+
+Variant of aws_event_loop_schedule_task_now that forces all tasks to go through the cross thread task queue, guaranteeing that order-of-submission is order-of-execution.
+Serialization guarantee does not apply to task cancellation.
+
+    void aws_event_loop_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+
+The event loop will schedule the task and run it at the specified time. Use aws_event_loop_current_clock_time() to query the current time in nanoseconds.
+Note that cancelled tasks may execute outside the event loop thread. This function may be called from outside or inside the event loop thread.
+
+    void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
+
+Cancels task. This function must be called from the event loop's thread, and is only guaranteed to work properly on tasks scheduled from within the event loop's thread.
+The task will be executed with the AWS_TASK_STATUS_CANCELED status inside this call.
+
+    bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
+
+Returns true if the event loop's thread is the same thread that called this function, otherwise false.
+
+    int aws_event_loop_current_clock_time(const struct aws_event_loop *event_loop, uint64_t *time_nanos);
+
+Gets the current timestamp for the event loop's clock, in nanoseconds. This function is thread-safe.
+
+    int aws_event_loop_fetch_local_object(struct aws_event_loop *event_loop, void *key, struct aws_event_loop_local_object *obj);
+
+Fetches an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *obj);
+
+Puts an item object the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+The lifetime of item must live until remove or a put item overrides it. This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    int aws_event_loop_remove_local_object(struct aws_event_loop *event_loop, void *key, struct aws_event_loop_local_object *removed_obj);
+
+Removes an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+If removed_obj is not null, the removed item will be moved to it if it exists. Otherwise, the default deallocation strategy will be used.
+This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    int aws_event_loop_connect_handle_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+Associates an aws_io_handle with the event loop's I/O Completion Port. The handle must use aws_overlapped for all async operations requiring an OVERLAPPED struct.
+A handle may only be connected to one event loop in its lifetime.
+
+    int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
+            aws_event_loop_on_event_fn *on_event, void *user_data);
+
+Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were received.
+Currently, only AWS_IO_EVENT_TYPE_READABLE and AWS_IO_EVENT_TYPE_WRITABLE are honored. You always are registered for error conditions and closure.
+This function may be called from outside or inside the event loop thread. However, the unsubscribe function must be called inside the event-loop's thread.
+
+    int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+Unsubscribes handle from event-loop notifications. This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+Cleans up resources (user_data) associated with the I/O eventing subsystem for a given handle.
+
+    void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop);
+
+For event-loop implementations to use for providing metrics info to the base event-loop. This enables the event-loop load balancer to take into account load when vending another event-loop to a caller.
+Call this function at the beginning of your event-loop tick: after wake-up, but before processing any IO or tasks.
+
+    void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop);
+
+For event-loop implementations to use for providing metrics info to the base event-loop. This enables the event-loop load balancer to take into account load when vending another event-loop to a caller.
+Call this function at the end of your event-loop tick: after processing IO and tasks.
+
+    size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop);
+
+Returns the current load factor. If the event-loop is not invoking aws_event_loop_register_tick_start() and aws_event_loop_register_tick_end(), this value will always be 0.
+
+    struct aws_event_loop_group *aws_event_loop_group_new(struct aws_allocator *allocator, const struct aws_event_loop_group_options *options);
+
+Creation function for event loop groups.
+
+    struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group);
+
+Increments the reference count on the event loop group, allowing the caller to take a reference to it. Returns the same event loop group passed in.
+
+    void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
+
+Decrements an event loop group's ref count. When the ref count drops to zero, the event loop group will be destroyed.
+
+    struct aws_event_loop_group *aws_event_loop_group_acquire_from_event_loop(struct aws_event_loop *event_loop);
+
+Increments the reference count on the event loop group from event loop, allowing the caller to take a reference to it.
+Returns the base event loop group of the event loop, or null if the event loop does not belong to a group.
+
+    void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_loop);
+
+Decrements the ref count of the event loop's base event loop group. When the ref count drops to zero, the event loop group will be destroyed.
+
+    struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
+
+Returns the event loop at a particular index. If the index is out of bounds, null is returned.
+
+    size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group);
+
+Gets the number of event loops managed by an event loop group.
+
+    enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_loop_group *el_group);
+
+Gets the event loop type used by an event loop group.
+
+    struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
+
+Fetches the next loop for use. The purpose is to enable load balancing across loops. Currently it uses the "best-of-two" algorithm based on the load factor of each loop.
 
 ### Channels and Slots
 
