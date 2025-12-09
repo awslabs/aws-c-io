@@ -152,7 +152,7 @@ Platform | Implementation
 --- | ---
 Linux | Edge-Triggered Epoll
 BSD Variants | KQueue
-Apple Devices | KQueue or Apple Dispatch Queue
+Apple Devices | Apple Dispatch Queue
 Windows | IOCP (IO Completion Ports)
 
 Also, you can always implement your own as well.
@@ -211,7 +211,7 @@ Platform | Implementation
 --- | ---
 Linux | Signal-to-noise (s2n) see: https://github.com/aws/s2n-tls
 BSD Variants | s2n
-Apple Devices | Security Framework/ Secure Transport. See https://developer.apple.com/documentation/security/secure_transport
+Apple Devices | Apple Network Framework and Secure Transport. Apple's socket implementation handles both socket and TLS within a singular handler. See https://developer.apple.com/documentation/network?language=objc 
 Windows | Secure Channel. See https://msdn.microsoft.com/en-us/library/windows/desktop/aa380123(v=vs.85).aspx
 
 In addition, you can always write your own handler around your favorite implementation and use that. To provide your own
@@ -360,48 +360,81 @@ only via its API.
 
 #### Layout
     struct aws_event_loop {
-        struct aws_event_loop_vtable vtable;
-        aws_clock clock;
-        struct aws_allocator *allocator;
-        struct aws_common_hash_table local_storage;
+        struct aws_event_loop_vtable *vtable;
+        struct aws_allocator *alloc;
+        aws_io_clock_fn *clock;
+        struct aws_hash_table local_data;
+        struct aws_atomic_var current_load_factor;
+        uint64_t latest_tick_start;
+        size_t current_tick_latency_sum;
+        struct aws_atomic_var next_flush_time;
+        struct aws_event_loop_group *base_elg;
         void *impl_data;
     };
 
 #### V-Table
 
     struct aws_event_loop_vtable {
-        void (*destroy)(struct aws_event_loop *);
-        int (*run) (struct aws_event_loop *);
-        int (*stop) (struct aws_event_loop *, void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
-        int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
-        int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events,
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, void *), void *user_data);
-        int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
-        BOOL (*is_on_callers_thread) (struct aws_event_loop *);
+        void (*start_destroy)(struct aws_event_loop *event_loop);
+        void (*complete_destroy)(struct aws_event_loop *event_loop);
+        int (*run)(struct aws_event_loop *event_loop);
+        int (*stop)(struct aws_event_loop *event_loop);
+        int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
+        void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+        void (*schedule_task_now_serialized)(struct aws_event_loop *event_loop, struct aws_task *task);
+        void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+        void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
+        int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+        int (*subscribe_to_io_events)(
+            struct aws_event_loop *event_loop,
+            struct aws_io_handle *handle,
+            int events,
+            aws_event_loop_on_event_fn *on_event,
+            void *user_data);
+        int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+        void (*free_io_event_resources)(void *user_data);
+        bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
     };
 
 Every implementation of aws_event_loop must implement this table. Let's look at some details for what each entry does.
 
-    void (*destroy)(struct aws_event_loop *);
+    void (*start_destroy)(struct aws_event_loop *event_loop);
 
-This function is invoked when the event-loop is finished processing and is ready to be cleaned up and deallocated.
+This function is invoked to begin the destruction process of the event-loop. It should initiate cleanup of resources and prepare the event-loop for final destruction.
 
-    int (*run) (struct aws_event_loop *);
+    void (*complete_destroy)(struct aws_event_loop *event_loop);
+
+This function is invoked when the event-loop is finished processing and is ready to be cleaned up and deallocated. It completes the destruction process started by start_destroy.
+
+    int (*run)(struct aws_event_loop *event_loop);
 
 This function starts the running of the event-loop and then immediately returns. This could kick off a thread, or setup some resources to run and
 receive events in a back channel API. For example, you could have an epoll loop that runs in a thread, or you could have an event-loop pumped by a system
 loop such as glib, or libevent etc... and then publish events to your event-loop implementation.
 
-    int (*stop) (struct aws_event_loop *,
-     void (*on_stopped) (struct aws_event_loop *, void *), void *promise_user_data);
+    int (*stop)(struct aws_event_loop *event_loop);
 
-The stop function signals the event-loop to shutdown. This function should not block but it should remove active io handles from the
-currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed._
-Once the event-loop has shutdown to a safe state, it should invoke the on_stopped function.
+This function signals the event-loop to shutdown. This function should not block but it should remove active io handles from the
+currently monitored or polled set and should begin notifying current subscribers via the on_event callback that the handle was removed.
+Once the event-loop has shutdown to a safe state, it should invoke any registered stop completion callbacks.
 
-    int (*schedule_task) (struct aws_event_loop *, struct aws_task *task, uint64_t run_at);
+    int (*wait_for_stop_completion)(struct aws_event_loop *event_loop);
 
-This function schedules a task to run in its task scheduler at the time specified by run_at. Each event-loop is responsible for implementing
+This function blocks until the event-loop has completely stopped. It should be called after stop() to ensure the event-loop has finished all cleanup operations.
+
+    void (*schedule_task_now)(struct aws_event_loop *event_loop, struct aws_task *task);
+
+This function schedules a task to run immediately on the event-loop. The task will be executed as soon as possible in the event-loop's thread.
+This function must not block, and must be thread-safe.
+
+    void (*schedule_task_now_serialized)(struct aws_event_loop *event_loop, struct aws_task *task);
+
+This function schedules a task to run immediately on the event-loop with serialization guarantees. Tasks scheduled with this function will be executed
+in the order they were scheduled. This function must not block, and must be thread-safe.
+
+    void (*schedule_task_future)(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+
+This function schedules a task to run in its task scheduler at the time specified by run_at_nanos. Each event-loop is responsible for implementing
 a task scheduler. This function must not block, and must be thread-safe. How this is implemented will depend on platform. For example,
 one reasonable implementation is if the call comes from the event-loop's thread, to queue it in the task scheduler directly. Otherwise,
 write to a pipe that the event-loop is listening for events on. Upon noticing the write to the pipe, it can read the task from the pipe
@@ -409,10 +442,20 @@ and schedule the task.
 
 `task` must be copied.
 
-`run_at` is using the system `RAW_MONOTONIC` clock (or the closest thing to it for that platform). It is represented as nanos since unix epoch.
+`run_at_nanos` is using the system `RAW_MONOTONIC` clock (or the closest thing to it for that platform). It is represented as nanos since unix epoch.
 
-    int (*subscribe_to_io_events) (struct aws_event_loop *, struct aws_io_handle *, int events,
-            void(*on_event)(struct aws_event_loop *, struct aws_io_handle *, int events, void *), void *user_data);
+    void (*cancel_task)(struct aws_event_loop *event_loop, struct aws_task *task);
+
+This function cancels a previously scheduled task. If the task has already been executed or is currently executing, this function has no effect.
+This function must be thread-safe.
+
+    int (*connect_to_io_completion_port)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+This function connects an io handle to the event-loop's IO completion port. This is primarily used on Windows with IOCP.
+On other platforms, this function may be a no-op.
+
+    int (*subscribe_to_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
+            aws_event_loop_on_event_fn *on_event, void *user_data);
 
 A subscriber will call this function to register an io_handle for event monitoring. This function is thread-safe.
 
@@ -426,56 +469,182 @@ on any io handle it does not explicitly own. It is the subscriber's responsibili
 not maintain a read ready list. It is the subscriber's responsibility to know it has more data to read or write and to schedule its tasks
 appropriately.**
 
-    int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
+    int (*unsubscribe_from_io_events)(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
 
-A subscriber will call this function to remove its io handle from the monitored events. For example, it would may this immediately before calling
+A subscriber will call this function to remove its io handle from the monitored events. For example, it would call this immediately before calling
 close() on a socket or pipe. `on_event` will still be invoked with `AWS_IO_EVENT_HANDLE_REMOVED` when this occurs.
 
-    BOOL (*is_on_callers_thread) (struct aws_event_loop *);
+    void (*free_io_event_resources)(void *user_data);
 
-Returns `TRUE` if the caller is on the same thread as the event-loop. Returns `FALSE` otherwise. This allows users of the event-loop to make a decision
+This function is invoked to free any resources associated with IO event subscriptions. It is called with the user_data that was provided
+when subscribing to IO events.
+
+    bool (*is_on_callers_thread)(struct aws_event_loop *event_loop);
+
+Returns `true` if the caller is on the same thread as the event-loop. Returns `false` otherwise. This allows users of the event-loop to make a decision
 about whether it is safe to interact with the loop directly, or if they need to schedule a task to run in the correct thread.
 This function is thread-safe.
 
 #### API
 
-    int aws_event_loop_init_base (struct aws_allocator *, aws_clock clock, ...);
+    struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
-Initializes common data for all event-loops regardless of implementation. All implementations must call this function before returning from their allocation function.
+Creates an instance of the default event loop implementation for the current architecture and operating system.
 
-    struct aws_event_loop *aws_event_loop_new_default (struct aws_allocator *, aws_clock clock, ...);
+    struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const struct aws_event_loop_options *options);
 
-Allocates and initializes the default event-loop implementation for the current platform. Calls `aws_event_loop_init_base` before returning.
+Creates an instance of the default event loop implementation for the current architecture and operating system using extendable options.
 
-    struct aws_event_loop *aws_event_loop_destroy (struct aws_event_loop *);
+    int aws_event_loop_init_base(struct aws_event_loop *event_loop, struct aws_allocator *alloc, aws_io_clock_fn *clock);
 
-Cleans up internal state of the event-loop implementation, and then calls the v-table `destroy` function.
+Initializes common event-loop data structures. This is only called from the new() function of event loop implementations.
 
-    int aws_event_loop_fetch_local_object ( struct aws_event_loop *, void *key, void **item);
+    void aws_event_loop_clean_up_base(struct aws_event_loop *event_loop);
 
-All event-loops contain local storage for all users of the event-loop to store common data into. This function is for fetching one of those objects by key. The key for this
-store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
-the caller must first schedule a task on the event-loop to enter the correct thread.
+Common cleanup code for all implementations. This is only called from the destroy() function of event loop implementations.
 
-    int aws_event_loop_put_local_object ( struct aws_event_loop *, void *key, void *item);
+    void aws_event_loop_destroy(struct aws_event_loop *event_loop);
 
-All event-loops contain local storage for all users of the event-loop to store common data into. This function is for putting one of those objects by key. The key for this
-store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
-the caller must first schedule a task on the event-loop to enter the correct thread.
+Destroys an event loop implementation. If the event loop is still in a running state, this function will block waiting on the event loop to shutdown.
+Internally, this calls aws_event_loop_start_destroy() followed by aws_event_loop_complete_destroy().
 
-    int aws_event_loop_remove_local_object ( struct aws_event_loop *, void *key, void **item);
+    void aws_event_loop_start_destroy(struct aws_event_loop *event_loop);
 
-All event loops contain local storage for all users of the event loop to store common data into. This function is for removing one of those objects by key. The key for this
-store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event loop's thread. If this is not the case,
-the caller must first schedule a task on the event loop to enter the correct thread. If found, and item is not NULL, the removed item is moved to `item`.
-It is the removers responsibility to free the memory pointed to by item. If it is NULL, the default deallocation strategy for the event loop will be used.
+Signals an event loop to begin its destruction process. If an event loop's implementation of this API does anything, it must be quick and non-blocking.
 
-    int aws_event_loop_current_ticks ( struct aws_event_loop *, uint64_t *ticks);
+    void aws_event_loop_complete_destroy(struct aws_event_loop *event_loop);
 
-Gets the current tick count/timestamp for the event loop's clock. This function is thread-safe.
+Waits for an event loop to complete its destruction process. aws_event_loop_start_destroy() must have been called previously for this function to not deadlock.
 
-#### V-Table Shims
-The remaining exported functions on event loop simply invoke the v-table functions and return. See the v-table section for more details.
+    int aws_event_loop_run(struct aws_event_loop *event_loop);
+
+Triggers the running of the event loop. This function must not block. The event loop is not active until this function is invoked.
+This function can be called again on an event loop after calling aws_event_loop_stop() and aws_event_loop_wait_for_stop_completion().
+
+    int aws_event_loop_stop(struct aws_event_loop *event_loop);
+
+Triggers the event loop to stop, but does not wait for the loop to stop completely. This function may be called from outside or inside the event loop thread.
+It is safe to call multiple times. If you do not call destroy(), an event loop can be run again by calling stop(), wait_for_stop_completion(), run().
+
+    int aws_event_loop_wait_for_stop_completion(struct aws_event_loop *event_loop);
+
+Blocks until the event loop stops completely. If you want to call aws_event_loop_run() again, you must call this after aws_event_loop_stop().
+It is not safe to call this function from inside the event loop thread.
+
+    void aws_event_loop_schedule_task_now(struct aws_event_loop *event_loop, struct aws_task *task);
+
+The event loop will schedule the task and run it on the event loop thread as soon as possible. Note that cancelled tasks may execute outside the event loop thread.
+This function may be called from outside or inside the event loop thread. The task should not be cleaned up or modified until its function is executed.
+
+    void aws_event_loop_schedule_task_now_serialized(struct aws_event_loop *event_loop, struct aws_task *task);
+
+Variant of aws_event_loop_schedule_task_now that forces all tasks to go through the cross thread task queue, guaranteeing that order-of-submission is order-of-execution.
+Serialization guarantee does not apply to task cancellation.
+
+    void aws_event_loop_schedule_task_future(struct aws_event_loop *event_loop, struct aws_task *task, uint64_t run_at_nanos);
+
+The event loop will schedule the task and run it at the specified time. Use aws_event_loop_current_clock_time() to query the current time in nanoseconds.
+Note that cancelled tasks may execute outside the event loop thread. This function may be called from outside or inside the event loop thread.
+
+    void aws_event_loop_cancel_task(struct aws_event_loop *event_loop, struct aws_task *task);
+
+Cancels task. This function must be called from the event loop's thread, and is only guaranteed to work properly on tasks scheduled from within the event loop's thread.
+The task will be executed with the AWS_TASK_STATUS_CANCELED status inside this call.
+
+    bool aws_event_loop_thread_is_callers_thread(struct aws_event_loop *event_loop);
+
+Returns true if the event loop's thread is the same thread that called this function, otherwise false.
+
+    int aws_event_loop_current_clock_time(const struct aws_event_loop *event_loop, uint64_t *time_nanos);
+
+Gets the current timestamp for the event loop's clock, in nanoseconds. This function is thread-safe.
+
+    int aws_event_loop_fetch_local_object(struct aws_event_loop *event_loop, void *key, struct aws_event_loop_local_object *obj);
+
+Fetches an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    int aws_event_loop_put_local_object(struct aws_event_loop *event_loop, struct aws_event_loop_local_object *obj);
+
+Puts an item object the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+The lifetime of item must live until remove or a put item overrides it. This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    int aws_event_loop_remove_local_object(struct aws_event_loop *event_loop, void *key, struct aws_event_loop_local_object *removed_obj);
+
+Removes an object from the event-loop's data store. Key will be taken as the memory address of the memory pointed to by key.
+If removed_obj is not null, the removed item will be moved to it if it exists. Otherwise, the default deallocation strategy will be used.
+This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    int aws_event_loop_connect_handle_to_io_completion_port(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+Associates an aws_io_handle with the event loop's I/O Completion Port. The handle must use aws_overlapped for all async operations requiring an OVERLAPPED struct.
+A handle may only be connected to one event loop in its lifetime.
+
+    int aws_event_loop_subscribe_to_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle, int events,
+            aws_event_loop_on_event_fn *on_event, void *user_data);
+
+Subscribes on_event to events on the event-loop for handle. events is a bitwise concatenation of the events that were received.
+Currently, only AWS_IO_EVENT_TYPE_READABLE and AWS_IO_EVENT_TYPE_WRITABLE are honored. You always are registered for error conditions and closure.
+This function may be called from outside or inside the event loop thread. However, the unsubscribe function must be called inside the event-loop's thread.
+
+    int aws_event_loop_unsubscribe_from_io_events(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+Unsubscribes handle from event-loop notifications. This function is NOT thread safe and should be called inside the event-loop's thread.
+
+    void aws_event_loop_free_io_event_resources(struct aws_event_loop *event_loop, struct aws_io_handle *handle);
+
+Cleans up resources (user_data) associated with the I/O eventing subsystem for a given handle.
+
+    void aws_event_loop_register_tick_start(struct aws_event_loop *event_loop);
+
+For event-loop implementations to use for providing metrics info to the base event-loop. This enables the event-loop load balancer to take into account load when vending another event-loop to a caller.
+Call this function at the beginning of your event-loop tick: after wake-up, but before processing any IO or tasks.
+
+    void aws_event_loop_register_tick_end(struct aws_event_loop *event_loop);
+
+For event-loop implementations to use for providing metrics info to the base event-loop. This enables the event-loop load balancer to take into account load when vending another event-loop to a caller.
+Call this function at the end of your event-loop tick: after processing IO and tasks.
+
+    size_t aws_event_loop_get_load_factor(struct aws_event_loop *event_loop);
+
+Returns the current load factor. If the event-loop is not invoking aws_event_loop_register_tick_start() and aws_event_loop_register_tick_end(), this value will always be 0.
+
+    struct aws_event_loop_group *aws_event_loop_group_new(struct aws_allocator *allocator, const struct aws_event_loop_group_options *options);
+
+Creation function for event loop groups.
+
+    struct aws_event_loop_group *aws_event_loop_group_acquire(struct aws_event_loop_group *el_group);
+
+Increments the reference count on the event loop group, allowing the caller to take a reference to it. Returns the same event loop group passed in.
+
+    void aws_event_loop_group_release(struct aws_event_loop_group *el_group);
+
+Decrements an event loop group's ref count. When the ref count drops to zero, the event loop group will be destroyed.
+
+    struct aws_event_loop_group *aws_event_loop_group_acquire_from_event_loop(struct aws_event_loop *event_loop);
+
+Increments the reference count on the event loop group from event loop, allowing the caller to take a reference to it.
+Returns the base event loop group of the event loop, or null if the event loop does not belong to a group.
+
+    void aws_event_loop_group_release_from_event_loop(struct aws_event_loop *event_loop);
+
+Decrements the ref count of the event loop's base event loop group. When the ref count drops to zero, the event loop group will be destroyed.
+
+    struct aws_event_loop *aws_event_loop_group_get_loop_at(struct aws_event_loop_group *el_group, size_t index);
+
+Returns the event loop at a particular index. If the index is out of bounds, null is returned.
+
+    size_t aws_event_loop_group_get_loop_count(const struct aws_event_loop_group *el_group);
+
+Gets the number of event loops managed by an event loop group.
+
+    enum aws_event_loop_type aws_event_loop_group_get_type(const struct aws_event_loop_group *el_group);
+
+Gets the event loop type used by an event loop group.
+
+    struct aws_event_loop *aws_event_loop_group_get_next_loop(struct aws_event_loop_group *el_group);
+
+Fetches the next loop for use. The purpose is to enable load balancing across loops. Currently it uses the "best-of-two" algorithm based on the load factor of each loop.
 
 ### Channels and Slots
 
@@ -597,46 +766,54 @@ Channel Handlers are runtime polymorphic. Here's some details on the virtual tab
     };
 
 
-`int data_in ( struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                           struct aws_io_message *message)`
+Every implementation of aws_channel_handler must implement this table. Let's look at some details for what each entry does.
 
-Data in is invoked by the slot when an application level message is received in the read direction (from the io).
-The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
+    int (*data_in)(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                   struct aws_io_message *message);
+
+This function is invoked by the slot when an application level message is received in the read direction (from the io).
+The job of the implementer is to process the data in message and either notify a user or queue a new message on the slot's
 read queue.
 
-`int data_out (struct aws_channel_handler *handler, struct aws_channel_slot *slot,
-                                   struct aws_io_message *message)`
+    int (*data_out)(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                    struct aws_io_message *message);
 
-Data Out is invoked by the slot when an application level message is received in the write direction (to the io).
-The job of the implementer is to process the data in msg and either notify a user or queue a new message on the slot's
+This function is invoked by the slot when an application level message is received in the write direction (to the io).
+The job of the implementer is to process the data in message and either notify a user or queue a new message on the slot's
 write queue.
 
-`int increment_window (struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size)`
+    int (*on_window_update)(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size);
 
-Increment Window is invoked by the slot when a framework level message is received from a downstream handler.
+This function is invoked by the slot when a framework level message is received from a downstream handler.
 It only applies in the read direction. This gives the handler a chance to make a programmatic decision about
 what its read window should be. Upon receiving an update_window message, a handler decides what its window should be and
 likely issues an increment window message to its slot. Shrinking a window has no effect. If a handler makes its window larger
 than a downstream window, it is responsible for honoring the downstream window and buffering any data it produces that is
 greater than that window.
 
-`int (*shutdown) (struct aws_channel_handler *handler, struct aws_channel_slot *slot, enum aws_channel_direction dir,
-     int error_code, bool abort_immediately);`
+    int (*on_shutdown_notify)(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                              enum aws_channel_direction dir, int error_code);
 
-Shutdown is invoked by the slot when a framework level message is received from an adjacent handler.
+This function is invoked by the slot when a framework level message is received from an adjacent handler.
 This notifies the handler that the previous handler in the chain has shutdown and will no longer be sending or
 receiving messages. The handler should make a decision about what it wants to do in response, and likely begins
-its shutdown process (if any). Once the handler has safely reached a safe state, if should call
-'aws_channel_slot_on_handler_shutdown_complete'
+its shutdown process (if any). Once the handler has safely reached a safe state, it should call
+aws_channel_slot_on_handler_shutdown_complete.
 
-`size_t initial_window_size (struct aws_channel_handler *handler)`
+    int (*shutdown_direction)(struct aws_channel_handler *handler, struct aws_channel_slot *slot,
+                             enum aws_channel_direction dir);
 
-When a handler is added to a slot, the slot will call this function to determine the initial window size and will propagate
-a window_update message down the channel.
+This function is invoked to initiate shutdown of the handler in the specified direction. The handler should begin its shutdown
+sequence and notify the channel when shutdown is complete via aws_channel_slot_on_handler_shutdown_complete.
 
-`void destroy(struct aws_channel_handler *handler)`
+    size_t (*initial_window_size)(struct aws_channel_handler *handler);
 
-Clean up any memory or resources owned by this handler, and then deallocate the handler itself.
+This function is invoked when a handler is added to a slot. The slot will call this function to determine the initial window size
+and will propagate a window_update message down the channel.
+
+    void (*destroy)(struct aws_channel_handler *handler);
+
+This function is invoked to clean up any memory or resources owned by this handler, and then deallocate the handler itself.
 
 #### API
 
