@@ -124,7 +124,7 @@ static struct aws_error_info s_errors[] = {
         "Incoming connection was aborted."),
     AWS_DEFINE_ERROR_INFO_IO (
         AWS_IO_DNS_QUERY_FAILED,
-        "A query to dns failed to resolve."),
+        "A nonrecoverable failure when query to dns occurred."),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_DNS_INVALID_NAME,
         "Host name was invalid for dns resolution."),
@@ -351,6 +351,9 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_HOST_NAME_MISMATCH,
         "Channel shutdown due to certificate's host name does not match the endpoint host name."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_DNS_QUERY_AGAIN,
+        "A temporary failure in name resolution occurred, please try again."),
 };
 /* clang-format on */
 
