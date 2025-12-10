@@ -159,6 +159,8 @@ add_test_case(test_resolver_low_frequency_starvation)
 
 add_test_case(test_pem_single_cert_parse)
 add_test_case(test_pem_private_key_parse)
+add_test_case(test_pem_dsa_private_key_parse)
+add_test_case(test_pem_dsa_public_key_parse)
 add_test_case(test_pem_cert_chain_parse)
 add_test_case(test_pem_cert_parse_from_file)
 add_test_case(test_pem_cert_parse_from_file_crlf)
