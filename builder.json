@@ -13,15 +13,17 @@
         { "name": "aws-c-mqtt" },
         { "name": "aws-c-event-stream" }
     ],
-    "pre_build_steps": ["tls-server-setup"],
     "targets": {
         "linux": {
             "_comment": "set up SoftHSM2 for PKCS#11 tests (see: ./builder/actions/pkcs11_test_setup.py)",
             "+pre_build_steps": ["pkcs11-test-setup"]
         },
+        "al2-x64": {
+            "_comment": "Disable PKCS#11 tests for al2-x64 due to SoftHSM2 being too old on this platform",
+            "!pre_build_steps": []
+        },
         "windows": {
             "+pre_build_steps": ["tls-server-setup"]
-
         }
     },
     "build_env": {
