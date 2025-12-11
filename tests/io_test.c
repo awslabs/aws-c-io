@@ -97,8 +97,12 @@ static int s_test_io_error_code_is_transient(struct aws_allocator *allocator, vo
         ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
     }
 
+    {
+        error_code = AWS_IO_DNS_QUERY_FAILED;
+        ASSERT_FALSE(aws_io_error_code_is_transient(error_code));
+    }
+
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(io_error_code_is_transient, s_test_io_error_code_is_transient)
-
