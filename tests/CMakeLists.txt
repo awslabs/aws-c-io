@@ -17,6 +17,7 @@ endmacro()
 add_test_case(io_library_init)
 add_test_case(io_library_init_cleanup_init_cleanup)
 add_test_case(io_library_error_order)
+add_test_case(io_error_code_is_transient)
 
 # Dispatch Queue does not support pipe
 if(NOT APPLE)

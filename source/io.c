@@ -434,3 +434,18 @@ void aws_io_fatal_assert_library_initialized(void) {
         AWS_FATAL_ASSERT(s_io_library_initialized);
     }
 }
+
+bool aws_io_error_code_is_transient(int error_code) {
+    switch(error_code) {
+        case AWS_IO_SOCKET_CLOSED:
+        case AWS_IO_SOCKET_CONNECT_ABORTED:
+        case AWS_IO_SOCKET_CONNECTION_REFUSED:
+        case AWS_IO_SOCKET_NETWORK_DOWN:
+        case AWS_IO_DNS_QUERY_AGAIN:
+        case AWS_IO_DNS_NO_ADDRESS_FOR_HOST:
+        case AWS_IO_SOCKET_TIMEOUT:
+        case AWS_IO_TLS_NEGOTIATION_TIMEOUT:
+            return true;
+    }
+    return false;
+}
