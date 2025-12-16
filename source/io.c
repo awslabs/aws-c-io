@@ -435,7 +435,7 @@ void aws_io_fatal_assert_library_initialized(void) {
     }
 }
 
-bool aws_io_error_code_is_transient(int error_code) {
+bool aws_io_error_code_is_retryable(int error_code) {
     switch (error_code) {
         case AWS_IO_SOCKET_CLOSED:
         case AWS_IO_SOCKET_CONNECT_ABORTED:

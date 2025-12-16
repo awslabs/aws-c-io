@@ -57,52 +57,53 @@ static int s_test_io_library_error_order(struct aws_allocator *allocator, void *
 
 AWS_TEST_CASE(io_library_error_order, s_test_io_library_error_order)
 
-static int s_test_io_error_code_is_transient(struct aws_allocator *allocator, void *ctx) {
+static int s_test_io_error_code_is_retryable(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     (void)ctx;
 
     int error_code = 0;
 
-    ASSERT_FALSE(aws_io_error_code_is_transient(error_code));
+    ASSERT_FALSE(aws_io_error_code_is_retryable(error_code));
     {
         error_code = AWS_IO_SOCKET_CLOSED;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
     {
         error_code = AWS_IO_SOCKET_CONNECT_ABORTED;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
     {
         error_code = AWS_IO_SOCKET_CONNECTION_REFUSED;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
     {
         error_code = AWS_IO_SOCKET_NETWORK_DOWN;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
     {
         error_code = AWS_IO_DNS_QUERY_AGAIN;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
     {
         error_code = AWS_IO_DNS_NO_ADDRESS_FOR_HOST;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
     {
         error_code = AWS_IO_SOCKET_TIMEOUT;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
     {
         error_code = AWS_IO_TLS_NEGOTIATION_TIMEOUT;
-        ASSERT_TRUE(aws_io_error_code_is_transient(error_code));
+        ASSERT_TRUE(aws_io_error_code_is_retryable(error_code));
     }
 
     {
         error_code = AWS_IO_DNS_QUERY_FAILED;
-        ASSERT_FALSE(aws_io_error_code_is_transient(error_code));
+        ASSERT_FALSE(aws_io_error_code_is_retryable(error_code));
     }
 
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(io_error_code_is_transient, s_test_io_error_code_is_transient)
+AWS_TEST_CASE(io_error_code_is_retryable, s_test_io_error_code_is_transient)
+

@@ -299,7 +299,7 @@ AWS_IO_API
 void aws_io_fatal_assert_library_initialized(void);
 
 AWS_IO_API
-bool aws_io_error_code_is_transient(int error_code);
+bool aws_io_error_code_is_retryable(int error_code);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
