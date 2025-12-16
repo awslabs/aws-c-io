@@ -115,7 +115,26 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
 
     list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
     set(USE_S2N ON)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    option(USE_VSOCK
+            "Build in support for VSOCK sockets"
+            OFF)
 
+    file(GLOB AWS_IO_OS_HEADERS
+            )
+
+    file(GLOB AWS_IO_OS_SRC
+            "source/emscripten/*.c"
+            "source/linux/*.c"
+            "source/posix/*.c"
+            )
+
+    set(EPOLL_SHIM_INCLUDE "source/emscripten")
+
+    set(PLATFORM_LIBS "")
+
+    set(EVENT_LOOP_DEFINE "EPOLL")
+    set(USE_S2N ON)
 endif()
 
 if (BYO_CRYPTO)
@@ -192,6 +211,7 @@ endif()
 target_include_directories(${PROJECT_NAME} PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>)
+target_include_directories(${PROJECT_NAME} PRIVATE ${EPOLL_SHIM_INCLUDE})
 
 aws_use_package(aws-c-common)
 aws_use_package(aws-c-cal)
