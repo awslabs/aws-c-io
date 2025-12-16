@@ -105,5 +105,5 @@ static int s_test_io_error_code_is_retryable(struct aws_allocator *allocator, vo
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(io_error_code_is_retryable, s_test_io_error_code_is_transient)
+AWS_TEST_CASE(io_error_code_is_retryable, s_test_io_error_code_is_retryable)
 
