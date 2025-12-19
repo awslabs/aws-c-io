@@ -1353,7 +1353,17 @@ static void s_process_connection_state_changed_ready(struct nw_socket *nw_socket
             if (metadata != NULL) {
                 sec_protocol_metadata_t sec_metadata = (sec_protocol_metadata_t)metadata;
 
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                /* sec_protocol_metadata_get_negotiated_protocol was deprecated in macOS 15.5 and iOS 18.5. It should be
+                 * replaced by sec_protocol_metadata_copy_negotiated_protocol, but this function became available in
+                 * macOS 15 and iOS 18.5 only.
+                 * To avoid bumping a minimum supported versions of Apple platforms or introducing a logic for choosing
+                 * an appropriate function in runtime, we use the deprecated function for now.
+                 */
                 const char *negotiated_protocol = sec_protocol_metadata_get_negotiated_protocol(sec_metadata);
+#pragma clang diagnostic pop
+
                 if (negotiated_protocol) {
                     nw_socket->protocol_buf = aws_byte_buf_from_c_str(negotiated_protocol);
                     AWS_LOGF_DEBUG(
