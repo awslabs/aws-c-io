@@ -300,8 +300,8 @@ void aws_io_fatal_assert_library_initialized(void);
 
 /*
  * This API provides a recommendation on whether an error code should be considered retryable for IO operations, such as
- * transient errors in host resolution, sockets, and TLS. Note: This is a recommendation only. Retry behavior should be
- * determined based on your specific use case.
+ * transient errors in host resolution, sockets, and TLS.
+ * Note: This is a recommendation only. Retry behavior should be determined based on your specific use case.
  */
 AWS_IO_API
 bool aws_io_error_code_is_retryable(int error_code);
