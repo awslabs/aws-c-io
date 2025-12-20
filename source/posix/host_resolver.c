@@ -105,8 +105,9 @@ clean_up:
     if (err_code) {
         switch (err_code) {
             case EAI_FAIL:
-            case EAI_AGAIN:
                 return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
+            case EAI_AGAIN:
+                return aws_raise_error(AWS_IO_DNS_QUERY_AGAIN);
             case EAI_MEMORY:
                 return aws_raise_error(AWS_ERROR_OOM);
             case EAI_NONAME:
