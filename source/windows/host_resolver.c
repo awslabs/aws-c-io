@@ -97,7 +97,9 @@ clean_up:
     if (res_error) {
         switch (res_error) {
             case WSATRY_AGAIN:
+                return aws_raise_error(AWS_IO_DNS_QUERY_AGAIN);
             case WSANO_DATA:
+                return aws_raise_error(AWS_IO_DNS_NO_ADDRESS_FOR_HOST);
             case WSANO_RECOVERY:
                 return aws_raise_error(AWS_IO_DNS_QUERY_FAILED);
             case WSA_NOT_ENOUGH_MEMORY:

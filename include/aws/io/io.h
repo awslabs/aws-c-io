@@ -274,6 +274,8 @@ enum aws_io_errors {
     AWS_IO_TLS_INVALID_CERTIFICATE_CHAIN,
     AWS_IO_TLS_HOST_NAME_MISMATCH,
 
+    AWS_IO_DNS_QUERY_AGAIN,
+
     AWS_IO_ERROR_END_RANGE = AWS_ERROR_ENUM_END_RANGE(AWS_C_IO_PACKAGE_ID),
     AWS_IO_INVALID_FILE_HANDLE = AWS_ERROR_INVALID_FILE_HANDLE,
 };
@@ -295,6 +297,14 @@ void aws_io_library_clean_up(void);
 
 AWS_IO_API
 void aws_io_fatal_assert_library_initialized(void);
+
+/*
+ * This API provides a recommendation on whether an error code should be considered retryable for IO operations, such as
+ * transient errors in host resolution, sockets, and TLS.
+ * Note: This is a recommendation only. Retry behavior should be determined based on your specific use case.
+ */
+AWS_IO_API
+bool aws_io_error_code_is_retryable(int error_code);
 
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
