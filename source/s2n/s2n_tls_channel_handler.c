@@ -267,6 +267,7 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
+        case AWS_IO_TLS_CIPHER_PREF_TLSV1_0_2023_06:
         case AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07:
             return true;
         default:
