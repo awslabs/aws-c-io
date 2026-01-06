@@ -15,7 +15,13 @@
 #include <aws/common/system_info.h>
 #include <aws/common/thread.h>
 
+#if defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
+#elif defined(AWS_USE_APPLE_DISPATCH_QUEUE)
+static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_DISPATCH_QUEUE;
+#else
 static enum aws_event_loop_type s_default_event_loop_type_override = AWS_EVENT_LOOP_PLATFORM_DEFAULT;
+#endif
 
 struct aws_event_loop *aws_event_loop_new_default(struct aws_allocator *alloc, aws_io_clock_fn *clock) {
     struct aws_event_loop_options options = {
