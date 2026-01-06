@@ -124,7 +124,7 @@ static struct aws_error_info s_errors[] = {
         "Incoming connection was aborted."),
     AWS_DEFINE_ERROR_INFO_IO (
         AWS_IO_DNS_QUERY_FAILED,
-        "A nonrecoverable failure when query to dns occurred."),
+        "A query to dns failed to resolve."),
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_DNS_INVALID_NAME,
         "Host name was invalid for dns resolution."),
@@ -351,9 +351,6 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_TLS_HOST_NAME_MISMATCH,
         "Channel shutdown due to certificate's host name does not match the endpoint host name."),
-    AWS_DEFINE_ERROR_INFO_IO(
-        AWS_IO_DNS_QUERY_AGAIN,
-        "A temporary failure in name resolution occurred, please try again."),
 };
 /* clang-format on */
 
@@ -433,19 +430,4 @@ void aws_io_fatal_assert_library_initialized(void) {
 
         AWS_FATAL_ASSERT(s_io_library_initialized);
     }
-}
-
-bool aws_io_error_code_is_retryable(int error_code) {
-    switch (error_code) {
-        case AWS_IO_SOCKET_CLOSED:
-        case AWS_IO_SOCKET_CONNECT_ABORTED:
-        case AWS_IO_SOCKET_CONNECTION_REFUSED:
-        case AWS_IO_SOCKET_NETWORK_DOWN:
-        case AWS_IO_DNS_QUERY_AGAIN:
-        case AWS_IO_DNS_NO_ADDRESS_FOR_HOST:
-        case AWS_IO_SOCKET_TIMEOUT:
-        case AWS_IO_TLS_NEGOTIATION_TIMEOUT:
-            return true;
-    }
-    return false;
 }

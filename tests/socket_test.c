@@ -814,7 +814,7 @@ static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator,
     options.keep_alive_timeout_sec = 60000;
     options.type = AWS_SOCKET_STREAM;
     options.domain = AWS_SOCKET_IPV4;
-#if defined(__APPLE__)
+#if defined(AWS_OS_APPLE)
     strncpy(options.network_interface_name, "lo0", AWS_NETWORK_INTERFACE_NAME_MAX);
 #else
     strncpy(options.network_interface_name, "lo", AWS_NETWORK_INTERFACE_NAME_MAX);
@@ -860,7 +860,7 @@ static int s_test_socket_with_bind_to_invalid_interface(struct aws_allocator *al
     options.domain = AWS_SOCKET_IPV4;
     strncpy(options.network_interface_name, "invalid", AWS_NETWORK_INTERFACE_NAME_MAX);
     struct aws_socket outgoing;
-#if (defined(AWS_OS_LINUX))
+#if (defined(AWS_OS_APPLE) && !defined(AWS_USE_APPLE_NETWORK_FRAMEWORK)) || defined(AWS_OS_LINUX)
     ASSERT_ERROR(AWS_IO_SOCKET_INVALID_OPTIONS, aws_socket_init(&outgoing, allocator, &options));
 #else
     ASSERT_ERROR(AWS_ERROR_PLATFORM_NOT_SUPPORTED, aws_socket_init(&outgoing, allocator, &options));
@@ -1942,7 +1942,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
     ASSERT_SUCCESS(aws_socket_bind(&listener, &socket_bind_options));
 
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_socket_set_cleanup_complete_callback(&listener, s_local_listener_shutdown_complete, &listener_args);
 #endif
     struct aws_socket_listener_options listener_options = {
@@ -2000,7 +2000,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
         io_args.socket = listener_args.incoming;
         io_args.close_completed = false;
 
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
         aws_socket_set_cleanup_complete_callback(io_args.socket, s_socket_shutdown_complete_fn, &io_args);
         io_args.shutdown_complete = false;
 #endif
@@ -2011,7 +2011,7 @@ static int s_cleanup_in_accept_doesnt_explode(struct aws_allocator *allocator, v
         ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
         aws_socket_clean_up(io_args.socket);
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
         ASSERT_SUCCESS(aws_mutex_lock(&mutex));
         aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
         ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
@@ -2168,7 +2168,7 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
         .shutdown_complete = false,
     };
 
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_socket_set_cleanup_complete_callback(io_args.socket, s_socket_shutdown_complete_fn, &io_args);
 #endif
 
@@ -2191,24 +2191,24 @@ static int s_cleanup_in_write_cb_doesnt_explode(struct aws_allocator *allocator,
     io_args.amount_written = 0;
     io_args.socket = server_sock;
     io_args.shutdown_complete = false;
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_socket_set_cleanup_complete_callback(io_args.socket, s_socket_shutdown_complete_fn, &io_args);
 #endif
     aws_event_loop_schedule_task_now(event_loop, &write_task);
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_write_completed_predicate, &io_args);
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_condition_variable_wait_pred(&io_args.condition_variable, &mutex, s_shutdown_completed_predicate, &io_args);
 #endif
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
     ASSERT_INT_EQUALS(AWS_OP_SUCCESS, io_args.error_code);
     aws_mem_release(allocator, server_sock);
 
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     aws_socket_set_cleanup_complete_callback(&listener, s_local_listener_shutdown_complete, &listener_args);
 #endif
     aws_socket_clean_up(&listener);
-#ifdef __APPLE__
+#ifdef AWS_USE_APPLE_NETWORK_FRAMEWORK
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     aws_condition_variable_wait_pred(
         listener_args.condition_variable, &mutex, s_local_listener_shutdown_completed_predicate, &listener_args);
