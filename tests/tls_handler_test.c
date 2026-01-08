@@ -1637,6 +1637,14 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_success_mtls_tls1_3,
     s_tls_client_channel_negotiation_success_mtls_tls1_3_fn)
 
+/* macOS-specific test to ensure that setting minimum TLS version to 1.3 fails the connection. */
+static int s_tls_client_channel_negotiation_failure_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_badssl_ecc256_host_name, 443, s_raise_tls_version_to_13);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_failure_tls1_3, s_tls_client_channel_negotiation_failure_tls1_3_fn)
+
 AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 
 static void s_disable_verify_peer(struct aws_tls_ctx_options *options) {
