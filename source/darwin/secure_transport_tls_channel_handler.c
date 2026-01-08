@@ -929,17 +929,18 @@ static struct aws_channel_handler *s_tls_handler_new(
 #if TLS13_AVAILABLE
             SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol13);
 #else
-            AWS_LOGF_FATAL(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
                 "static: TLS 1.3 is not supported on this device. You may just want to specify "
-                "AWS_IO_TLS_VER_SYS_DEFAULTS and you will automatically"
+                "AWS_IO_TLS_VER_SYS_DEFAULTS and you will automatically "
                 "use the latest version of the protocol when it is available.");
             /*
              * "TLS 1.3 is not supported for your target platform,
              * you can probably get by setting AWS_IO_TLSv1_2 as the minimum and if tls 1.3 is supported it will be
              * used.
              */
-            AWS_ASSERT(0);
+            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            goto cleanup_ssl_ctx;
 #endif
             break;
         case AWS_IO_TLS_VER_SYS_DEFAULTS:
