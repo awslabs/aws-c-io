@@ -42,12 +42,15 @@ static OSStatus (*s_SSLCopyALPNProtocols)(SSLContextRef context, CFArrayRef *pro
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 /* We couldn't make SSLSetALPNFunc work, so we have to use the public API which isn't available until High-Sierra */
-#if (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302) ||                                                       \
-    (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                 \
+#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                 \
     (TARGET_OS_TV && __TV_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                         \
     (TARGET_OS_WATCH && __WATCH_OS_VERSION_MAX_ALLOWED >= 40000)
 #    define ALPN_AVAILABLE true
 #    define TLS13_AVAILABLE true
+#elif (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302)
+#    define ALPN_AVAILABLE true
+/* Even though TLS 1.3 can be configured in SecureTransport, it never actually worked. */
+#    define TLS13_AVAILABLE false
 #else
 #    define ALPN_AVAILABLE false
 #    define TLS13_AVAILABLE false
