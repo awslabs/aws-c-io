@@ -201,9 +201,10 @@ static void s_dispatch_event_loop_final_destroy(struct aws_event_loop *event_loo
 }
 
 static const char AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX[] = "com.amazonaws.commonruntime.eventloop.";
-#define AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH                                                                   \
-    (AWS_ARRAY_SIZE(AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX) - 1) /* remove string terminator */
-#define AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH (AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH + AWS_UUID_STR_LEN)
+static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH =
+    AWS_ARRAY_SIZE(AWS_LITERAL_APPLE_DISPATCH_QUEUE_ID_PREFIX) - 1; // remove string terminator
+static const size_t AWS_IO_APPLE_DISPATCH_QUEUE_ID_LENGTH =
+    AWS_IO_APPLE_DISPATCH_QUEUE_ID_PREFIX_LENGTH + AWS_UUID_STR_LEN;
 /**
  * Generates a unique identifier for a dispatch queue in the format "com.amazonaws.commonruntime.eventloop.<UUID>".
  * This identifier will be stored in the provided `result` buffer.
