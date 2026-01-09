@@ -931,9 +931,9 @@ static struct aws_channel_handler *s_tls_handler_new(
 #else
             AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "static: TLS 1.3 is not supported on this device. You may just want to specify "
-                "AWS_IO_TLS_VER_SYS_DEFAULTS and you will automatically "
-                "use the latest version of the protocol when it is available.");
+                "static: Minimum TLS version has been set to TLS 1.3, which is not supported on this device. If "
+                "minimum TLS version is not set or AWS_IO_TLS_VER_SYS_DEFAULTS is used, the latest supported version "
+                "of TLS will be used automatically.");
             /*
              * "TLS 1.3 is not supported for your target platform,
              * you can probably get by setting AWS_IO_TLSv1_2 as the minimum and if tls 1.3 is supported it will be
