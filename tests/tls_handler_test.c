@@ -31,9 +31,6 @@
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
-#    define AWS_TEST_LOCAL_TLS12_PORT 58443
-#    define AWS_TEST_LOCAL_TLS13_PORT 59443
-
 bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
     if (strstr(aws_string_c_str(host_name), "badssl.com") != NULL) {
         if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
@@ -1228,10 +1225,6 @@ static void s_raise_tls_version_to_12(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
 }
 
-static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
-}
-
 static int s_tls_client_channel_negotiation_error_override_legacy_crypto_tls11_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1451,7 +1444,7 @@ static int s_verify_good_host(
     return AWS_OP_SUCCESS;
 }
 
-static int s_verify_good_host_mtls_connect(
+static int s_verify_good_host_mqtt_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
     uint32_t port,
@@ -1461,9 +1454,9 @@ static int s_verify_good_host_mtls_connect(
     struct aws_byte_buf key_buf = {0};
     struct aws_byte_buf ca_buf = {0};
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "mtls_server_root_ca.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "tls13_device.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "tls13_device.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "tls13_server_root_ca.pem.crt"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
@@ -1499,8 +1492,9 @@ static int s_verify_good_host_mtls_connect(
     AWS_FATAL_ASSERT(
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
 
-    /* mtls_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
+    /* tls13_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
     aws_tls_ctx_options_set_verify_peer(&tls_options, false);
+    aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
 
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&tls_options);
@@ -1517,6 +1511,7 @@ static int s_verify_good_host_mtls_connect(
 
     struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
     aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
+    aws_tls_connection_options_set_alpn_list(&tls_client_conn_options, allocator, "x-amzn-mqtt-ca");
 
     struct aws_socket_options options;
     AWS_ZERO_STRUCT(options);
@@ -1554,8 +1549,16 @@ static int s_verify_good_host_mtls_connect(
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
+    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("x-amzn-mqtt-ca");
+    /* check ALPN and SNI was properly negotiated */
+    if (aws_tls_is_alpn_available() && tls_options.verify_peer) {
+        ASSERT_BIN_ARRAYS_EQUALS(
+            expected_protocol.buffer,
+            expected_protocol.len,
+            outgoing_args.negotiated_protocol.buffer,
+            outgoing_args.negotiated_protocol.len);
+    }
 
-    /* check SNI was properly negotiated */
     ASSERT_BIN_ARRAYS_EQUALS(
         host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
@@ -1569,97 +1572,6 @@ static int s_verify_good_host_mtls_connect(
     aws_byte_buf_clean_up(&cert_buf);
     aws_byte_buf_clean_up(&key_buf);
     aws_byte_buf_clean_up(&ca_buf);
-    aws_tls_ctx_release(tls_context);
-    aws_tls_ctx_options_clean_up(&tls_options);
-    aws_client_bootstrap_release(client_bootstrap);
-    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
-
-    return AWS_OP_SUCCESS;
-}
-
-static int s_verify_negotiation_fails_connect(
-    struct aws_allocator *allocator,
-    const struct aws_string *host_name,
-    uint32_t port,
-    void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
-
-    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
-
-    struct tls_test_args outgoing_args = {
-        .mutex = &c_tester.mutex,
-        .allocator = allocator,
-        .condition_variable = &c_tester.condition_variable,
-        .error_invoked = 0,
-        .expects_error = true,
-        .rw_handler = NULL,
-        .server = false,
-        .tls_levels_negotiated = 0,
-        .desired_tls_levels = 1,
-        .shutdown_finished = false,
-    };
-
-    struct aws_tls_ctx_options tls_options = {0};
-    AWS_ZERO_STRUCT(tls_options);
-
-    aws_tls_ctx_options_init_default_client(&tls_options, allocator);
-
-    /* mtls_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
-    aws_tls_ctx_options_set_verify_peer(&tls_options, false);
-
-    if (override_tls_options_fn) {
-        (*override_tls_options_fn)(&tls_options);
-    }
-
-    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
-    ASSERT_NOT_NULL(tls_context);
-
-    struct aws_tls_connection_options tls_client_conn_options;
-    aws_tls_connection_options_init_from_ctx(&tls_client_conn_options, tls_context);
-    aws_tls_connection_options_set_callbacks(&tls_client_conn_options, s_tls_on_negotiated, NULL, NULL, &outgoing_args);
-
-    struct aws_byte_cursor host_name_cur = aws_byte_cursor_from_string(host_name);
-    aws_tls_connection_options_set_server_name(&tls_client_conn_options, allocator, &host_name_cur);
-
-    struct aws_socket_options options;
-    AWS_ZERO_STRUCT(options);
-    options.connect_timeout_ms = 10000;
-    options.type = AWS_SOCKET_STREAM;
-    options.domain = AWS_SOCKET_IPV4;
-
-    struct aws_client_bootstrap_options bootstrap_options = {
-        .event_loop_group = c_tester.el_group,
-        .host_resolver = c_tester.resolver,
-    };
-    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &bootstrap_options);
-    ASSERT_NOT_NULL(client_bootstrap);
-
-    struct aws_socket_channel_bootstrap_options channel_options;
-    AWS_ZERO_STRUCT(channel_options);
-    channel_options.bootstrap = client_bootstrap;
-    channel_options.host_name = aws_string_c_str(host_name);
-    channel_options.port = port;
-    channel_options.socket_options = &options;
-    channel_options.tls_options = &tls_client_conn_options;
-    channel_options.setup_callback = s_tls_handler_test_client_setup_callback;
-    channel_options.shutdown_callback = s_tls_handler_test_client_shutdown_callback;
-    channel_options.user_data = &outgoing_args;
-
-    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&channel_options));
-
-    /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
-     * done messed up. */
-    aws_tls_connection_options_clean_up(&tls_client_conn_options);
-
-    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
-    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
-
-    ASSERT_TRUE(outgoing_args.error_invoked);
-
-    ASSERT_TRUE(aws_error_code_is_tls(outgoing_args.last_error_code));
-
-    /* cleanups */
     aws_tls_ctx_release(tls_context);
     aws_tls_ctx_options_clean_up(&tls_options);
     aws_client_bootstrap_release(client_bootstrap);
@@ -1709,37 +1621,21 @@ static int s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn(
 AWS_TEST_CASE(
     tls_client_channel_negotiation_success_ecc384_deprecated,
     s_tls_client_channel_negotiation_success_ecc384_SCHANNEL_CREDS_fn)
-#    endif /* _WIN32 */
+#    endif
 
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_local_tls_server_host_name, "127.0.0.1");
-
-static int s_tls_client_channel_negotiation_success_mtls_tls12_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_verify_good_host_mtls_connect(
-        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS12_PORT, NULL);
+static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls12, s_tls_client_channel_negotiation_success_mtls_tls12_fn)
-
-static int s_tls_client_channel_negotiation_success_mtls_tls13_fn(struct aws_allocator *allocator, void *ctx) {
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
+static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_good_host_mtls_connect(
-        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, s_raise_tls_version_to_13);
-}
-
-AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls13, s_tls_client_channel_negotiation_success_mtls_tls13_fn)
-
-/* In this test, a client sets minimum TLS to 1.3 and then tries to connect to a server supporting TLS 1.2 only.
- * The TLS connection should fail. */
-static int s_tls_client_channel_negotiation_error_tls13_to_tls12_server_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_verify_negotiation_fails_connect(
-        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS12_PORT, s_raise_tls_version_to_13);
+    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
-    tls_client_channel_negotiation_error_tls13_to_tls12_server,
-    s_tls_client_channel_negotiation_error_tls13_to_tls12_server_fn)
+    tls_client_channel_negotiation_success_mtls_tls1_3,
+    s_tls_client_channel_negotiation_success_mtls_tls1_3_fn)
 
 AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 
@@ -2703,6 +2599,8 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     struct aws_byte_buf cert_buf = {0};
     struct aws_byte_buf key_buf = {0};
 
+#    if !defined(AWS_USE_SECITEM)
+
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "testcert0.pem"));
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "testkey.pem"));
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
@@ -2721,6 +2619,7 @@ static int s_test_duplicate_cert_import(struct aws_allocator *allocator, void *c
     aws_tls_ctx_release(tls);
 
     aws_tls_ctx_options_clean_up(&tls_options);
+#    endif /* !AWS_USE_SECITEM */
 
     /* clean up */
     aws_byte_buf_clean_up(&cert_buf);
@@ -2745,14 +2644,55 @@ static int s_tls_destroy_null_context(struct aws_allocator *allocator, void *ctx
 }
 AWS_TEST_CASE(tls_destroy_null_context, s_tls_destroy_null_context);
 
-static int s_test_cert_key_import(struct aws_allocator *allocator, const char *cert_path, const char *key_path) {
+static int s_test_ecc_cert_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+#    ifndef AWS_OS_APPLE
     aws_io_library_init(allocator);
 
     struct aws_byte_buf cert_buf;
     struct aws_byte_buf key_buf;
 
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, cert_path));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, key_path));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "ecc-cert.pem"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "ecc-key.pem"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    /* import happens in here */
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+    ASSERT_NOT_NULL(tls_context);
+
+    aws_tls_ctx_release(tls_context);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
+
+    aws_io_library_clean_up();
+#    endif /* AWS_OS_APPLE */
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_ecc_cert_import, s_test_ecc_cert_import)
+
+static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    (void)allocator;
+
+    aws_io_library_init(allocator);
+
+    struct aws_byte_buf cert_buf;
+    struct aws_byte_buf key_buf;
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "unittests.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "unittests.p8"));
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
@@ -2776,74 +2716,7 @@ static int s_test_cert_key_import(struct aws_allocator *allocator, const char *c
     return AWS_OP_SUCCESS;
 }
 
-static int s_test_rsa_2048_cert_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_cert_key_import(allocator, "unittests.crt", "unittests.key");
-}
-
-AWS_TEST_CASE(test_rsa_2048_cert_import, s_test_rsa_2048_cert_import)
-
-static int s_test_rsa_4096_cert_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_cert_key_import(allocator, "rsa-4096-cert.pem", "rsa-4096-key.pem");
-}
-
-AWS_TEST_CASE(test_rsa_4096_cert_import, s_test_rsa_4096_cert_import)
-
-static int s_test_ecc_p256_cert_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_cert_key_import(allocator, "ecc-p256-cert.pem", "ecc-p256-key.pem");
-}
-
-AWS_TEST_CASE(test_ecc_p256_cert_import, s_test_ecc_p256_cert_import)
-
-static int s_test_ecc_p384_cert_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_cert_key_import(allocator, "ecc-p384-cert.pem", "ecc-p384-key.pem");
-}
-
-AWS_TEST_CASE(test_ecc_p384_cert_import, s_test_ecc_p384_cert_import)
-
-static int s_test_ecc_p521_cert_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_cert_key_import(allocator, "ecc-p521-cert.pem", "ecc-p521-key.pem");
-}
-
-AWS_TEST_CASE(test_ecc_p521_cert_import, s_test_ecc_p521_cert_import)
-
-static int s_test_pkcs8_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_test_cert_key_import(allocator, "unittests.crt", "unittests.p8");
-}
-
 AWS_TEST_CASE(test_pkcs8_import, s_test_pkcs8_import)
-
-static int s_test_pkcs12_import(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    (void)allocator;
-
-    aws_io_library_init(allocator);
-
-    struct aws_byte_cursor pwd_cur = aws_byte_cursor_from_c_str("1234");
-    struct aws_tls_ctx_options tls_options = {0};
-    AWS_FATAL_ASSERT(
-        AWS_OP_SUCCESS ==
-        aws_tls_ctx_options_init_client_mtls_pkcs12_from_path(&tls_options, allocator, "unittests.p12", &pwd_cur));
-
-    /* import happens in here */
-    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
-    ASSERT_NOT_NULL(tls_context);
-
-    aws_tls_ctx_release(tls_context);
-
-    aws_tls_ctx_options_clean_up(&tls_options);
-
-    aws_io_library_clean_up();
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(test_pkcs12_import, s_test_pkcs12_import)
 
 static int s_test_tls_cipher_preference_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

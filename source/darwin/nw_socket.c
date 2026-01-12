@@ -12,7 +12,6 @@
 #include <aws/common/uuid.h>
 #include <aws/io/logging.h>
 
-#include "./darwin_shared_private.h"             // private header
 #include "./dispatch_queue_event_loop_private.h" // private header
 #include <Network/Network.h>
 #include <aws/io/private/event_loop_impl.h>
@@ -127,6 +126,24 @@ static inline int s_convert_pton_error(int pton_code) {
     }
 
     return s_determine_socket_error(errno);
+}
+
+/*
+ * Helper function that gets the available human readable error description from Core Foundation.
+ */
+static void s_get_error_description(CFErrorRef error, char *description_buffer, size_t buffer_size) {
+    if (error == NULL) {
+        snprintf(description_buffer, buffer_size, "No error provided");
+        return;
+    }
+
+    CFStringRef error_description = CFErrorCopyDescription(error);
+    if (error_description) {
+        CFStringGetCString(error_description, description_buffer, buffer_size, kCFStringEncodingUTF8);
+        CFRelease(error_description);
+    } else {
+        snprintf(description_buffer, buffer_size, "Unable to retrieve error description");
+    }
 }
 
 /*
@@ -607,7 +624,7 @@ static void s_tls_verification_block(
         }
     } else {
         char description_buffer[256];
-        aws_get_core_foundation_error_description(error, description_buffer, sizeof(description_buffer));
+        s_get_error_description(error, description_buffer, sizeof(description_buffer));
         int crt_error_code = s_determine_socket_error((int)CFErrorGetCode(error));
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
@@ -728,9 +745,11 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
     }
     bool setup_tls = false;
 
-    /* If SecItem isn't being used then the nw_parameters should not be setup to handle the TLS Negotiation. */
-    if (nw_socket->tls_ctx) {
-        setup_tls = true;
+    if (aws_is_using_secitem()) {
+        /* If SecItem isn't being used then the nw_parameters should not be setup to handle the TLS Negotiation. */
+        if (nw_socket->tls_ctx) {
+            setup_tls = true;
+        }
     }
 
     if (options->type == AWS_SOCKET_STREAM) {
@@ -1353,17 +1372,7 @@ static void s_process_connection_state_changed_ready(struct nw_socket *nw_socket
             if (metadata != NULL) {
                 sec_protocol_metadata_t sec_metadata = (sec_protocol_metadata_t)metadata;
 
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                /* sec_protocol_metadata_get_negotiated_protocol was deprecated in macOS 15.5 and iOS 18.5. It should be
-                 * replaced by sec_protocol_metadata_copy_negotiated_protocol, but this function became available in
-                 * macOS 15 and iOS 18.5 only.
-                 * To avoid bumping a minimum supported versions of Apple platforms or introducing a logic for choosing
-                 * an appropriate function in runtime, we use the deprecated function for now.
-                 */
                 const char *negotiated_protocol = sec_protocol_metadata_get_negotiated_protocol(sec_metadata);
-#pragma clang diagnostic pop
-
                 if (negotiated_protocol) {
                     nw_socket->protocol_buf = aws_byte_buf_from_c_str(negotiated_protocol);
                     AWS_LOGF_DEBUG(
