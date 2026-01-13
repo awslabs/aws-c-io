@@ -297,8 +297,8 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
+    add_net_test_case(test_tls_cipher_preference)
 
-    add_test_case(test_tls_cipher_preference)
 if(NOT AWS_USE_SECITEM)
     # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
     # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
