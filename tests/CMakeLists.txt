@@ -122,6 +122,11 @@ if(WIN32)
     add_test_case(tls_client_channel_negotiation_success_ecc384_deprecated)
 endif()
 
+# macOS must fail on trying to establish TLS 1.3 connection.
+if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    add_net_test_case(tls_client_channel_negotiation_failure_tls1_3)
+endif()
+
 add_test_case(channel_setup)
 add_test_case(channel_single_slot_cleans_up)
 add_test_case(channel_slots_clean_up)
@@ -292,8 +297,8 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_successfully_negotiates)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
+    add_net_test_case(test_tls_cipher_preference)
 
-    add_test_case(test_tls_cipher_preference)
 if(NOT AWS_USE_SECITEM)
     # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
     # The entitlements also require a provisioning profile and require the binary to be run from within XCode or a
