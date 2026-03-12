@@ -1657,22 +1657,21 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     struct server_channel_data *channel_data = user_data;
     struct server_connection_args *args = channel_data->server_connection_args;
     struct aws_allocator *allocator = args->bootstrap->allocator;
+    struct aws_socket *socket = channel_data->socket;
 
     if (!channel_data->incoming_called) {
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
         s_server_incoming_callback(channel_data, error_code, NULL);
+    } else {
+        SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+            allocator,
+            socket,
+            socket_shutdown_server_channel_shutdown_args,
+            socket_shutdown_server_channel_shutdown_fn,
+            channel_data,
+            channel,
+            error_code)
     }
-
-    struct aws_socket *socket = channel_data->socket;
-
-    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
-        allocator,
-        socket,
-        socket_shutdown_server_channel_shutdown_args,
-        socket_shutdown_server_channel_shutdown_fn,
-        channel_data,
-        channel,
-        error_code)
 
     aws_socket_clean_up(socket);
     aws_mem_release(allocator, socket);
