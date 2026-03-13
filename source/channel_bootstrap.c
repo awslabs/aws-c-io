@@ -1664,7 +1664,6 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     struct server_channel_data *channel_data = user_data;
     struct server_connection_args *args = channel_data->server_connection_args;
     struct aws_allocator *allocator = args->bootstrap->allocator;
-    struct aws_socket *socket = channel_data->socket;
 
     if (channel_data->incoming_callback_status == AWS_ICST_NOT_CALLED) {
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
@@ -1679,6 +1678,8 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
         channel_data,
         channel,
         error_code)
+
+    struct aws_socket *socket = channel_data->socket;
 
     aws_socket_clean_up(socket);
     aws_mem_release(allocator, socket);
