@@ -1253,11 +1253,13 @@ struct server_connection_args {
     struct aws_ref_count ref_count;
 };
 
+enum incoming_callback_status_type { AWS_ICST_NOT_CALLED, AWS_ICST_CALLED_WITH_SUCCESS, AWS_ICST_CALLED_WITH_ERROR };
+
 struct server_channel_data {
     struct aws_channel *channel;
     struct aws_socket *socket;
     struct server_connection_args *server_connection_args;
-    bool incoming_called;
+    enum incoming_callback_status_type incoming_callback_status;
 };
 
 static struct server_connection_args *s_server_connection_args_acquire(struct server_connection_args *args) {
@@ -1324,10 +1326,11 @@ static void s_server_incoming_callback(
     int error_code,
     struct aws_channel *channel) {
     /* incoming_callback is always called exactly once for each channel */
-    AWS_ASSERT(!channel_data->incoming_called);
+    AWS_ASSERT(channel_data->incoming_callback_status == AWS_ICST_NOT_CALLED);
     struct server_connection_args *args = channel_data->server_connection_args;
     args->incoming_callback(args->bootstrap, error_code, channel, args->user_data);
-    channel_data->incoming_called = true;
+    channel_data->incoming_callback_status =
+        error_code == AWS_ERROR_SUCCESS ? AWS_ICST_CALLED_WITH_SUCCESS : AWS_ICST_CALLED_WITH_ERROR;
 }
 
 static void s_tls_server_on_negotiation_result(
@@ -1641,7 +1644,7 @@ static void socket_shutdown_server_channel_shutdown_fn(void *user_data) {
     struct aws_server_bootstrap *server_bootstrap = connection_args->bootstrap;
 
     int error_code = shutdown_args->error_code;
-    if (channel_data->incoming_called) {
+    if (channel_data->incoming_callback_status == AWS_ICST_CALLED_WITH_SUCCESS) {
         connection_args->shutdown_callback(
             server_bootstrap, error_code, shutdown_args->channel, server_shutdown_user_data);
     }
@@ -1659,19 +1662,19 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
     struct aws_allocator *allocator = args->bootstrap->allocator;
     struct aws_socket *socket = channel_data->socket;
 
-    if (!channel_data->incoming_called) {
+    if (channel_data->incoming_callback_status == AWS_ICST_NOT_CALLED) {
         error_code = (error_code) ? error_code : AWS_ERROR_UNKNOWN;
         s_server_incoming_callback(channel_data, error_code, NULL);
-    } else {
-        SETUP_SOCKET_SHUTDOWN_CALLBACKS(
-            allocator,
-            socket,
-            socket_shutdown_server_channel_shutdown_args,
-            socket_shutdown_server_channel_shutdown_fn,
-            channel_data,
-            channel,
-            error_code)
     }
+
+    SETUP_SOCKET_SHUTDOWN_CALLBACKS(
+        allocator,
+        socket,
+        socket_shutdown_server_channel_shutdown_args,
+        socket_shutdown_server_channel_shutdown_fn,
+        channel_data,
+        channel,
+        error_code)
 
     aws_socket_clean_up(socket);
     aws_mem_release(allocator, socket);
@@ -1735,7 +1738,7 @@ void s_on_server_connection_result(
         struct server_channel_data *channel_data =
             aws_mem_calloc(connection_args->bootstrap->allocator, 1, sizeof(struct server_channel_data));
 
-        channel_data->incoming_called = false;
+        channel_data->incoming_callback_status = AWS_ICST_NOT_CALLED;
         channel_data->socket = new_socket;
         channel_data->server_connection_args = connection_args;
 
