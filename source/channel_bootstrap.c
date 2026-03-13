@@ -1670,6 +1670,8 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
         s_server_incoming_callback(channel_data, error_code, NULL);
     }
 
+    struct aws_socket *socket = channel_data->socket;
+
     SETUP_SOCKET_SHUTDOWN_CALLBACKS(
         allocator,
         socket,
@@ -1678,8 +1680,6 @@ static void s_on_server_channel_on_shutdown(struct aws_channel *channel, int err
         channel_data,
         channel,
         error_code)
-
-    struct aws_socket *socket = channel_data->socket;
 
     aws_socket_clean_up(socket);
     aws_mem_release(allocator, socket);
