@@ -1253,7 +1253,11 @@ struct server_connection_args {
     struct aws_ref_count ref_count;
 };
 
-enum incoming_callback_status_type { AWS_ICST_NOT_CALLED, AWS_ICST_CALLED_WITH_SUCCESS, AWS_ICST_CALLED_WITH_ERROR };
+enum incoming_callback_status_type {
+    AWS_ICST_NOT_CALLED,
+    AWS_ICST_CALLED_WITH_SUCCESS,
+    AWS_ICST_CALLED_WITH_ERROR,
+};
 
 struct server_channel_data {
     struct aws_channel *channel;
