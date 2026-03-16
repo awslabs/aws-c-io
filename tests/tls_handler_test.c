@@ -63,6 +63,7 @@ struct tls_test_args {
     bool expects_error;
     bool server;
     bool shutdown_finished;
+    bool socket_close_invoked;
     bool setup_callback_invoked;
     bool creation_callback_invoked;
 };
@@ -1948,7 +1949,7 @@ struct shutdown_listener_tester {
 
 static bool s_client_socket_closed_predicate(void *user_data) {
     struct tls_test_args *args = user_data;
-    return args->shutdown_finished;
+    return args->socket_close_invoked;
 }
 
 static void s_close_client_socket_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -1962,7 +1963,7 @@ static void s_close_client_socket_task(struct aws_task *task, void *arg, enum aw
     AWS_FATAL_ASSERT(aws_socket_close(&tester->client_socket) == AWS_OP_SUCCESS);
 
     AWS_FATAL_ASSERT(aws_mutex_lock(tester->outgoing_args->mutex) == AWS_OP_SUCCESS);
-    tester->outgoing_args->shutdown_finished = true;
+    tester->outgoing_args->socket_close_invoked = true;
     AWS_FATAL_ASSERT(aws_mutex_unlock(tester->outgoing_args->mutex) == AWS_OP_SUCCESS);
     AWS_FATAL_ASSERT(aws_condition_variable_notify_one(tester->outgoing_args->condition_variable) == AWS_OP_SUCCESS);
 }
@@ -2037,6 +2038,9 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&local_server_tester.server_tls_opt_tester));
     aws_server_bootstrap_release(local_server_tester.server_bootstrap);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+
+    // Should only be invoked on successful channel setup.  Verify we did not get a shutdown callback.
+    ASSERT_INT_EQUALS(false, outgoing_args.shutdown_finished);
 
     return AWS_OP_SUCCESS;
 }
