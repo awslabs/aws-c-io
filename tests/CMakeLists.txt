@@ -124,6 +124,7 @@ endif()
 
 # macOS must fail on trying to establish TLS 1.3 connection.
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+    add_net_test_case(tls_client_channel_negotiation_success_mtls_tls1_3)
     add_net_test_case(tls_client_channel_negotiation_failure_tls1_3)
 endif()
 

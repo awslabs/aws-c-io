@@ -104,15 +104,16 @@ elseif (APPLE)
     find_library(SECURITY_LIB Security)
     find_library(NETWORK_LIB Network)
 
-    # Enable dispatch queue if the libraries are avaliable
+    # Enable dispatch queue if the libraries are available
     if (NETWORK_LIB AND SECURITY_LIB)
         list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
         list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
     endif ()
 
-    # Enable KQUEUE on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
+    # Enable KQUEUE and s2n-tls on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
         list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
+        set(USE_S2N ON)
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
