@@ -1320,6 +1320,8 @@ struct serialized_scheduling_context {
         bool el_scheduling_finished;
         bool external_thread_finished;
         bool test_failed;
+
+        enum scheduling_source current_source;
     } synced_data;
 };
 
@@ -1443,6 +1445,25 @@ static void s_serialized_scheduling_context_wait_for_all_ids_processed(struct se
     aws_mutex_unlock(&context->lock);
 }
 
+static enum scheduling_source s_switch_source(enum scheduling_source source) {
+    return source == EVENT_LOOP_THREAD ? EXTERNAL_THREAD : EVENT_LOOP_THREAD;
+}
+
+static void s_alternate_scheduling_source(
+    struct serialized_scheduling_context *context,
+    enum scheduling_source source,
+    bool need_wait) {
+    aws_mutex_lock(&context->lock);
+    context->synced_data.current_source = s_switch_source(source);
+    aws_condition_variable_notify_all(&context->signal);
+
+    while (need_wait && context->synced_data.current_source != source && !context->synced_data.el_scheduling_finished &&
+           !context->synced_data.external_thread_finished) {
+        aws_condition_variable_wait(&context->signal, &context->lock);
+    }
+    aws_mutex_unlock(&context->lock);
+}
+
 static void s_serialized_scheduling_thread_fn(void *arg) {
 
     struct serialized_scheduling_context *context = arg;
@@ -1450,7 +1471,7 @@ static void s_serialized_scheduling_thread_fn(void *arg) {
     bool done = false;
     while (!done) {
         done = s_serialized_scheduling_context_schedule_task(context, EXTERNAL_THREAD);
-        aws_thread_current_sleep(0);
+        s_alternate_scheduling_source(context, EXTERNAL_THREAD, /*need_wait=*/!done);
     }
 
     aws_mutex_lock(&context->lock);
@@ -1508,9 +1529,10 @@ static void s_in_event_loop_scheduling_task(struct aws_task *task, void *arg, en
     for (size_t i = 0; i < IN_EVENT_LOOP_SCHEDULE_BLOCK_SIZE; ++i) {
         if (s_serialized_scheduling_context_schedule_task(scheduling_task->test_context, EVENT_LOOP_THREAD)) {
             ids_left = false;
+            s_alternate_scheduling_source(scheduling_task->test_context, EVENT_LOOP_THREAD, /*need_wait=*/false);
             break;
         }
-        aws_thread_current_sleep(0);
+        s_alternate_scheduling_source(scheduling_task->test_context, EVENT_LOOP_THREAD, /*need_wait=*/true);
     }
 
     s_disable_scheduling(scheduling_task->test_context);
