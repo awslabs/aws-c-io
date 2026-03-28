@@ -127,6 +127,17 @@ elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetB
     list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
     set(USE_S2N ON)
 
+elseif (CMAKE_SYSTEM_NAME STREQUAL "AIX")
+    file(GLOB AWS_IO_OS_HEADERS
+            )
+
+    file(GLOB AWS_IO_OS_SRC
+            "source/aix/*.c"
+            "source/posix/*.c"
+            )
+
+    list(APPEND EVENT_LOOP_DEFINES "POLLSET")
+    set(USE_S2N ON)
 endif()
 
 if (BYO_CRYPTO)

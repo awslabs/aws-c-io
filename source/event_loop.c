@@ -84,6 +84,19 @@ struct aws_event_loop *aws_event_loop_new_with_epoll(
 }
 #endif // AWS_ENABLE_KQUEUE
 
+#ifndef AWS_ENABLE_POLLSET
+struct aws_event_loop *aws_event_loop_new_with_pollset(
+    struct aws_allocator *alloc,
+    const struct aws_event_loop_options *options) {
+    (void)alloc;
+    (void)options;
+
+    AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Pollset is not supported on the platform");
+    aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+    return NULL;
+}
+#endif // AWS_ENABLE_POLLSET
+
 /**
  * Return the default event loop type. If the return value is `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the function failed to
  * retrieve the default type value.
@@ -105,6 +118,8 @@ enum aws_event_loop_type aws_event_loop_get_default_type(void) {
     return AWS_EVENT_LOOP_EPOLL;
 #elif defined(AWS_OS_WINDOWS)
     return AWS_EVENT_LOOP_IOCP;
+#elif defined(AWS_OS_AIX)
+    return AWS_EVENT_LOOP_POLLSET;
 #else
 #    error                                                                                                             \
         "Default event loop type required. Failed to get default event loop type. The library is not built correctly on the platform. "
@@ -137,6 +152,12 @@ static int aws_event_loop_type_validate_platform(enum aws_event_loop_type type) 
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_ENABLE_DISPATCH_QUEUE
             break;
+       case AWS_EVENT_LOOP_POLLSET:
+#ifndef AWS_ENABLE_POLLSET
+            AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Event loop type pollset is not supported on the platform.");
+            return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+#endif // AWS_ENABLE_POLLSET
+            break;
         default:
             AWS_LOGF_ERROR(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type.");
             return aws_raise_error(AWS_ERROR_UNSUPPORTED_OPERATION);
@@ -166,6 +187,8 @@ struct aws_event_loop *aws_event_loop_new(struct aws_allocator *alloc, const str
             return aws_event_loop_new_with_kqueue(alloc, options);
         case AWS_EVENT_LOOP_DISPATCH_QUEUE:
             return aws_event_loop_new_with_dispatch_queue(alloc, options);
+        case AWS_EVENT_LOOP_POLLSET:
+            return aws_event_loop_new_with_pollset(alloc, options);
         default:
             AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Invalid event loop type on the platform.");
             aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
