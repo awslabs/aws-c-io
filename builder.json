@@ -20,7 +20,12 @@
         },
         "windows": {
             "+pre_build_steps": ["tls-server-setup"]
-
+        }
+    },
+    "hosts": {
+        "al2": {
+            "_comment": "Disable PKCS#11 tests for al2-x64 due to SoftHSM2 being too old on this platform",
+            "!pre_build_steps": []
         }
     },
     "build_env": {
