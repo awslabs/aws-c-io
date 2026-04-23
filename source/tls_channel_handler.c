@@ -952,7 +952,7 @@ const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type opera
 }
 
 void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
-    if(s_tls_channel_handler_vtable.key_operation_complete != NULL) {
+    if (s_tls_channel_handler_vtable.key_operation_complete != NULL) {
         s_tls_channel_handler_vtable.key_operation_complete(operation, output);
     }
 }
