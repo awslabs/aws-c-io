@@ -2764,8 +2764,7 @@ static int s_test_tls_cipher_preference_fn(struct aws_allocator *allocator, void
     if (s_is_apple_with_secure_transport(allocator)) {
         ASSERT_NULL(tls_context);
         ASSERT_INT_EQUALS(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED, aws_last_error());
-    }
-    else {
+    } else {
         ASSERT_NOT_NULL(tls_context);
         aws_tls_ctx_release(tls_context);
     }
