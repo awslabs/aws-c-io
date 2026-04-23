@@ -787,6 +787,10 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
 void aws_tls_clean_up_static_state(void) {}
 
+void aws_tls_init_vtable(struct aws_allocator *allocator) {
+    (void)allocator;
+}
+
 #else /* BYO_CRYPTO */
 
 void s2n_init_tls_vtable(struct aws_tls_vtable *vtable);
