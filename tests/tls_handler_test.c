@@ -16,6 +16,7 @@
 
 #    include <aws/common/clock.h>
 #    include <aws/common/condition_variable.h>
+#    include <aws/common/environment.h>
 #    include <aws/common/thread.h>
 
 #    include <aws/testing/aws_test_harness.h>
@@ -41,6 +42,21 @@ bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code)
         }
     }
     return false;
+}
+
+bool s_is_apple_with_secure_transport(struct aws_allocator *allocator) {
+    (void)allocator;
+#    ifdef __APPLE__
+    struct aws_string *use_non_fips_13 = aws_get_env_nonempty(allocator, "AWS_CRT_USE_NON_FIPS_TLS_13");
+    if (use_non_fips_13) {
+        aws_string_destroy(use_non_fips_13);
+        return false;
+    } else {
+        return true;
+    }
+#    else
+    return false;
+#    endif
 }
 
 struct tls_test_args {
@@ -1631,6 +1647,10 @@ static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "127.0.0.1");
 static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
+    /* macOS supports TLS 1.3 only when s2n-tls is used as TLS backend, which is controlled by the env var. */
+    if (s_is_apple_with_secure_transport(allocator)) {
+        return AWS_OP_SKIP;
+    }
     return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
 }
 
@@ -2741,8 +2761,14 @@ static int s_test_tls_cipher_preference_fn(struct aws_allocator *allocator, void
     /* Creating tls context */
     struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
 #    ifdef USE_S2N
-    ASSERT_NOT_NULL(tls_context);
-    aws_tls_ctx_release(tls_context);
+    if (s_is_apple_with_secure_transport(allocator)) {
+        ASSERT_NULL(tls_context);
+        ASSERT_INT_EQUALS(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED, aws_last_error());
+    }
+    else {
+        ASSERT_NOT_NULL(tls_context);
+        aws_tls_ctx_release(tls_context);
+    }
 #    else
     /* The cipher suite currently only available with S2N */
     ASSERT_NULL(tls_context);
