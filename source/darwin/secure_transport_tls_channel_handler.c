@@ -42,12 +42,15 @@ static OSStatus (*s_SSLCopyALPNProtocols)(SSLContextRef context, CFArrayRef *pro
 #define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 /* We couldn't make SSLSetALPNFunc work, so we have to use the public API which isn't available until High-Sierra */
-#if (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302) ||                                                       \
-    (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                 \
+#if (TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                 \
     (TARGET_OS_TV && __TV_OS_VERSION_MAX_ALLOWED >= 110000) ||                                                         \
     (TARGET_OS_WATCH && __WATCH_OS_VERSION_MAX_ALLOWED >= 40000)
 #    define ALPN_AVAILABLE true
 #    define TLS13_AVAILABLE true
+#elif (TARGET_OS_MAC && MAC_OS_X_VERSION_MAX_ALLOWED >= 101302)
+#    define ALPN_AVAILABLE true
+/* Even though TLS 1.3 can be configured in SecureTransport, it never actually worked. */
+#    define TLS13_AVAILABLE false
 #else
 #    define ALPN_AVAILABLE false
 #    define TLS13_AVAILABLE false
@@ -926,17 +929,18 @@ static struct aws_channel_handler *s_tls_handler_new(
 #if TLS13_AVAILABLE
             SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol13);
 #else
-            AWS_LOGF_FATAL(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "static: TLS 1.3 is not supported on this device. You may just want to specify "
-                "AWS_IO_TLS_VER_SYS_DEFAULTS and you will automatically"
-                "use the latest version of the protocol when it is available.");
+                "static: Minimum TLS version has been set to TLS 1.3, which is not supported on this device. If "
+                "minimum TLS version is not set or AWS_IO_TLS_VER_SYS_DEFAULTS is used, the latest supported version "
+                "of TLS will be used automatically.");
             /*
              * "TLS 1.3 is not supported for your target platform,
              * you can probably get by setting AWS_IO_TLSv1_2 as the minimum and if tls 1.3 is supported it will be
              * used.
              */
-            AWS_ASSERT(0);
+            aws_raise_error(AWS_IO_TLS_CTX_ERROR);
+            goto cleanup_ssl_ctx;
 #endif
             break;
         case AWS_IO_TLS_VER_SYS_DEFAULTS:

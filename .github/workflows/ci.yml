@@ -64,7 +64,9 @@ jobs:
         compiler:
           - name: clang-6
           - name: clang-8
-          - name: clang-9
+          # crt-builder v0.9.72 has some issues there with asan. Updating crt-builder resolves the issue with clang-9,
+          # but introduces issues with other CI jobs. Disable this CI job to unblock CI.
+          # - name: clang-9
           - name: clang-10
           - name: clang-11
           - name: clang-15

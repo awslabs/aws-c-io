@@ -63,6 +63,7 @@ struct tls_test_args {
     bool expects_error;
     bool server;
     bool shutdown_finished;
+    bool socket_close_invoked;
     bool setup_callback_invoked;
     bool creation_callback_invoked;
 };
@@ -1637,6 +1638,14 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_success_mtls_tls1_3,
     s_tls_client_channel_negotiation_success_mtls_tls1_3_fn)
 
+/* macOS-specific test to ensure that setting minimum TLS version to 1.3 fails the connection. */
+static int s_tls_client_channel_negotiation_failure_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_badssl_ecc256_host_name, 443, s_raise_tls_version_to_13);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_failure_tls1_3, s_tls_client_channel_negotiation_failure_tls1_3_fn)
+
 AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 
 static void s_disable_verify_peer(struct aws_tls_ctx_options *options) {
@@ -1940,7 +1949,7 @@ struct shutdown_listener_tester {
 
 static bool s_client_socket_closed_predicate(void *user_data) {
     struct tls_test_args *args = user_data;
-    return args->shutdown_finished;
+    return args->socket_close_invoked;
 }
 
 static void s_close_client_socket_task(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -1954,7 +1963,7 @@ static void s_close_client_socket_task(struct aws_task *task, void *arg, enum aw
     AWS_FATAL_ASSERT(aws_socket_close(&tester->client_socket) == AWS_OP_SUCCESS);
 
     AWS_FATAL_ASSERT(aws_mutex_lock(tester->outgoing_args->mutex) == AWS_OP_SUCCESS);
-    tester->outgoing_args->shutdown_finished = true;
+    tester->outgoing_args->socket_close_invoked = true;
     AWS_FATAL_ASSERT(aws_mutex_unlock(tester->outgoing_args->mutex) == AWS_OP_SUCCESS);
     AWS_FATAL_ASSERT(aws_condition_variable_notify_one(tester->outgoing_args->condition_variable) == AWS_OP_SUCCESS);
 }
@@ -2029,6 +2038,9 @@ static int s_tls_server_hangup_during_negotiation_fn(struct aws_allocator *alloc
     ASSERT_SUCCESS(s_tls_opt_tester_clean_up(&local_server_tester.server_tls_opt_tester));
     aws_server_bootstrap_release(local_server_tester.server_bootstrap);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+
+    // Should only be invoked on successful channel setup.  Verify we did not get a shutdown callback.
+    ASSERT_INT_EQUALS(false, outgoing_args.shutdown_finished);
 
     return AWS_OP_SUCCESS;
 }
