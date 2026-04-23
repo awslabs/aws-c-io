@@ -800,6 +800,10 @@ void secure_channel_init_tls_vtable(struct aws_tls_vtable *vtable);
 void aws_tls_init_vtable(struct aws_allocator *allocator) {
     (void)allocator;
 #    ifdef __APPLE__
+#        ifdef AWS_USE_SECITEM
+    secure_transport_init_tls_vtable(&s_tls_channel_handler_vtable);
+#        else  /* AWS_USE_SECITEM */
+
     struct aws_string *use_non_fips_13 = aws_get_env_nonempty(allocator, "AWS_CRT_USE_NON_FIPS_TLS_13");
     if (use_non_fips_13) {
         s2n_init_tls_vtable(&s_tls_channel_handler_vtable);
@@ -807,6 +811,7 @@ void aws_tls_init_vtable(struct aws_allocator *allocator) {
     } else {
         secure_transport_init_tls_vtable(&s_tls_channel_handler_vtable);
     }
+#        endif /* AWS_USE_SECITEM */
 #    elif defined(_WIN32)
     secure_channel_init_tls_vtable(&s_tls_channel_handler_vtable);
 #    elif defined(USE_S2N)
