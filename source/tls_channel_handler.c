@@ -952,33 +952,43 @@ const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type opera
 }
 
 void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
-    AWS_FATAL_ASSERT(s_tls_channel_handler_vtable.key_operation_complete);
-    s_tls_channel_handler_vtable.key_operation_complete(operation, output);
+    if(s_tls_channel_handler_vtable.key_operation_complete != NULL) {
+        s_tls_channel_handler_vtable.key_operation_complete(operation, output);
+    }
 }
 
 void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
-    (void)operation;
-    (void)error_code;
+    if (s_tls_channel_handler_vtable.key_operation_complete_with_error) {
+        s_tls_channel_handler_vtable.key_operation_complete_with_error(operation, error_code);
+    }
 }
 
 struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_input) {
+        return s_tls_channel_handler_vtable.key_operation_get_input(operation);
+    }
     return aws_byte_cursor_from_array(NULL, 0);
 }
 
 enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_type != NULL) {
+        return s_tls_channel_handler_vtable.key_operation_get_type(operation);
+    }
     return AWS_TLS_KEY_OPERATION_UNKNOWN;
 }
 
 enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
     const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_signature_algorithm != NULL) {
+        return s_tls_channel_handler_vtable.key_operation_get_signature_algorithm(operation);
+    }
     return AWS_TLS_SIGNATURE_UNKNOWN;
 }
 
 enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_digest_algorithm != NULL) {
+        return s_tls_channel_handler_vtable.key_operation_get_digest_algorithm(operation);
+    }
     return AWS_TLS_HASH_UNKNOWN;
 }
 
