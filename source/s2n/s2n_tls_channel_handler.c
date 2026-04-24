@@ -1519,15 +1519,6 @@ static void s_log_and_raise_s2n_errno(const char *msg) {
 }
 
 #ifdef __APPLE__
-static uint8_t s_verify_host_macos(const char *host_name, size_t host_name_len, void *data) {
-    (void)data;
-
-    if (!host_name || host_name_len == 0) {
-        return 1;
-    }
-
-    return 1;
-}
 
 static int s_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
     CFMutableDictionaryRef query =
@@ -1883,12 +1874,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
             goto cleanup_s2n_config;
         }
 
-#ifdef __APPLE__
-        if (mode == S2N_CLIENT && s2n_config_set_verify_host_callback(s2n_ctx->s2n_config, s_verify_host_macos, NULL)) {
-            s_log_and_raise_s2n_errno("ctx: failed to set verify host callback");
-            goto cleanup_s2n_config;
-        }
-#endif
     } else if (mode != S2N_SERVER) {
         AWS_LOGF_WARN(
             AWS_LS_IO_TLS,
