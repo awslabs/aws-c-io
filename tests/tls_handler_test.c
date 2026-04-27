@@ -1651,7 +1651,8 @@ static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_al
     if (s_is_apple_with_secure_transport(allocator)) {
         return AWS_OP_SKIP;
     }
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
+    s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
+    return AWS_OP_ERR;
 }
 
 AWS_TEST_CASE(
