@@ -2,6 +2,8 @@
 cmake_minimum_required(VERSION 3.9...3.31)
 project(aws-c-io C)
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 if (NOT IN_SOURCE_BUILD)
     # this is required so we can use aws-c-common's CMake modules
     find_package(aws-c-common REQUIRED)
