@@ -267,17 +267,21 @@ jobs:
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
+    - name: Uninstall system openssl
+      run: |
+        brew list | grep openssl
+        brew uninstall openssl --ignore-dependencies
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
         chmod a+x builder
-        ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DCMAKE_C_FLAGS="-H"
-    - name: Check clang paths
-      if: always()
-      run: /usr/bin/clang -x c -v -E /dev/null 2>&1
-    - name: Install s2n
-      if: always()
-      run: cmake --build /Users/runner/work/aws-c-io/aws-c-io/aws-c-io/build/s2n --config RelWithDebInfo --target install --verbose
+        ./builder build -p ${{ env.PACKAGE_NAME }}
+#    - name: Check clang paths
+#      if: always()
+#      run: /usr/bin/clang -x c -v -E /dev/null 2>&1
+#    - name: Install s2n
+#      if: always()
+#      run: cmake --build /Users/runner/work/aws-c-io/aws-c-io/aws-c-io/build/s2n --config RelWithDebInfo --target install --verbose
 
   macos-s2n-debug:
     runs-on: macos-14 # latest
