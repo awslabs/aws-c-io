@@ -275,9 +275,9 @@ jobs:
 #    - name: Check clang paths
 #      if: always()
 #      run: /usr/bin/clang -x c -v -E /dev/null 2>&1
-#    - name: Install s2n
-#      if: always()
-#      run: cmake --build /Users/runner/work/aws-c-io/aws-c-io/aws-c-io/build/s2n --config RelWithDebInfo --target install --verbose
+    - name: Install s2n
+      if: always()
+      run: cmake --build /Users/runner/work/aws-c-io/aws-c-io/aws-c-io/build/s2n --config RelWithDebInfo --target install --verbose
 
   macos-s2n-debug:
     runs-on: macos-14 # latest
