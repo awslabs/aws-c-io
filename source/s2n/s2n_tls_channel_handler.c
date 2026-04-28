@@ -27,10 +27,6 @@
 #    include <s2n/unstable/cleanup.h>
 #endif
 
-#ifdef __APPLE__
-#    include <Security/Security.h>
-#endif
-
 #include <errno.h>
 #include <inttypes.h>
 #include <math.h>
@@ -111,6 +107,8 @@ AWS_STATIC_STRING_FROM_LITERAL(s_rhel_path, "/etc/pki/tls/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_android_path, "/system/etc/security/cacerts");
 AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
+
+int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc);
 
 static void s_tls_init_static_state(struct aws_allocator *alloc);
 static void s_tls_clean_up_static_state(void);
@@ -1518,87 +1516,6 @@ static void s_log_and_raise_s2n_errno(const char *msg) {
     aws_raise_error(AWS_IO_TLS_CTX_ERROR);
 }
 
-#ifdef __APPLE__
-
-static int s_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
-    CFMutableDictionaryRef query =
-        CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
-    CFDictionarySetValue(query, kSecClass, kSecClassCertificate);
-    CFDictionarySetValue(query, kSecMatchLimit, kSecMatchLimitAll);
-    CFDictionarySetValue(query, kSecReturnRef, kCFBooleanTrue);
-
-    CFArrayRef results = NULL;
-    OSStatus status = SecItemCopyMatching(query, (CFTypeRef *)&results);
-    CFRelease(query);
-
-    if (status != errSecSuccess || !results) {
-        return AWS_OP_SUCCESS;
-    }
-
-    CFIndex count = CFArrayGetCount(results);
-    for (CFIndex i = 0; i < count; i++) {
-        SecCertificateRef cert = (SecCertificateRef)CFArrayGetValueAtIndex(results, i);
-
-        CFDataRef subject_data = SecCertificateCopyNormalizedSubjectSequence(cert);
-        CFDataRef issuer_data = SecCertificateCopyNormalizedIssuerSequence(cert);
-
-        if (!subject_data || !issuer_data) {
-            if (subject_data)
-                CFRelease(subject_data);
-            if (issuer_data)
-                CFRelease(issuer_data);
-            continue;
-        }
-
-        bool is_root = CFEqual(subject_data, issuer_data);
-        CFRelease(subject_data);
-        CFRelease(issuer_data);
-
-        if (!is_root) {
-            continue;
-        }
-
-        CFDataRef cert_data = SecCertificateCopyData(cert);
-        if (!cert_data) {
-            continue;
-        }
-
-        const uint8_t *der_bytes = CFDataGetBytePtr(cert_data);
-        CFIndex der_len = CFDataGetLength(cert_data);
-
-        size_t pem_len = ((der_len + 2) / 3) * 4 + 100;
-        char *pem_buf = aws_mem_acquire(alloc, pem_len);
-        if (!pem_buf) {
-            CFRelease(cert_data);
-            continue;
-        }
-
-        snprintf(pem_buf, pem_len, "-----BEGIN CERTIFICATE-----\n");
-        size_t header_len = strlen(pem_buf);
-
-        struct aws_byte_cursor der_cursor = aws_byte_cursor_from_array(der_bytes, der_len);
-        struct aws_byte_buf pem_body = aws_byte_buf_from_empty_array(pem_buf + header_len, pem_len - header_len);
-
-        if (aws_base64_encode(&der_cursor, &pem_body) == AWS_OP_SUCCESS) {
-            size_t pos = header_len;
-            for (size_t j = 0; j < pem_body.len; j += 64) {
-                size_t chunk = (pem_body.len - j < 64) ? pem_body.len - j : 64;
-                memmove(pem_buf + pos + j + j / 64, pem_buf + pos + j, chunk);
-                pem_buf[pos + j + chunk + j / 64] = '\n';
-            }
-            snprintf(pem_buf + strlen(pem_buf), 30, "\n-----END CERTIFICATE-----\n");
-            s2n_config_add_pem_to_trust_store(config, pem_buf);
-        }
-
-        aws_mem_release(alloc, pem_buf);
-        CFRelease(cert_data);
-    }
-
-    CFRelease(results);
-    return AWS_OP_SUCCESS;
-}
-#endif
-
 static struct aws_tls_ctx *s_tls_ctx_new(
     struct aws_allocator *alloc,
     const struct aws_tls_ctx_options *options,
@@ -1854,11 +1771,11 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
                 goto cleanup_s2n_config;
             }
-        } else {
 #ifdef __APPLE__
-            /* On macOS, load certificates from keychains */
-            s_load_macos_keychain_root_cas(s2n_ctx->s2n_config, alloc);
-#else
+            /* On macOS, load user root CAs from keychains */
+            aws_tls_s2n_load_macos_keychain_root_cas(s2n_ctx->s2n_config, alloc);
+#endif
+        } else {
             /* Cannot find system's trust store */
             aws_raise_error(AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND);
             AWS_LOGF_ERROR(
@@ -1866,7 +1783,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 "Default TLS trust store not found on this system."
                 " Install CA certificates, or \"override default trust store\".");
             goto cleanup_s2n_config;
-#endif
         }
 
         if (mode == S2N_SERVER && s2n_config_set_client_auth_type(s2n_ctx->s2n_config, S2N_CERT_AUTH_REQUIRED)) {
