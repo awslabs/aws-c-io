@@ -23,7 +23,7 @@
 
         },
         "macos": {
-            "+pre_build_steps": ["tls-server-setup"]
+            "+pre_build_steps": ["custom-keychain-test-setup", "tls-server-setup"]
         }
     },
     "build_env": {
