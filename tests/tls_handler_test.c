@@ -1512,8 +1512,8 @@ static int s_verify_good_host_mqtt_connect(
     /* tls13_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
     aws_tls_ctx_options_set_verify_peer(&tls_options, true);
     aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
-    // aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
-    (void)ca_cur;
+    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
+    // (void)ca_cur;
 
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&tls_options);
