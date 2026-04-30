@@ -164,7 +164,7 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
     return AWS_OP_SUCCESS;
 }
 
-#else /* /* __APPLE__ */
+#else  /* __APPLE__ */
 
 int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
     (void)config;
