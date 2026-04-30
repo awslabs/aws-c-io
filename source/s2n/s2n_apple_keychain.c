@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#ifdef __APPLE__
+#include <aws/common/encoding.h>
+#include <aws/common/error.h>
+#include <aws/common/logging.h>
+#include <aws/io/logging.h>
+#include <aws/io/pem.h>
+#include <s2n.h>
 
-#    include <aws/common/encoding.h>
-#    include <aws/common/logging.h>
-#    include <aws/io/logging.h>
-#    include <aws/io/pem.h>
-#    include <s2n.h>
+#ifdef __APPLE__
 
 #    include <Security/Security.h>
 
@@ -169,7 +170,6 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
 int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
     (void)config;
     (void)alloc;
-    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Importing certificates from keychain only supported on Apple.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
 #endif /* __APPLE__ */
