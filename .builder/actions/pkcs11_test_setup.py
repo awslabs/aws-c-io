@@ -46,6 +46,15 @@ class Pkcs11TestSetup(Builder.Action):
             print("WARNING: libsofthsm2.so not found. PKCS#11 tests are disabled")
             return
 
+        # print SoftHSM version
+        self._exec_softhsm2_util('--version')
+
+        # bail out if softhsm is too old
+        # 2.1.0 is a known offender that crashes on exit if C_Finalize() isn't called
+        if self._get_softhsm2_version() < (2, 2, 0):
+            print("WARNING: SoftHSM2 installation is too old. PKCS#11 tests are disabled")
+            return
+
         # set cmake flag so PKCS#11 tests are enabled
         env.project.config['cmake_args'].append('-DENABLE_PKCS11_TESTS=ON')
 
@@ -57,9 +66,6 @@ class Pkcs11TestSetup(Builder.Action):
         self._setenv('SOFTHSM2_CONF', conf_path)
         with open(conf_path, 'w') as conf_file:
             conf_file.write(f"directories.tokendir = {token_dir}\n")
-
-        # print SoftHSM version
-        self._exec_softhsm2_util('--version')
 
         # sanity check SoftHSM is working
         self._exec_softhsm2_util('--show-slots')
@@ -109,3 +115,8 @@ class Pkcs11TestSetup(Builder.Action):
         """
         self.env.shell.setenv(var, value)
         self.env.project.config['test_env'][var] = value
+
+    def _get_softhsm2_version(self):
+        output = self._exec_softhsm2_util('--version').output
+        match = re.match(r'([0-9+])\.([0-9]+).([0-9]+)', output)
+        return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
