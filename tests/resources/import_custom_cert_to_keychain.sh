@@ -13,5 +13,7 @@ security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 security list-keychains -d user -s "$KEYCHAIN_PATH"
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-#security add-trusted-cert -r trustRoot -k "$KEYCHAIN_PATH" "$SCRIPT_DIR/mtls_server_root_ca.pem.crt"
-security import "$SCRIPT_DIR/mtls_server_root_ca.pem.crt" -k "$KEYCHAIN_PATH"
+
+sudo security authorizationdb write com.apple.trust-settings.admin allow
+security add-trusted-cert -r trustRoot -k "$KEYCHAIN_PATH" "$SCRIPT_DIR/mtls_server_root_ca.pem.crt"
+sudo security authorizationdb write com.apple.trust-settings.admin authenticate-admin-nonshared
