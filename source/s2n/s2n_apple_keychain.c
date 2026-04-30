@@ -164,4 +164,12 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
     return AWS_OP_SUCCESS;
 }
 
+#else /* /* __APPLE__ */
+
+int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
+    (void)config;
+    (void)alloc;
+    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Importing certificates from keychain only supported on Apple.");
+    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
+}
 #endif /* __APPLE__ */
