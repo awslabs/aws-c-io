@@ -32,6 +32,10 @@
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
+#    define AWS_TEST_LOCAL_TLS12_PORT 58443
+#    define AWS_TEST_LOCAL_TLS13_PORT 59443
+#    define AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT 60443
+
 bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
     if (strstr(aws_string_c_str(host_name), "badssl.com") != NULL) {
         if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
@@ -1461,7 +1465,7 @@ static int s_verify_good_host(
     return AWS_OP_SUCCESS;
 }
 
-static int s_verify_good_host_mqtt_connect(
+static int s_verify_good_host_mtls_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
     uint32_t port,
@@ -1513,7 +1517,6 @@ static int s_verify_good_host_mqtt_connect(
     aws_tls_ctx_options_set_verify_peer(&tls_options, true);
     aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
     aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
-    // (void)ca_cur;
 
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&tls_options);
@@ -1566,16 +1569,8 @@ static int s_verify_good_host_mqtt_connect(
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_FALSE(outgoing_args.error_invoked);
-    struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("x-amzn-mqtt-ca");
-    /* check ALPN and SNI was properly negotiated */
-    if (aws_tls_is_alpn_available() && tls_options.verify_peer && false) {
-        ASSERT_BIN_ARRAYS_EQUALS(
-            expected_protocol.buffer,
-            expected_protocol.len,
-            outgoing_args.negotiated_protocol.buffer,
-            outgoing_args.negotiated_protocol.len);
-    }
 
+    /* check SNI was properly negotiated */
     ASSERT_BIN_ARRAYS_EQUALS(
         host_name->bytes, host_name->len, outgoing_args.server_name.buffer, outgoing_args.server_name.len);
 
@@ -1644,14 +1639,15 @@ static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_3);
 }
 
-AWS_STATIC_STRING_FROM_LITERAL(s_aws_ecc384_host_name, "localhost");
+AWS_STATIC_STRING_FROM_LITERAL(s_aws_local_tls_server_host_name, "localhost");
 static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* macOS supports TLS 1.3 only when s2n-tls is used as TLS backend, which is controlled by the env var. */
     if (s_is_apple_with_secure_transport(allocator)) {
         return AWS_OP_SKIP;
     }
-    return s_verify_good_host_mqtt_connect(allocator, s_aws_ecc384_host_name, 59443, s_raise_tls_version_to_13);
+    return s_verify_good_host_mtls_connect(
+        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
