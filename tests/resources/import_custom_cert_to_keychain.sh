@@ -16,3 +16,6 @@ SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
 
 security import "$SCRIPT_DIR/mtls_server_root_ca.pem.crt" -k "$KEYCHAIN_PATH"
 sudo security trust-settings-import -d "$SCRIPT_DIR/mtls_server_root_ca_trust_settings.plist"
+
+# Import the untrusted server root CA into the keychain without adding trust settings, so it remains untrusted.
+security import "$SCRIPT_DIR/mtls_untrusted_server_root_ca.pem.crt" -k "$KEYCHAIN_PATH"
