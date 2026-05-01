@@ -1006,10 +1006,11 @@ static int s_verify_negotiation_fails_helper(
 
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
+    uint64_t wait_time = aws_timestamp_convert(60, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
-    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
-        &c_tester.condition_variable, &c_tester.mutex, s_tls_channel_shutdown_predicate, &outgoing_args));
+    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
+        &c_tester.condition_variable, &c_tester.mutex, wait_time, s_tls_channel_shutdown_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
 
     ASSERT_TRUE(outgoing_args.error_invoked);
@@ -1642,7 +1643,7 @@ static void s_raise_tls_version_to_13(struct aws_tls_ctx_options *options) {
 }
 
 AWS_STATIC_STRING_FROM_LITERAL(s_aws_local_tls_server_host_name, "localhost");
-static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_tls_client_channel_negotiation_success_mtls_tls13_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* macOS supports TLS 1.3 only when s2n-tls is used as TLS backend, which is controlled by the env var. */
     if (s_is_apple_with_secure_transport(allocator)) {
@@ -1656,12 +1657,10 @@ static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_al
         s_raise_tls_version_to_13);
 }
 
-AWS_TEST_CASE(
-    tls_client_channel_negotiation_success_mtls_tls1_3,
-    s_tls_client_channel_negotiation_success_mtls_tls1_3_fn)
+AWS_TEST_CASE(tls_client_channel_negotiation_success_mtls_tls13, s_tls_client_channel_negotiation_success_mtls_tls13_fn)
 
-/* macOS-specific mTLS test: connects to the trusted local TLS server without explicitly setting the server root CA.
- * Instead, it relies on the root CA being imported into the macOS keychain as trusted. */
+/* macOS-specific mTLS over s2n-tls test: connects to the trusted local TLS server without explicitly setting the server
+ * root CA. Instead, it relies on the root CA being imported into the macOS keychain as trusted. */
 static int s_tls_client_channel_negotiation_success_mtls_from_keychain_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     if (s_is_apple_with_secure_transport(allocator)) {
@@ -1675,9 +1674,9 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_success_mtls_from_keychain,
     s_tls_client_channel_negotiation_success_mtls_from_keychain_fn)
 
-/* macOS-specific mTLS test: connects to the untrusted local TLS server without explicitly setting the server root CA.
- * The untrusted server's root CA is imported into the keychain but NOT marked as trusted, so TLS negotiation should
- * fail. */
+/* macOS-specific mTLS over s2n-tls test: connects to the untrusted local TLS server without explicitly setting the
+ * server root CA. The untrusted server's root CA is imported into the keychain but NOT marked as trusted, so TLS
+ * negotiation should fail. */
 static int s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1707,28 +1706,31 @@ static int s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_k
 
     aws_tls_ctx_options_set_verify_peer(&tls_options, true);
 
-    int ret = s_verify_negotiation_fails_helper(
-        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT, &tls_options);
+    ASSERT_SUCCESS(s_verify_negotiation_fails_helper(
+        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT, &tls_options));
 
     aws_byte_buf_clean_up(&cert_buf);
     aws_byte_buf_clean_up(&key_buf);
     aws_tls_ctx_options_clean_up(&tls_options);
     ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
 
-    return ret;
+    return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(
     tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain,
     s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain_fn)
 
-/* macOS-specific test to ensure that setting minimum TLS version to 1.3 fails the connection. */
-static int s_tls_client_channel_negotiation_failure_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_tls_client_channel_negotiation_failure_tls13_to_tls12_server_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
     (void)ctx;
     return s_verify_negotiation_fails(allocator, s_badssl_ecc256_host_name, 443, s_raise_tls_version_to_13);
 }
 
-AWS_TEST_CASE(tls_client_channel_negotiation_failure_tls1_3, s_tls_client_channel_negotiation_failure_tls1_3_fn)
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_failure_tls13_to_tls12_server,
+    s_tls_client_channel_negotiation_failure_tls13_to_tls12_server_fn)
 
 AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 
