@@ -32,7 +32,6 @@
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
-#    define AWS_TEST_LOCAL_TLS12_PORT 58443
 #    define AWS_TEST_LOCAL_TLS13_PORT 59443
 #    define AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT 60443
 
@@ -1469,6 +1468,7 @@ static int s_verify_good_host_mtls_connect(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
     uint32_t port,
+    const char *ca_path,
     void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
 
     struct aws_byte_buf cert_buf = {0};
@@ -1477,11 +1477,12 @@ static int s_verify_good_host_mtls_connect(
 
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, "mtls_server_root_ca.pem.crt"));
+    if (ca_path) {
+        ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, ca_path));
+    }
 
     struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
     struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
-    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
 
     aws_io_library_init(allocator);
 
@@ -1513,10 +1514,11 @@ static int s_verify_good_host_mtls_connect(
     AWS_FATAL_ASSERT(
         AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
 
-    /* tls13_server_root_ca.pem.crt is self-signed, so peer verification fails without additional OS configuration. */
     aws_tls_ctx_options_set_verify_peer(&tls_options, true);
-    aws_tls_ctx_options_set_alpn_list(&tls_options, "x-amzn-mqtt-ca");
-    aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
+    if (ca_path) {
+        struct aws_byte_cursor ca_cur = aws_byte_cursor_from_buf(&ca_buf);
+        aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur);
+    }
 
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&tls_options);
@@ -1647,12 +1649,78 @@ static int s_tls_client_channel_negotiation_success_mtls_tls1_3_fn(struct aws_al
         return AWS_OP_SKIP;
     }
     return s_verify_good_host_mtls_connect(
-        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, s_raise_tls_version_to_13);
+        allocator,
+        s_aws_local_tls_server_host_name,
+        AWS_TEST_LOCAL_TLS13_PORT,
+        "mtls_server_root_ca.pem.crt",
+        s_raise_tls_version_to_13);
 }
 
 AWS_TEST_CASE(
     tls_client_channel_negotiation_success_mtls_tls1_3,
     s_tls_client_channel_negotiation_success_mtls_tls1_3_fn)
+
+/* macOS-specific mTLS test: connects to the trusted local TLS server without explicitly setting the server root CA.
+ * Instead, it relies on the root CA being imported into the macOS keychain as trusted. */
+static int s_tls_client_channel_negotiation_success_mtls_from_keychain_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (s_is_apple_with_secure_transport(allocator)) {
+        return AWS_OP_SKIP;
+    }
+    return s_verify_good_host_mtls_connect(
+        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, NULL /* ca_path */, NULL);
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_mtls_from_keychain,
+    s_tls_client_channel_negotiation_success_mtls_from_keychain_fn)
+
+/* macOS-specific mTLS test: connects to the untrusted local TLS server without explicitly setting the server root CA.
+ * The untrusted server's root CA is imported into the keychain but NOT marked as trusted, so TLS negotiation should
+ * fail. */
+static int s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+    if (s_is_apple_with_secure_transport(allocator)) {
+        return AWS_OP_SKIP;
+    }
+
+    struct aws_byte_buf cert_buf = {0};
+    struct aws_byte_buf key_buf = {0};
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
+
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+
+    aws_io_library_init(allocator);
+
+    ASSERT_SUCCESS(s_tls_common_tester_init(allocator, &c_tester));
+
+    struct aws_tls_ctx_options tls_options = {0};
+    AWS_ZERO_STRUCT(tls_options);
+
+    AWS_FATAL_ASSERT(
+        AWS_OP_SUCCESS == aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
+
+    aws_tls_ctx_options_set_verify_peer(&tls_options, true);
+
+    int ret = s_verify_negotiation_fails_helper(
+        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT, &tls_options);
+
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
+    aws_tls_ctx_options_clean_up(&tls_options);
+    ASSERT_SUCCESS(s_tls_common_tester_clean_up(&c_tester));
+
+    return ret;
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain,
+    s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain_fn)
 
 /* macOS-specific test to ensure that setting minimum TLS version to 1.3 fails the connection. */
 static int s_tls_client_channel_negotiation_failure_tls1_3_fn(struct aws_allocator *allocator, void *ctx) {
