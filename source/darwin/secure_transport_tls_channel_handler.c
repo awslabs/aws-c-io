@@ -8,6 +8,7 @@
 #include <aws/io/file_utils.h>
 #include <aws/io/private/pki_utils.h>
 #include <aws/io/private/socket_impl.h>
+#include <aws/io/private/tls_channel_handler_private.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/statistics.h>
@@ -56,14 +57,14 @@ static OSStatus (*s_SSLCopyALPNProtocols)(SSLContextRef context, CFArrayRef *pro
 #    define TLS13_AVAILABLE false
 #endif
 
-bool aws_tls_is_alpn_available(void) {
+static bool s_tls_is_alpn_available(void) {
 #if ALPN_AVAILABLE
     return s_SSLCopyALPNProtocols != NULL;
 #endif
     return false;
 }
 
-bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+static bool s_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     switch (cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
             return true;
@@ -74,8 +75,8 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     }
 }
 
-void aws_tls_init_static_state(struct aws_allocator *alloc) {
-    (void)alloc;
+static void s_aws_tls_init_static_state(struct aws_allocator *allocator) {
+    (void)allocator;
     /* keep from breaking users that built on later versions of the mac os sdk but deployed
      * to an older version. */
     s_SSLSetALPNProtocols = (OSStatus(*)(SSLContextRef, CFArrayRef))dlsym(RTLD_DEFAULT, "SSLSetALPNProtocols");
@@ -96,7 +97,7 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 }
 
-void aws_tls_clean_up_static_state(void) { /* no op */ }
+static void s_tls_clean_up_static_state(void) { /* no op */ }
 
 struct secure_transport_handler {
     struct aws_channel_handler handler;
@@ -509,7 +510,7 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
     aws_mem_release(handler->alloc, task);
 }
 
-int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
+static int s_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct secure_transport_handler *secure_transport_handler = handler->impl;
 
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p, starting TLS negotiation", (void *)handler);
@@ -831,7 +832,7 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
     aws_array_list_push_back(stats, &stats_base);
 }
 
-struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
+static struct aws_byte_buf s_tls_handler_protocol(struct aws_channel_handler *handler) {
     if (aws_is_using_secitem()) {
         /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
          * using it does not have a TLS. The negotiated protocol is stored in the nw_socket and must be retrieved from
@@ -843,7 +844,7 @@ struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler
     return secure_transport_handler->protocol;
 }
 
-struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
+static struct aws_byte_buf s_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct aws_string *server_name = NULL;
     if (aws_is_using_secitem()) {
         /* Apple Network Framework's SecItem API handles both TCP and TLS aspects of a connection and an aws_channel
@@ -1027,14 +1028,14 @@ cleanup_st_handler:
     return NULL;
 }
 
-struct aws_channel_handler *aws_tls_client_handler_new(
+static struct aws_channel_handler *s_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
     return s_tls_handler_new(allocator, options, slot, kSSLClientSide);
 }
 
-struct aws_channel_handler *aws_tls_server_handler_new(
+static struct aws_channel_handler *s_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
@@ -1075,7 +1076,7 @@ static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secu
 }
 
 static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
-    if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
+    if (!s_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
         return NULL;
@@ -1214,12 +1215,42 @@ cleanup_secure_transport_ctx:
     return NULL;
 }
 
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+static struct aws_tls_ctx *s_tls_server_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options) {
     return s_tls_ctx_new(alloc, options);
 }
 
-struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+static struct aws_tls_ctx *s_tls_client_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options) {
     return s_tls_ctx_new(alloc, options);
+}
+
+static struct aws_tls_vtable s_vtable = {
+    .init_static_state = s_aws_tls_init_static_state,
+    .clean_up_static_state = s_tls_clean_up_static_state,
+    .determine_default_pki_dir = NULL,
+    .determine_default_pki_ca_file = NULL,
+    .is_alpn_available = s_tls_is_alpn_available,
+    .is_cipher_pref_supported = s_tls_is_cipher_pref_supported,
+    .client_handler_start_negotiation = s_tls_client_handler_start_negotiation,
+    .key_operation_complete = NULL,
+    .key_operation_complete_with_error = NULL,
+    .key_operation_get_input = NULL,
+    .key_operation_get_type = NULL,
+    .key_operation_get_signature_algorithm = NULL,
+    .key_operation_get_digest_algorithm = NULL,
+    .handler_protocol = s_tls_handler_protocol,
+    .handler_server_name = s_tls_handler_server_name,
+    .client_handler_new = s_tls_client_handler_new,
+    .server_handler_new = s_tls_server_handler_new,
+    .server_ctx_new = s_tls_server_ctx_new,
+    .client_ctx_new = s_tls_client_ctx_new,
+};
+
+void secure_transport_init_tls_vtable(struct aws_tls_vtable *vtable) {
+    *vtable = s_vtable;
 }
 
 #pragma clang diagnostic pop

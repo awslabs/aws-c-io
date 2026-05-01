@@ -51,12 +51,14 @@
 
 static bool s_use_schannel_creds = false;
 
-void aws_tls_init_static_state(struct aws_allocator *alloc) {
+static struct aws_byte_buf s_tls_handler_server_name(struct aws_channel_handler *handler);
+
+static void s_aws_tls_init_static_state(struct aws_allocator *allocator) {
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using SecureChannel (SSPI).");
-    (void)alloc;
+    (void)allocator;
 }
 
-void aws_tls_clean_up_static_state(void) {}
+static void s_tls_clean_up_static_state(void) {}
 
 struct common_credential_params {
     DWORD dwFlags;
@@ -186,7 +188,7 @@ static bool s_is_windows_equal_or_above_build_number(DWORD build_number) {
     return false;
 }
 
-bool aws_tls_is_alpn_available(void) {
+static bool s_tls_is_alpn_available(void) {
 /* if you built on an old version of windows, still no support, but if you did, we still
    want to check the OS version at runtime before agreeing to attempt alpn. */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
@@ -229,7 +231,7 @@ bool aws_tls_is_alpn_available(void) {
     return false;
 }
 
-bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+static bool s_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     switch (cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_SYSTEM_DEFAULT:
             return true;
@@ -322,7 +324,7 @@ static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
         goto done;
     }
 
-    struct aws_byte_buf host = aws_tls_handler_server_name(handler);
+    struct aws_byte_buf host = s_tls_handler_server_name(handler);
     if (host.len > MAX_HOST_LENGTH) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "id=%p: host name too long (%d).", (void *)handler, (int)host.len);
         goto done;
@@ -590,7 +592,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     };
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-    if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
+    if (sc_handler->alpn_list && s_tls_is_alpn_available()) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Setting ALPN to %s", handler, aws_string_c_str(sc_handler->alpn_list));
         size_t extension_length = 0;
         if (s_fillin_alpn_data(handler, alpn_buffer_data, sizeof(alpn_buffer_data), &extension_length)) {
@@ -788,7 +790,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
            grab the negotiated protocol out of the session.
         */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
+        if (sc_handler->alpn_list && s_tls_is_alpn_available()) {
             SecPkgContext_ApplicationProtocol alpn_result;
             status = QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_APPLICATION_PROTOCOL, &alpn_result);
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: ALPN is configured. Checking for negotiated protocol", handler);
@@ -877,7 +879,7 @@ static int s_do_client_side_negotiation_step_1(struct aws_channel_handler *handl
 
     /* add alpn data to the client hello if it's supported. */
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-    if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
+    if (sc_handler->alpn_list && s_tls_is_alpn_available()) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS, "id=%p: Setting ALPN data as %s", handler, aws_string_c_str(sc_handler->alpn_list));
         size_t extension_length = 0;
@@ -1085,7 +1087,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         s_message_overhead(handler);
 
 #ifdef SECBUFFER_APPLICATION_PROTOCOLS
-        if (sc_handler->alpn_list && aws_tls_is_alpn_available()) {
+        if (sc_handler->alpn_list && s_tls_is_alpn_available()) {
             AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Retrieving negotiated protocol.", handler);
             SecPkgContext_ApplicationProtocol alpn_result;
             SECURITY_STATUS alpn_status =
@@ -1818,7 +1820,7 @@ static int s_handler_shutdown(
                 goto cleanup;
             }
 
-            struct aws_byte_buf server_name = aws_tls_handler_server_name(handler);
+            struct aws_byte_buf server_name = s_tls_handler_server_name(handler);
             char server_name_cstr[256];
             AWS_ZERO_ARRAY(server_name_cstr);
             AWS_FATAL_ASSERT(server_name.len < sizeof(server_name_cstr));
@@ -1932,7 +1934,7 @@ static void s_gather_statistics(struct aws_channel_handler *handler, struct aws_
     aws_array_list_push_back(stats, &stats_base);
 }
 
-int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
+static int s_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation", (void *)handler);
 
     struct secure_channel_handler *sc_handler = handler->impl;
@@ -1954,12 +1956,12 @@ int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler
     return AWS_OP_SUCCESS;
 }
 
-struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
+static struct aws_byte_buf s_tls_handler_protocol(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     return sc_handler->protocol;
 }
 
-struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
+static struct aws_byte_buf s_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
     return sc_handler->server_name;
 }
@@ -2303,7 +2305,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     return s_tls_handler_schannel_cred_new(alloc, options, slot, is_client_mode);
 }
 
-struct aws_channel_handler *aws_tls_client_handler_new(
+static struct aws_channel_handler *s_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
@@ -2311,7 +2313,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     return s_tls_handler_new(allocator, options, slot, true);
 }
 
-struct aws_channel_handler *aws_tls_server_handler_new(
+static struct aws_channel_handler *s_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
@@ -2368,7 +2370,7 @@ struct aws_tls_ctx *s_ctx_new(
     PCCERT_CONTEXT *pa_cred = NULL;
     DWORD creds = 0;
 
-    if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
+    if (!s_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
         return NULL;
@@ -2497,10 +2499,40 @@ clean_up:
     return NULL;
 }
 
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+static struct aws_tls_ctx *s_tls_server_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options) {
     return s_ctx_new(alloc, options, false);
 }
 
-struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+static struct aws_tls_ctx *s_tls_client_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options) {
     return s_ctx_new(alloc, options, true);
+}
+
+static struct aws_tls_vtable s_vtable = {
+    .init_static_state = s_aws_tls_init_static_state,
+    .clean_up_static_state = s_tls_clean_up_static_state,
+    .determine_default_pki_dir = NULL,
+    .determine_default_pki_ca_file = NULL,
+    .is_alpn_available = s_tls_is_alpn_available,
+    .is_cipher_pref_supported = s_tls_is_cipher_pref_supported,
+    .client_handler_start_negotiation = s_tls_client_handler_start_negotiation,
+    .key_operation_complete = NULL,
+    .key_operation_complete_with_error = NULL,
+    .key_operation_get_input = NULL,
+    .key_operation_get_type = NULL,
+    .key_operation_get_signature_algorithm = NULL,
+    .key_operation_get_digest_algorithm = NULL,
+    .handler_protocol = s_tls_handler_protocol,
+    .handler_server_name = s_tls_handler_server_name,
+    .client_handler_new = s_tls_client_handler_new,
+    .server_handler_new = s_tls_server_handler_new,
+    .server_ctx_new = s_tls_server_ctx_new,
+    .client_ctx_new = s_tls_client_ctx_new,
+};
+
+void secure_channel_init_tls_vtable(struct aws_tls_vtable *vtable) {
+    *vtable = s_vtable;
 }

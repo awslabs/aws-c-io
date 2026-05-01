@@ -116,15 +116,17 @@ if(WIN32)
 
     if(${BUILD_V} GREATER_EQUAL 20348)
         message("Building for version 20348 or higher: supporting TLS1.3")
-        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls1_3)
+        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls13)
     endif()
     add_test_case(local_socket_pipe_connected_race)
     add_test_case(tls_client_channel_negotiation_success_ecc384_deprecated)
 endif()
 
-# macOS must fail on trying to establish TLS 1.3 connection.
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    add_net_test_case(tls_client_channel_negotiation_failure_tls1_3)
+    add_net_test_case(tls_client_channel_negotiation_success_mtls_tls13)
+    add_net_test_case(tls_client_channel_negotiation_success_mtls_from_keychain)
+    add_net_test_case(tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain)
+    add_net_test_case(tls_client_channel_negotiation_failure_tls13_to_tls12_server)
 endif()
 
 add_test_case(channel_setup)
