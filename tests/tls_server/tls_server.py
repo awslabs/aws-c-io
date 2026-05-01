@@ -34,16 +34,20 @@ optional.add_argument("--min-tls", choices=['1.1', '1.2', '1.3'], dest="min_tls"
                       help="Minimum acceptable TLS version")
 optional.add_argument("--max-tls", choices=['1.1', '1.2', '1.3'], dest="max_tls", default='1.3',
                       help="Maximum acceptable TLS version")
-optional.add_argument("--resource-dir", type=pathlib.Path, dest="resource_dir", default='./tests/resources/',
-                      help="Path to keys and certificates")
+optional.add_argument("--cert", type=pathlib.Path, dest="cert", help="Path to server certificate")
+optional.add_argument("--key", type=pathlib.Path, dest="key", help="Path to server private key")
+optional.add_argument("--ca", type=pathlib.Path, dest="ca", help="Path to CA certificate for client verification")
 
 args = parser.parse_args()
+
+if not args.cert or not args.key or not args.ca:
+    parser.error("--cert, --key, and --ca are required")
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
 context.minimum_version = parse_tls(args.min_tls)
 context.maximum_version = parse_tls(args.max_tls)
-context.load_cert_chain(args.resource_dir / 'mtls_server.pem.crt', args.resource_dir / 'mtls_server.key')
-context.load_verify_locations(args.resource_dir / 'mtls_device_root_ca.pem.crt')
+context.load_cert_chain(args.cert, args.key)
+context.load_verify_locations(args.ca)
 context.verify_mode = ssl.CERT_REQUIRED
 
 

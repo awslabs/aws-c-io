@@ -42,16 +42,32 @@ class TlsServerSetup(Builder.Action):
 
         python_path = env.config['variables']['python']
 
+        server_args = [
+            '--cert', resource_dir / 'mtls_server.pem.crt',
+            '--key', resource_dir / 'mtls_server.key',
+            '--ca', resource_dir / 'mtls_device_root_ca.pem.crt',
+        ]
+
         tls12_server_process = subprocess.Popen(
-            [python_path, tls_server_dir / 'tls_server.py', '--port', '58443', '--resource-dir', resource_dir,
-             '--min-tls', '1.2',
-             '--max-tls', '1.2'],
+            [python_path, tls_server_dir / 'tls_server.py', '--port', '58443',
+             '--min-tls', '1.2', '--max-tls', '1.2'] + server_args,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         tls13_server_process = subprocess.Popen(
-            [python_path, tls_server_dir / 'tls_server.py', '--port', '59443', '--resource-dir', resource_dir,
-             '--min-tls', '1.3',
-             '--max-tls', '1.3'],
+            [python_path, tls_server_dir / 'tls_server.py', '--port', '59443',
+             '--min-tls', '1.3', '--max-tls', '1.3'] + server_args,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        untrusted_server_args = [
+            '--cert', resource_dir / 'mtls_untrusted_server.pem.crt',
+            '--key', resource_dir / 'mtls_untrusted_server.key',
+            '--ca', resource_dir / 'mtls_device_root_ca.pem.crt',
+        ]
+
+        # This server uses a cert that is not signed by the device CA
+        untrusted_server_process = subprocess.Popen(
+            [python_path, tls_server_dir / 'tls_server.py', '--port', '60443',
+             '--min-tls', '1.2', '--max-tls', '1.3'] + untrusted_server_args,
             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
         @atexit.register
@@ -60,3 +76,5 @@ class TlsServerSetup(Builder.Action):
             TlsServerSetup.cleanup_tls_server(tls12_server_process)
             print('Terminating TLS 1.3 server')
             TlsServerSetup.cleanup_tls_server(tls13_server_process)
+            print('Terminating untrusted TLS server')
+            TlsServerSetup.cleanup_tls_server(untrusted_server_process)
