@@ -112,8 +112,6 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
 
 static void s_tls_init_static_state(struct aws_allocator *alloc);
 static void s_tls_clean_up_static_state(void);
-static const char *s_determine_default_pki_dir(void);
-static const char *s_determine_default_pki_ca_file(void);
 static bool s_tls_is_alpn_available(void);
 static bool s_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref);
 static int s_tls_client_handler_start_negotiation(struct aws_channel_handler *handler);
@@ -141,8 +139,6 @@ static struct aws_tls_ctx *s_tls_client_ctx_new(struct aws_allocator *alloc, con
 static struct aws_tls_vtable s_vtable = {
     .init_static_state = s_tls_init_static_state,
     .clean_up_static_state = s_tls_clean_up_static_state,
-    .determine_default_pki_dir = s_determine_default_pki_dir,
-    .determine_default_pki_ca_file = s_determine_default_pki_ca_file,
     .is_alpn_available = s_tls_is_alpn_available,
     .is_cipher_pref_supported = s_tls_is_cipher_pref_supported,
     .client_handler_start_negotiation = s_tls_client_handler_start_negotiation,
@@ -165,7 +161,7 @@ void s2n_init_tls_vtable(struct aws_tls_vtable *vtable) {
 }
 
 // s2n only
-static const char *s_determine_default_pki_dir(void) {
+const char *aws_determine_default_pki_dir(void) {
     /* debian variants; OpenBSD (although the directory doesn't exist by default) */
     if (aws_path_exists(s_debian_path)) {
         return aws_string_c_str(s_debian_path);
@@ -202,7 +198,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_modern_rhel_ca_file_path, "/etc/pki/ca-trust/ex
 AWS_STATIC_STRING_FROM_LITERAL(s_openbsd_ca_file_path, "/etc/ssl/cert.pem");
 
 // s2n only
-static const char *s_determine_default_pki_ca_file(void) {
+const char *aws_determine_default_pki_ca_file(void) {
     /* debian variants */
     if (aws_path_exists(s_debian_ca_file_path)) {
         return aws_string_c_str(s_debian_ca_file_path);
@@ -294,8 +290,8 @@ static void s_tls_init_static_state(struct aws_allocator *alloc) {
         }
     }
 
-    s_default_ca_dir = s_determine_default_pki_dir();
-    s_default_ca_file = s_determine_default_pki_ca_file();
+    s_default_ca_dir = aws_determine_default_pki_dir();
+    s_default_ca_file = aws_determine_default_pki_ca_file();
     if (s_default_ca_dir || s_default_ca_file) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,

@@ -1230,8 +1230,6 @@ static struct aws_tls_ctx *s_tls_client_ctx_new(
 static struct aws_tls_vtable s_vtable = {
     .init_static_state = s_aws_tls_init_static_state,
     .clean_up_static_state = s_tls_clean_up_static_state,
-    .determine_default_pki_dir = NULL,
-    .determine_default_pki_ca_file = NULL,
     .is_alpn_available = s_tls_is_alpn_available,
     .is_cipher_pref_supported = s_tls_is_cipher_pref_supported,
     .client_handler_start_negotiation = s_tls_client_handler_start_negotiation,

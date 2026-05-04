@@ -11,8 +11,6 @@
 struct aws_tls_vtable {
     void (*init_static_state)(struct aws_allocator *alloc);
     void (*clean_up_static_state)(void);
-    const char *(*determine_default_pki_dir)(void);
-    const char *(*determine_default_pki_ca_file)(void);
     bool (*is_alpn_available)(void);
     bool (*is_cipher_pref_supported)(enum aws_tls_cipher_pref cipher_pref);
     int (*client_handler_start_negotiation)(struct aws_channel_handler *handler);
