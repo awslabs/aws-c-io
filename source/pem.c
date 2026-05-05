@@ -429,6 +429,10 @@ int aws_der_cert_to_pem(
     AWS_PRECONDITION(aws_byte_cursor_is_valid(&der_cert));
     AWS_PRECONDITION(out_pem_buf);
 
+    if (der_cert.len == 0) {
+        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+    }
+
     /* header: "-----BEGIN CERTIFICATE-----\n" */
     size_t header_len = begin_header.len + s_pem_space.len + s_pem_type_x509_cur.len + dashes.len + s_pem_newline.len;
     /* footer: "-----END CERTIFICATE-----\n" */

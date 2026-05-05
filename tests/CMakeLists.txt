@@ -173,6 +173,11 @@ add_test_case(pem_sanitize_empty_file_rejected)
 add_test_case(pem_sanitize_wrong_format_rejected)
 add_test_case(pem_sanitize_bad_format_rejected)
 
+add_test_case(test_der_cert_to_pem_typical)
+add_test_case(test_der_cert_to_pem_small)
+add_test_case(test_der_cert_to_pem_output_format)
+add_test_case(test_der_cert_to_pem_empty_input_fails)
+
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
 
