@@ -276,6 +276,8 @@ jobs:
 
   macos-x64-s2n:
     runs-on: macos-14-large # latest
+    env:
+      AWS_CRT_USE_NON_FIPS_TLS_13: 1
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
