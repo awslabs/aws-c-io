@@ -878,6 +878,11 @@ bool aws_tls_is_alpn_available(void) {
     return s_tls_channel_handler_vtable.is_alpn_available();
 }
 
+bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.is_cipher_pref_supported);
+    return s_tls_channel_handler_vtable.is_cipher_pref_supported(cipher_pref);
+}
+
 #endif /* BYO_CRYPTO */
 
 int aws_channel_setup_client_tls(
