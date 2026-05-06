@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-KEYCHAIN_PATH="${RUNNER_TEMP:-/tmp}/custom-keychain.keychain-db"
+KEYCHAIN_PATH="${RUNNER_TEMP:-/tmp}/aws-c-io-test-keychain.keychain-db"
 
 # The password is needed only during the keychain creation, so use some random-generated value.
 KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
 
+security delete-keychain "$KEYCHAIN_PATH" 2>/dev/null || true
 security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
 security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
