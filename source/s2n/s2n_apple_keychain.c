@@ -83,7 +83,7 @@ done:
 /* This function loads trusted root CA certificates from the macOS searchable keychains into the s2n config.
  * NOTE: Certificates from SystemRootCertificates.keychain are NOT processed here since s2n-tls will get them from the
  * bundle system roots instead. */
-int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
+void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
     CFMutableDictionaryRef query =
         CFDictionaryCreateMutable(NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
     CFDictionarySetValue(query, kSecClass, kSecClassCertificate);
@@ -95,7 +95,7 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
     CFRelease(query);
 
     if (status != errSecSuccess || !results) {
-        return AWS_OP_SUCCESS;
+        return;
     }
 
     CFIndex count = CFArrayGetCount(results);
@@ -115,14 +115,6 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
             continue;
         }
 
-        CFStringRef summary = SecCertificateCopySubjectSummary(cert);
-        if (summary) {
-            char buf[256];
-            CFStringGetCString(summary, buf, sizeof(buf), kCFStringEncodingUTF8);
-            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Processing cert from keychain with subject: %s", buf);
-            CFRelease(summary);
-        }
-
         bool is_self_signed = CFEqual(subject_data, issuer_data);
         bool is_ca = s_cert_has_basic_constraints_ca(cert);
 
@@ -130,12 +122,10 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
         CFRelease(issuer_data);
 
         if (!is_self_signed && !is_ca) {
-            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Cert is not a root");
             continue;
         }
 
         if (!s_is_cert_trusted(cert)) {
-            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Cert is not trusted");
             continue;
         }
 
@@ -149,27 +139,31 @@ int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct a
 
         struct aws_byte_buf pem_buf;
         if (aws_der_cert_to_pem(alloc, der_cursor, &pem_buf) == AWS_OP_SUCCESS) {
-            if (s2n_config_add_pem_to_trust_store(config, (const char *)pem_buf.buffer) == S2N_SUCCESS) {
-                AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Added certificate to trust store");
-            } else {
-                AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Failed to add certificate to trust store");
+            if (s2n_config_add_pem_to_trust_store(config, (const char *)pem_buf.buffer)) {
+                CFStringRef summary = SecCertificateCopySubjectSummary(cert);
+                if (summary) {
+                    CFIndex len =
+                        CFStringGetMaximumSizeForEncoding(CFStringGetLength(summary), kCFStringEncodingUTF8) + 1;
+                    char *buf = aws_mem_calloc(alloc, 1, (size_t)len);
+                    if (buf) {
+                        CFStringGetCString(summary, buf, len, kCFStringEncodingUTF8);
+                        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to add certificate '%s' to trust store", buf);
+                        aws_mem_release(alloc, buf);
+                    }
+                    CFRelease(summary);
+                } else {
+                    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to add certificate to trust store");
+                }
             }
             aws_byte_buf_clean_up(&pem_buf);
         } else {
-            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Failed to convert DER to PEM");
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to convert DER to PEM");
         }
+
         CFRelease(cert_data);
     }
 
     CFRelease(results);
-    return AWS_OP_SUCCESS;
 }
 
-#else  /* __APPLE__ */
-
-int aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc) {
-    (void)config;
-    (void)alloc;
-    return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
-}
 #endif /* __APPLE__ */

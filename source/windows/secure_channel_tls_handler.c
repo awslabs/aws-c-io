@@ -53,9 +53,9 @@ static bool s_use_schannel_creds = false;
 
 static struct aws_byte_buf s_tls_handler_server_name(struct aws_channel_handler *handler);
 
-static void s_aws_tls_init_static_state(struct aws_allocator *allocator) {
+static void s_aws_tls_init_static_state(struct aws_allocator *alloc) {
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using SecureChannel (SSPI).");
-    (void)allocator;
+    (void)alloc;
 }
 
 static void s_tls_clean_up_static_state(void) {}

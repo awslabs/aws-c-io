@@ -1006,9 +1006,9 @@ static int s_verify_negotiation_fails_helper(
 
     /* put this here to verify ownership semantics are correct. This should NOT cause a segfault. If it does, ya
      * done messed up. */
-    uint64_t wait_time = aws_timestamp_convert(60, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     aws_tls_connection_options_clean_up(&tls_client_conn_options);
     ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    uint64_t wait_time = aws_timestamp_convert(60, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
     ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
         &c_tester.condition_variable, &c_tester.mutex, wait_time, s_tls_channel_shutdown_predicate, &outgoing_args));
     ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));

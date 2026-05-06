@@ -8,6 +8,8 @@
 #include <aws/io/io.h>
 #include <aws/io/tls_channel_handler.h>
 
+/* V-table for TLS implementation. Allows runtime polymorphism across platform-specific
+ * TLS backends (s2n-tls, Secure Transport, SChannel). */
 struct aws_tls_vtable {
     void (*init_static_state)(struct aws_allocator *alloc);
     void (*clean_up_static_state)(void);

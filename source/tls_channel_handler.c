@@ -19,6 +19,7 @@
 #include <aws/common/environment.h>
 #include <aws/common/string.h>
 
+/* Global TLS v-table, populated at init time with the platform-specific TLS implementation. */
 static struct aws_tls_vtable s_tls_channel_handler_vtable;
 
 void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options, struct aws_allocator *allocator) {
@@ -822,18 +823,22 @@ void aws_tls_init_vtable(struct aws_allocator *allocator) {
 }
 
 void aws_tls_init_static_state(struct aws_allocator *allocator) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.init_static_state);
     s_tls_channel_handler_vtable.init_static_state(allocator);
 }
 
 void aws_tls_clean_up_static_state(void) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.clean_up_static_state);
     s_tls_channel_handler_vtable.clean_up_static_state();
 }
 
 struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.server_ctx_new);
     return s_tls_channel_handler_vtable.server_ctx_new(alloc, options);
 }
 
 struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.client_ctx_new);
     return s_tls_channel_handler_vtable.client_ctx_new(alloc, options);
 }
 
@@ -841,6 +846,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.client_handler_new);
     return s_tls_channel_handler_vtable.client_handler_new(allocator, options, slot);
 }
 
@@ -848,22 +854,27 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.server_handler_new);
     return s_tls_channel_handler_vtable.server_handler_new(allocator, options, slot);
 }
 
 int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.client_handler_start_negotiation);
     return s_tls_channel_handler_vtable.client_handler_start_negotiation(handler);
 }
 
 struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.handler_protocol);
     return s_tls_channel_handler_vtable.handler_protocol(handler);
 }
 
 struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.handler_server_name);
     return s_tls_channel_handler_vtable.handler_server_name(handler);
 }
 
 bool aws_tls_is_alpn_available(void) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.is_alpn_available);
     return s_tls_channel_handler_vtable.is_alpn_available();
 }
 
