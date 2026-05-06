@@ -354,6 +354,27 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_DNS_QUERY_AGAIN,
         "A temporary failure in name resolution occurred, please try again."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROTOCOL_FAILURE,
+        "Generic protocol failure during socks5 proxy negotiation."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_INTERNAL_FAILURE,
+        "Internal implementation error during socks5 proxy negotiation."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_PROTOCOL_VERSION_MISMATCH,
+        "Server response contains an unexpected protocol version value."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_SUBNEGOTIATION_VERSION_MISMATCH,
+        "Server response contains an unexpected subnegotiation version value."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_NO_ACCEPTABLE_METHODS,
+        "Server rejected all offered authentication methods."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_UNEXPECTED_METHOD_ID,
+        "Server method selection contains an unexpected method id."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_SUBNEGOTIATION_REJECTED,
+        "Server rejected an authentication negotiation."),
 };
 /* clang-format on */
 
@@ -390,7 +411,8 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         "standard-retry-strategy",
         "Subject for standard retry strategy"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKCS11, "pkcs11", "Subject for PKCS#11 library operations"),
-    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PEM, "pem", "Subject for pem operations")};
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PEM, "pem", "Subject for pem operations"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SOCKS5, "socks5", "Subject for socks5 proxy connection establishment")};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
     .subject_list = s_io_log_subject_infos,

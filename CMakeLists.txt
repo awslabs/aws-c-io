@@ -155,6 +155,10 @@ if (USE_S2N)
         endif()
 endif()
 
+file(GLOB AWS_IO_SOCKS5_SRC
+        "source/socks5/*.c"
+)
+
 file(GLOB IO_HEADERS
         ${AWS_IO_HEADERS}
         ${AWS_IO_OS_HEADERS}
@@ -165,9 +169,11 @@ file(GLOB IO_SRC
         ${AWS_IO_SRC}
         ${AWS_IO_OS_SRC}
         ${AWS_IO_TLS_SRC}
+        ${AWS_IO_SOCKS5_SRC}
         )
 
 add_library(${PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
+
 aws_set_common_properties(${PROJECT_NAME})
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_IO")
 aws_check_headers(${PROJECT_NAME} ${AWS_IO_HEADERS})
