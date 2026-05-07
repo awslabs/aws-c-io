@@ -8,10 +8,11 @@
 #include <aws/common/logging.h>
 #include <aws/io/logging.h>
 #include <aws/io/pem.h>
-#include <s2n.h>
 
 /* Check for USE_S2N needed to handle cross-compilation for Apple non-macOS platforms that can't use s2n-tls. */
 #if defined(__APPLE__) && defined(USE_S2N)
+
+#    include <s2n.h>
 
 #    include <Security/Security.h>
 
