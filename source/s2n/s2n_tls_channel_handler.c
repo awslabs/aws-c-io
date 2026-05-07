@@ -4,39 +4,42 @@
  */
 #include <aws/io/tls_channel_handler.h>
 
-#include <aws/common/clock.h>
-#include <aws/common/encoding.h>
-#include <aws/common/mutex.h>
-#include <aws/common/string.h>
-#include <aws/common/task_scheduler.h>
-#include <aws/common/thread.h>
-#include <aws/io/channel.h>
-#include <aws/io/event_loop.h>
-#include <aws/io/file_utils.h>
-#include <aws/io/logging.h>
-#include <aws/io/private/event_loop_impl.h>
-#include <aws/io/private/pki_utils.h>
-#include <aws/io/private/tls_channel_handler_private.h>
-#include <aws/io/private/tls_channel_handler_shared.h>
-#include <aws/io/statistics.h>
+/* Check for USE_S2N needed to handle cross-compilation for Apple non-macOS platforms that can't use s2n-tls. */
+#ifdef USE_S2N
 
-#include <s2n.h>
-#ifdef AWS_S2N_INSOURCE_PATH
-#    include <api/unstable/cleanup.h>
-#else
-#    include <s2n/unstable/cleanup.h>
-#endif
+#    include <aws/common/clock.h>
+#    include <aws/common/encoding.h>
+#    include <aws/common/mutex.h>
+#    include <aws/common/string.h>
+#    include <aws/common/task_scheduler.h>
+#    include <aws/common/thread.h>
+#    include <aws/io/channel.h>
+#    include <aws/io/event_loop.h>
+#    include <aws/io/file_utils.h>
+#    include <aws/io/logging.h>
+#    include <aws/io/private/event_loop_impl.h>
+#    include <aws/io/private/pki_utils.h>
+#    include <aws/io/private/tls_channel_handler_private.h>
+#    include <aws/io/private/tls_channel_handler_shared.h>
+#    include <aws/io/statistics.h>
 
-#include <errno.h>
-#include <inttypes.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#    include <s2n.h>
+#    ifdef AWS_S2N_INSOURCE_PATH
+#        include <api/unstable/cleanup.h>
+#    else
+#        include <s2n/unstable/cleanup.h>
+#    endif
 
-#define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
-#define KB_1 1024
-#define MAX_RECORD_SIZE (KB_1 * 16)
-#define EST_HANDSHAKE_SIZE (7 * KB_1)
+#    include <errno.h>
+#    include <inttypes.h>
+#    include <math.h>
+#    include <stdio.h>
+#    include <stdlib.h>
+
+#    define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
+#    define KB_1 1024
+#    define MAX_RECORD_SIZE (KB_1 * 16)
+#    define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 static const char *s_default_ca_dir = NULL;
 static const char *s_default_ca_file = NULL;
@@ -1754,10 +1757,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
                 goto cleanup_s2n_config;
             }
-#ifdef __APPLE__
+#    ifdef __APPLE__
             /* On macOS, load user root CAs from keychains */
             aws_tls_s2n_load_macos_keychain_root_cas(s2n_ctx->s2n_config, alloc);
-#endif
+#    endif
         } else {
             /* Cannot find system's trust store */
             aws_raise_error(AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND);
@@ -1836,3 +1839,5 @@ static struct aws_tls_ctx *s_tls_client_ctx_new(
     aws_io_fatal_assert_library_initialized();
     return s_tls_ctx_new(alloc, options, S2N_CLIENT);
 }
+
+#endif /* USE_S2N */

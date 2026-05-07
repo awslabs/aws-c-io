@@ -10,7 +10,8 @@
 #include <aws/io/pem.h>
 #include <s2n.h>
 
-#ifdef __APPLE__
+/* Check for USE_S2N needed to handle cross-compilation for Apple non-macOS platforms that can't use s2n-tls. */
+#if defined(__APPLE__) && defined(USE_S2N)
 
 #    include <Security/Security.h>
 
@@ -166,4 +167,4 @@ void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct 
     CFRelease(results);
 }
 
-#endif /* __APPLE__ */
+#endif /* defined(__APPLE__) && defined(USE_S2N) */
