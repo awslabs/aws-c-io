@@ -801,6 +801,13 @@ void secure_channel_init_tls_vtable(struct aws_tls_vtable *vtable);
 void aws_tls_init_vtable(struct aws_allocator *allocator) {
     (void)allocator;
 
+    /* Allow the vtable to be set up only once on library initialization. */
+    static bool s_vtable_initialized = false;
+    if (s_vtable_initialized) {
+        return;
+    }
+    s_vtable_initialized = true;
+
 #    if defined(__APPLE__) && defined(AWS_USE_SECITEM)
     secure_transport_init_tls_vtable(&s_tls_channel_handler_vtable);
 
