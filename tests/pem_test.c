@@ -23,24 +23,22 @@ static int s_check_clean_pem_result(
 static int s_test_pem_sanitize_comments_around_pem_object_removed(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* comments around pem object will be removed */
-    struct aws_byte_cursor dirty_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(
-        "# comments\r\n"
-        "-----BEGIN CERTIFICATE-----\n"
-        "CERTIFICATES\n"
-        "-----END CERTIFICATE-----\n"
-        "# another comments\r\n"
-        "-----BEGIN CERTIFICATE-----\n"
-        "CERTIFICATES\n"
-        "-----END CERTIFICATE-----\n"
-        "# final comments\r\n");
+    struct aws_byte_cursor dirty_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("# comments\r\n"
+                                                                             "-----BEGIN CERTIFICATE-----\n"
+                                                                             "CERTIFICATES\n"
+                                                                             "-----END CERTIFICATE-----\n"
+                                                                             "# another comments\r\n"
+                                                                             "-----BEGIN CERTIFICATE-----\n"
+                                                                             "CERTIFICATES\n"
+                                                                             "-----END CERTIFICATE-----\n"
+                                                                             "# final comments\r\n");
 
-    struct aws_byte_cursor expected_clean_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(
-        "-----BEGIN CERTIFICATE-----\n"
-        "CERTIFICATES\n"
-        "-----END CERTIFICATE-----\n"
-        "-----BEGIN CERTIFICATE-----\n"
-        "CERTIFICATES\n"
-        "-----END CERTIFICATE-----\n");
+    struct aws_byte_cursor expected_clean_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN CERTIFICATE-----\n"
+                                                                                      "CERTIFICATES\n"
+                                                                                      "-----END CERTIFICATE-----\n"
+                                                                                      "-----BEGIN CERTIFICATE-----\n"
+                                                                                      "CERTIFICATES\n"
+                                                                                      "-----END CERTIFICATE-----\n");
 
     return s_check_clean_pem_result(dirty_pem, expected_clean_pem, allocator);
 }
