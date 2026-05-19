@@ -100,6 +100,7 @@ void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct 
         return;
     }
 
+    /* Check all certificates in the keychains, and if they are trusted root CAs, add them to s2n trust store. */
     CFIndex count = CFArrayGetCount(results);
     for (CFIndex i = 0; i < count; i++) {
         SecCertificateRef cert = (SecCertificateRef)CFArrayGetValueAtIndex(results, i);
@@ -123,10 +124,15 @@ void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct 
         CFRelease(subject_data);
         CFRelease(issuer_data);
 
+        /* We check both conditions: a root CA is typically self-signed (subject == issuer), but some cross-signed CAs
+         * have a different issuer yet are still valid CAs per Basic Constraints. Either condition is sufficient to
+         * consider the certificate as a CA worth loading. */
         if (!is_self_signed && !is_ca) {
             continue;
         }
 
+        /* Even if a certificate is a CA, it may have been explicitly distrusted by the user or system. Only proceed if
+         * macOS trust evaluation confirms the certificate is trusted. */
         if (!s_is_cert_trusted(cert)) {
             continue;
         }
@@ -139,27 +145,30 @@ void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct 
         struct aws_byte_cursor der_cursor =
             aws_byte_cursor_from_array(CFDataGetBytePtr(cert_data), (size_t)CFDataGetLength(cert_data));
 
-        struct aws_string *pem_str = aws_der_cert_to_pem(alloc, der_cursor);
-        if (pem_str) {
-            if (s2n_config_add_pem_to_trust_store(config, (const char *)pem_str->bytes)) {
-                CFStringRef summary = SecCertificateCopySubjectSummary(cert);
-                if (summary) {
-                    CFIndex len =
-                        CFStringGetMaximumSizeForEncoding(CFStringGetLength(summary), kCFStringEncodingUTF8) + 1;
-                    char *buf = aws_mem_calloc(alloc, 1, (size_t)len);
-                    if (buf) {
-                        CFStringGetCString(summary, buf, len, kCFStringEncodingUTF8);
-                        AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to add certificate '%s' to trust store", buf);
-                        aws_mem_release(alloc, buf);
-                    }
-                    CFRelease(summary);
-                } else {
-                    AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to add certificate to trust store");
-                }
+        CFStringRef summary = SecCertificateCopySubjectSummary(cert);
+        const char *cert_summary = "(unknown)";
+        char *name_buf = NULL;
+        if (summary) {
+            CFIndex len = CFStringGetMaximumSizeForEncoding(CFStringGetLength(summary), kCFStringEncodingUTF8) + 1;
+            name_buf = aws_mem_calloc(alloc, 1, (size_t)len);
+            if (name_buf && CFStringGetCString(summary, name_buf, len, kCFStringEncodingUTF8)) {
+                cert_summary = name_buf;
             }
-            aws_string_destroy(pem_str);
+        }
+
+        struct aws_string *pem_str = aws_der_cert_to_pem(alloc, der_cursor);
+        if (!pem_str) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to convert DER to PEM for certificate '%s'", cert_summary);
+        } else if (s2n_config_add_pem_to_trust_store(config, (const char *)pem_str->bytes)) {
+            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to add certificate '%s' to trust store", cert_summary);
         } else {
-            AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to convert DER to PEM");
+            AWS_LOGF_TRACE(AWS_LS_IO_TLS, "Successfully added certificate '%s' to s2n trust store", cert_summary);
+        }
+
+        aws_string_destroy(pem_str);
+        aws_mem_release(alloc, name_buf);
+        if (summary) {
+            CFRelease(summary);
         }
 
         CFRelease(cert_data);
