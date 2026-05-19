@@ -23,22 +23,24 @@ static int s_check_clean_pem_result(
 static int s_test_pem_sanitize_comments_around_pem_object_removed(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     /* comments around pem object will be removed */
-    struct aws_byte_cursor dirty_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("# comments\r\n"
-                                                                             "-----BEGIN CERTIFICATE-----\n"
-                                                                             "CERTIFICATES\n"
-                                                                             "-----END CERTIFICATE-----\n"
-                                                                             "# another comments\r\n"
-                                                                             "-----BEGIN CERTIFICATE-----\n"
-                                                                             "CERTIFICATES\n"
-                                                                             "-----END CERTIFICATE-----\n"
-                                                                             "# final comments\r\n");
+    struct aws_byte_cursor dirty_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(
+        "# comments\r\n"
+        "-----BEGIN CERTIFICATE-----\n"
+        "CERTIFICATES\n"
+        "-----END CERTIFICATE-----\n"
+        "# another comments\r\n"
+        "-----BEGIN CERTIFICATE-----\n"
+        "CERTIFICATES\n"
+        "-----END CERTIFICATE-----\n"
+        "# final comments\r\n");
 
-    struct aws_byte_cursor expected_clean_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN CERTIFICATE-----\n"
-                                                                                      "CERTIFICATES\n"
-                                                                                      "-----END CERTIFICATE-----\n"
-                                                                                      "-----BEGIN CERTIFICATE-----\n"
-                                                                                      "CERTIFICATES\n"
-                                                                                      "-----END CERTIFICATE-----\n");
+    struct aws_byte_cursor expected_clean_pem = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(
+        "-----BEGIN CERTIFICATE-----\n"
+        "CERTIFICATES\n"
+        "-----END CERTIFICATE-----\n"
+        "-----BEGIN CERTIFICATE-----\n"
+        "CERTIFICATES\n"
+        "-----END CERTIFICATE-----\n");
 
     return s_check_clean_pem_result(dirty_pem, expected_clean_pem, allocator);
 }
@@ -1279,12 +1281,12 @@ static int s_test_der_cert_to_pem_typical(struct aws_allocator *allocator, void 
         0xfb, 0x1b, 0xcf, 0x45, 0x60, 0x92};
 
     struct aws_byte_cursor der_cursor = aws_byte_cursor_from_array(s_der_cert, sizeof(s_der_cert));
-    struct aws_byte_buf pem_buf;
 
-    ASSERT_SUCCESS(aws_der_cert_to_pem(allocator, der_cursor, &pem_buf));
+    struct aws_string *pem_str = aws_der_cert_to_pem(allocator, der_cursor);
+    ASSERT_NOT_NULL(pem_str);
 
     /* Parse the PEM back and verify we get the original DER */
-    struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(&pem_buf);
+    struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_string(pem_str);
     struct aws_array_list pem_objects;
     ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&pem_objects, allocator, pem_cursor));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&pem_objects));
@@ -1295,7 +1297,7 @@ static int s_test_der_cert_to_pem_typical(struct aws_allocator *allocator, void 
     ASSERT_INT_EQUALS(AWS_PEM_TYPE_X509, pem_object->type);
 
     aws_pem_objects_clean_up(&pem_objects);
-    aws_byte_buf_clean_up(&pem_buf);
+    aws_string_destroy(pem_str);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_der_cert_to_pem_typical, s_test_der_cert_to_pem_typical)
@@ -1307,12 +1309,12 @@ static int s_test_der_cert_to_pem_small(struct aws_allocator *allocator, void *c
     static const uint8_t s_small_der[] = {0x30, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
 
     struct aws_byte_cursor der_cursor = aws_byte_cursor_from_array(s_small_der, sizeof(s_small_der));
-    struct aws_byte_buf pem_buf;
 
-    ASSERT_SUCCESS(aws_der_cert_to_pem(allocator, der_cursor, &pem_buf));
+    struct aws_string *pem_str = aws_der_cert_to_pem(allocator, der_cursor);
+    ASSERT_NOT_NULL(pem_str);
 
     /* Parse the PEM back and verify we get the original bytes */
-    struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(&pem_buf);
+    struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_string(pem_str);
     struct aws_array_list pem_objects;
     ASSERT_SUCCESS(aws_pem_objects_init_from_file_contents(&pem_objects, allocator, pem_cursor));
     ASSERT_UINT_EQUALS(1, aws_array_list_length(&pem_objects));
@@ -1322,7 +1324,7 @@ static int s_test_der_cert_to_pem_small(struct aws_allocator *allocator, void *c
     ASSERT_BIN_ARRAYS_EQUALS(s_small_der, sizeof(s_small_der), pem_object->data.buffer, pem_object->data.len);
 
     aws_pem_objects_clean_up(&pem_objects);
-    aws_byte_buf_clean_up(&pem_buf);
+    aws_string_destroy(pem_str);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_der_cert_to_pem_small, s_test_der_cert_to_pem_small)
@@ -1335,24 +1337,24 @@ static int s_test_der_cert_to_pem_output_format(struct aws_allocator *allocator,
     memset(s_der, 0xAB, sizeof(s_der));
 
     struct aws_byte_cursor der_cursor = aws_byte_cursor_from_array(s_der, sizeof(s_der));
-    struct aws_byte_buf pem_buf;
 
-    ASSERT_SUCCESS(aws_der_cert_to_pem(allocator, der_cursor, &pem_buf));
+    struct aws_string *pem_str = aws_der_cert_to_pem(allocator, der_cursor);
+    ASSERT_NOT_NULL(pem_str);
 
-    struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_buf(&pem_buf);
+    struct aws_byte_cursor pem_cursor = aws_byte_cursor_from_string(pem_str);
 
     /* Verify header */
     struct aws_byte_cursor expected_header = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----BEGIN CERTIFICATE-----\n");
     ASSERT_TRUE(aws_byte_cursor_starts_with(&pem_cursor, &expected_header));
 
-    /* Verify footer (before null terminator) */
+    /* Verify footer */
     struct aws_byte_cursor expected_footer = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("-----END CERTIFICATE-----\n");
     struct aws_byte_cursor footer_region =
-        aws_byte_cursor_from_array(pem_buf.buffer + pem_buf.len - expected_footer.len - 1, expected_footer.len);
+        aws_byte_cursor_from_array(pem_str->bytes + pem_str->len - expected_footer.len, expected_footer.len);
     ASSERT_TRUE(aws_byte_cursor_eq(&footer_region, &expected_footer));
 
     /* Verify null termination */
-    ASSERT_UINT_EQUALS(0, pem_buf.buffer[pem_buf.len - 1]);
+    ASSERT_UINT_EQUALS(0, pem_str->bytes[pem_str->len]);
 
     /* Verify base64 lines are 64 chars each: skip header, check each line */
     struct aws_byte_cursor body = pem_cursor;
@@ -1365,7 +1367,7 @@ static int s_test_der_cert_to_pem_output_format(struct aws_allocator *allocator,
         ASSERT_UINT_EQUALS(64, substr.len);
     }
 
-    aws_byte_buf_clean_up(&pem_buf);
+    aws_string_destroy(pem_str);
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(test_der_cert_to_pem_output_format, s_test_der_cert_to_pem_output_format)
@@ -1374,9 +1376,9 @@ static int s_test_der_cert_to_pem_empty_input_fails(struct aws_allocator *alloca
     (void)ctx;
 
     struct aws_byte_cursor empty_cursor = {.ptr = (uint8_t *)"", .len = 0};
-    struct aws_byte_buf pem_buf;
 
-    ASSERT_ERROR(AWS_ERROR_INVALID_ARGUMENT, aws_der_cert_to_pem(allocator, empty_cursor, &pem_buf));
+    ASSERT_NULL(aws_der_cert_to_pem(allocator, empty_cursor));
+    ASSERT_INT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, aws_last_error());
 
     return AWS_OP_SUCCESS;
 }

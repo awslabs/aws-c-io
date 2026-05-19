@@ -421,16 +421,13 @@ int aws_pem_objects_init_from_file_path(
 static const struct aws_byte_cursor s_pem_newline = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("\n");
 static const struct aws_byte_cursor s_pem_space = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL(" ");
 
-int aws_der_cert_to_pem(
-    struct aws_allocator *alloc,
-    struct aws_byte_cursor der_cert,
-    struct aws_byte_buf *out_pem_buf) {
+struct aws_string *aws_der_cert_to_pem(struct aws_allocator *alloc, struct aws_byte_cursor der_cert) {
     AWS_PRECONDITION(alloc);
     AWS_PRECONDITION(aws_byte_cursor_is_valid(&der_cert));
-    AWS_PRECONDITION(out_pem_buf);
 
     if (der_cert.len == 0) {
-        return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return NULL;
     }
 
     /* header: "-----BEGIN CERTIFICATE-----\n" */
@@ -442,14 +439,15 @@ int aws_der_cert_to_pem(
     size_t newlines_num = (base64_len + AWS_PEM_LINE_LENGTH - 1) / AWS_PEM_LINE_LENGTH;
     size_t pem_capacity = header_len + base64_len + newlines_num + footer_len + 1;
 
-    aws_byte_buf_init(out_pem_buf, alloc, pem_capacity);
+    struct aws_byte_buf out_pem_buf;
+    aws_byte_buf_init(&out_pem_buf, alloc, pem_capacity);
 
     /* Write header */
-    aws_byte_buf_append(out_pem_buf, &begin_header);
-    aws_byte_buf_append(out_pem_buf, &s_pem_space);
-    aws_byte_buf_append(out_pem_buf, &s_pem_type_x509_cur);
-    aws_byte_buf_append(out_pem_buf, &dashes);
-    aws_byte_buf_append(out_pem_buf, &s_pem_newline);
+    aws_byte_buf_append(&out_pem_buf, &begin_header);
+    aws_byte_buf_append(&out_pem_buf, &s_pem_space);
+    aws_byte_buf_append(&out_pem_buf, &s_pem_type_x509_cur);
+    aws_byte_buf_append(&out_pem_buf, &dashes);
+    aws_byte_buf_append(&out_pem_buf, &s_pem_newline);
 
     /* Encode DER to base64 line by line: 48 raw bytes -> 64 base64 chars */
     size_t der_offset = 0;
@@ -459,21 +457,22 @@ int aws_der_cert_to_pem(
             der_chunk_size = AWS_DER_MAX_CHUNK_SIZE;
         }
         struct aws_byte_cursor chunk_cur = aws_byte_cursor_from_array(der_cert.ptr + der_offset, der_chunk_size);
-        if (aws_base64_encode(&chunk_cur, out_pem_buf)) {
-            aws_byte_buf_clean_up(out_pem_buf);
-            return AWS_OP_ERR;
+        if (aws_base64_encode(&chunk_cur, &out_pem_buf)) {
+            aws_byte_buf_clean_up(&out_pem_buf);
+            return NULL;
         }
-        aws_byte_buf_append(out_pem_buf, &s_pem_newline);
+        aws_byte_buf_append(&out_pem_buf, &s_pem_newline);
         der_offset += der_chunk_size;
     }
 
     /* Write footer */
-    aws_byte_buf_append(out_pem_buf, &end_header);
-    aws_byte_buf_append(out_pem_buf, &s_pem_space);
-    aws_byte_buf_append(out_pem_buf, &s_pem_type_x509_cur);
-    aws_byte_buf_append(out_pem_buf, &dashes);
-    aws_byte_buf_append(out_pem_buf, &s_pem_newline);
-    aws_byte_buf_write_u8(out_pem_buf, 0);
+    aws_byte_buf_append(&out_pem_buf, &end_header);
+    aws_byte_buf_append(&out_pem_buf, &s_pem_space);
+    aws_byte_buf_append(&out_pem_buf, &s_pem_type_x509_cur);
+    aws_byte_buf_append(&out_pem_buf, &dashes);
+    aws_byte_buf_append(&out_pem_buf, &s_pem_newline);
 
-    return AWS_OP_SUCCESS;
+    struct aws_string *result = aws_string_new_from_buf(alloc, &out_pem_buf);
+    aws_byte_buf_clean_up(&out_pem_buf);
+    return result;
 }

@@ -139,9 +139,9 @@ void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct 
         struct aws_byte_cursor der_cursor =
             aws_byte_cursor_from_array(CFDataGetBytePtr(cert_data), (size_t)CFDataGetLength(cert_data));
 
-        struct aws_byte_buf pem_buf;
-        if (aws_der_cert_to_pem(alloc, der_cursor, &pem_buf) == AWS_OP_SUCCESS) {
-            if (s2n_config_add_pem_to_trust_store(config, (const char *)pem_buf.buffer)) {
+        struct aws_string *pem_str = aws_der_cert_to_pem(alloc, der_cursor);
+        if (pem_str) {
+            if (s2n_config_add_pem_to_trust_store(config, (const char *)pem_str->bytes)) {
                 CFStringRef summary = SecCertificateCopySubjectSummary(cert);
                 if (summary) {
                     CFIndex len =
@@ -157,7 +157,7 @@ void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct 
                     AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to add certificate to trust store");
                 }
             }
-            aws_byte_buf_clean_up(&pem_buf);
+            aws_string_destroy(pem_str);
         } else {
             AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "Failed to convert DER to PEM");
         }

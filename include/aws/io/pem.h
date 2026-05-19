@@ -96,13 +96,11 @@ AWS_IO_API int aws_pem_objects_init_from_file_path(
     const char *filename);
 
 /**
- * Encodes DER-encoded certificate bytes into a PEM-formatted, null-terminated string
- * stored in out_pem_buf. Caller is responsible for calling aws_byte_buf_clean_up() on out_pem_buf.
+ * Encodes DER-encoded certificate bytes into a PEM-formatted, null-terminated string.
+ * Returns a new aws_string on success, or NULL on failure.
+ * Caller is responsible for calling aws_string_destroy() on the result.
  */
-AWS_IO_API int aws_der_cert_to_pem(
-    struct aws_allocator *alloc,
-    struct aws_byte_cursor der_cert,
-    struct aws_byte_buf *out_pem_buf);
+AWS_IO_API struct aws_string *aws_der_cert_to_pem(struct aws_allocator *alloc, struct aws_byte_cursor der_cert);
 
 AWS_EXTERN_C_END
 #endif /* AWS_IO_PEM_H */
