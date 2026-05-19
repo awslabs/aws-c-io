@@ -111,7 +111,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_android_path, "/system/etc/security/cacerts");
 AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
 
-void aws_tls_s2n_load_macos_keychain_root_cas(struct s2n_config *config, struct aws_allocator *alloc);
+#include "s2n_apple_keychain.h"
 
 static void s_tls_init_static_state(struct aws_allocator *alloc);
 static void s_tls_clean_up_static_state(void);

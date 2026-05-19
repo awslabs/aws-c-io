@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include "s2n_apple_keychain.h"
+
 #include <aws/common/encoding.h>
 #include <aws/common/error.h>
 #include <aws/common/logging.h>
