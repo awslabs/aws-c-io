@@ -585,3 +585,62 @@ static int s_socks5_negotiation_basic_auth_negotiate_success_fn(struct aws_alloc
 }
 
 AWS_TEST_CASE(socks5_negotiation_basic_auth_negotiate_success, s_socks5_negotiation_basic_auth_negotiate_success_fn)
+
+static int s_socks5_impl_no_auth_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_options options = {
+        .proxy_host = aws_byte_cursor_from_c_str("derp.com"),
+        .proxy_port = 0,
+        .negotiation_strategy = NULL,
+        .negotiation_timeout_ms = 10000,
+    };
+
+    struct aws_socks5_proxy_config *config = aws_socks5_proxy_config_new(allocator, &options);
+    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config);
+
+    aws_socks5_proxy_impl_destroy(impl);
+    aws_socks5_proxy_config_release(config);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_no_auth_create_destroy, s_socks5_impl_no_auth_create_destroy_fn)
+
+static int s_socks5_impl_basic_auth_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_basic_auth_options basic_options = {
+        .username = aws_byte_cursor_from_c_str("hello"),
+        .password = aws_byte_cursor_from_c_str("there"),
+    };
+
+    struct aws_socks5_proxy_negotiation_strategy *strategy =
+        aws_socks5_proxy_negotiation_strategy_new_basic_auth(allocator, &basic_options);
+
+    struct aws_socks5_proxy_options options = {
+        .proxy_host = aws_byte_cursor_from_c_str("derp.com"),
+        .proxy_port = 0,
+        .negotiation_strategy = strategy,
+        .negotiation_timeout_ms = 10000,
+    };
+
+    struct aws_socks5_proxy_config *config = aws_socks5_proxy_config_new(allocator, &options);
+    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config);
+
+    aws_socks5_proxy_impl_destroy(impl);
+    aws_socks5_proxy_config_release(config);
+    aws_socks5_proxy_negotiation_strategy_release(strategy);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_basic_auth_create_destroy, s_socks5_impl_basic_auth_create_destroy_fn)

@@ -375,6 +375,10 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKS5_SUBNEGOTIATION_REJECTED,
         "Server rejected an authentication negotiation."),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_CONNECT_REQUEST_FAILED,
+        "Server rejected the connect request"),
+
 };
 /* clang-format on */
 

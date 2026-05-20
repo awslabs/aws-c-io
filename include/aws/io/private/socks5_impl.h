@@ -23,13 +23,14 @@
 struct aws_socks5_proxy_config {
     struct aws_allocator *allocator;
 
+    struct aws_ref_count ref_count;
+
     struct aws_byte_buf proxy_host;
     uint16_t proxy_port;
 
     struct aws_socks5_proxy_negotiation_strategy *negotiation_strategy;
 
     uint32_t negotiation_timeout_ms;
-    bool skip_name_resolution;
 };
 
 enum aws_socks5_protocol_status {

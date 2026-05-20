@@ -439,6 +439,9 @@ add_test_case(socks5_negotiation_basic_auth_negotiate_failure_rejected_username_
 add_test_case(socks5_negotiation_basic_auth_negotiate_failure_subneg_version_mismatch)
 add_test_case(socks5_negotiation_basic_auth_negotiate_success)
 
+add_test_case(socks5_impl_no_auth_create_destroy)
+add_test_case(socks5_impl_basic_auth_create_destroy)
+
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 

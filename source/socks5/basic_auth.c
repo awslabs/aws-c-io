@@ -47,8 +47,13 @@ enum aws_socks5_basic_auth_negotiation_state {
     AWS_S5BANS_COUNT,
 };
 
-static const char *s_aws_socks5_basic_auth_negotiation_state_strings[AWS_S5BANS_COUNT] =
-    {"PendingMethodSelection", "PendingRequest", "PendingResponse", "CompleteSuccess", "CompleteFailure"};
+static const char *s_aws_socks5_basic_auth_negotiation_state_strings[AWS_S5BANS_COUNT] = {
+    "PendingMethodSelection",
+    "PendingRequest",
+    "PendingResponse",
+    "CompleteSuccess",
+    "CompleteFailure",
+};
 
 struct aws_socks5_proxy_negotiation_strategy_instance_basic_auth {
     struct aws_socks5_proxy_negotiation_strategy_instance base;

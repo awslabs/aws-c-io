@@ -23,7 +23,6 @@ struct aws_socks5_proxy_options {
     struct aws_socks5_proxy_negotiation_strategy *negotiation_strategy;
 
     uint32_t negotiation_timeout_ms;
-    bool skip_name_resolution;
 };
 
 AWS_EXTERN_C_BEGIN
@@ -32,7 +31,9 @@ AWS_IO_API struct aws_socks5_proxy_config *aws_socks5_proxy_config_new(
     struct aws_allocator *allocator,
     struct aws_socks5_proxy_options *options);
 
-AWS_IO_API void aws_socks5_proxy_config_destroy(struct aws_socks5_proxy_config *config);
+AWS_IO_API struct aws_socks5_proxy_config *aws_socks5_proxy_config_acquire(struct aws_socks5_proxy_config *config);
+
+AWS_IO_API struct aws_socks5_proxy_config *aws_socks5_proxy_config_release(struct aws_socks5_proxy_config *config);
 
 AWS_IO_API struct aws_socks5_proxy_negotiation_strategy *aws_socks5_proxy_negotiation_strategy_new_basic_auth(
     struct aws_allocator *allocator,
