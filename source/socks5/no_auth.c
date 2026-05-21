@@ -104,12 +104,14 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_service_pen
     struct aws_socks5_proxy_negotiation_strategy_instance_no_auth *instance,
     struct aws_socks5_negotiation_context *context) {
     size_t bytes_needed = METHOD_SELECTION_LENGTH - aws_min_size(instance->inbound_buffer.len, METHOD_SELECTION_LENGTH);
-    bytes_needed = aws_min_size(bytes_needed, context->data->len);
+    size_t bytes_available = aws_min_size(bytes_needed, (context->data) ? context->data->len : 0);
 
-    struct aws_byte_cursor to_append = aws_byte_cursor_advance(context->data, bytes_needed);
-    if (aws_byte_buf_append_dynamic(&instance->inbound_buffer, &to_append)) {
-        s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(instance, context, aws_last_error());
-        return;
+    if (bytes_available > 0) {
+        struct aws_byte_cursor to_append = aws_byte_cursor_advance(context->data, bytes_available);
+        if (aws_byte_buf_append_dynamic(&instance->inbound_buffer, &to_append)) {
+            s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(instance, context, aws_last_error());
+            return;
+        }
     }
 
     if (instance->inbound_buffer.len < METHOD_SELECTION_LENGTH) {

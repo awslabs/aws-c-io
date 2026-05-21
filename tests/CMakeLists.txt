@@ -441,6 +441,8 @@ add_test_case(socks5_negotiation_basic_auth_negotiate_success)
 
 add_test_case(socks5_impl_no_auth_create_destroy)
 add_test_case(socks5_impl_basic_auth_create_destroy)
+add_test_case(socks5_impl_no_auth_negotiation_success)
+add_test_case(socks5_impl_basic_auth_negotiation_success)
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})

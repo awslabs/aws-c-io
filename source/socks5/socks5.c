@@ -178,7 +178,7 @@ struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
     impl->allocator = allocator;
     impl->config = aws_socks5_proxy_config_acquire(config);
     impl->auth_instance = aws_socks5_proxy_negotiation_strategy_new_instance(config->negotiation_strategy);
-    impl->state = AWS_S5PIS_INVALID;
+    impl->state = AWS_S5PIS_START;
     if (aws_byte_buf_init(&impl->write_buffer, allocator, DEFAULT_SOCKS5_PROTOCOL_BUFFER_SIZE) ||
         aws_byte_buf_init(&impl->read_buffer, allocator, DEFAULT_SOCKS5_PROTOCOL_BUFFER_SIZE)) {
         goto failure;
@@ -318,6 +318,8 @@ static void s_build_connect_request(struct aws_socks5_proxy_impl *impl) {
     struct aws_byte_cursor connect_cursor = aws_byte_cursor_from_buf(&impl->config->proxy_host);
     aws_byte_buf_append(&impl->write_buffer, &connect_cursor);              // address
     aws_byte_buf_write_be16(&impl->write_buffer, impl->config->proxy_port); // port
+
+    impl->pending_write_data = aws_byte_cursor_from_buf(&impl->write_buffer);
 }
 
 static void s_handle_socks5_impl_state_pending_auth_subnegotiation(
@@ -372,10 +374,12 @@ static bool s_read_required_bytes_for_response(
         return true;
     }
 
-    size_t read_length = aws_min_size(context->data->len, num_bytes_required - impl->read_buffer.len);
-    if (read_length > 0) {
-        struct aws_byte_cursor to_copy = aws_byte_cursor_advance(context->data, read_length);
-        aws_byte_buf_append_dynamic(&impl->read_buffer, &to_copy);
+    if (context->data != NULL) {
+        size_t read_length = aws_min_size(context->data->len, num_bytes_required - impl->read_buffer.len);
+        if (read_length > 0) {
+            struct aws_byte_cursor to_copy = aws_byte_cursor_advance(context->data, read_length);
+            aws_byte_buf_append_dynamic(&impl->read_buffer, &to_copy);
+        }
     }
 
     return impl->read_buffer.len >= num_bytes_required;
@@ -424,7 +428,7 @@ static void s_handle_socks5_impl_state_pending_response(
     struct aws_socks5_proxy_impl *impl,
     struct aws_socks5_negotiation_context *context) {
 
-    if (s_read_required_bytes_for_response(impl, context, MINIMUM_RESPONSE_BYTES_REQUIRED)) {
+    if (!s_read_required_bytes_for_response(impl, context, MINIMUM_RESPONSE_BYTES_REQUIRED)) {
         return;
     }
 

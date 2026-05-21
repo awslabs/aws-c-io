@@ -269,7 +269,9 @@ AWS_TEST_CASE(
 
 static struct aws_socks5_proxy_negotiation_strategy *s_create_basic_auth_strategy(struct aws_allocator *allocator) {
     struct aws_socks5_proxy_negotiation_basic_auth_options options = {
-        .username = aws_byte_cursor_from_c_str("sponge"), .password = aws_byte_cursor_from_c_str("bob")};
+        .username = aws_byte_cursor_from_c_str("sponge"),
+        .password = aws_byte_cursor_from_c_str("bob"),
+    };
 
     return aws_socks5_proxy_negotiation_strategy_new_basic_auth(allocator, &options);
 }
@@ -644,3 +646,243 @@ static int s_socks5_impl_basic_auth_create_destroy_fn(struct aws_allocator *allo
 }
 
 AWS_TEST_CASE(socks5_impl_basic_auth_create_destroy, s_socks5_impl_basic_auth_create_destroy_fn)
+
+struct socks5_protocol_testing_step {
+    struct aws_byte_cursor input_data;
+    struct aws_byte_cursor expected_output;
+    int expected_error_code;
+    enum aws_socks5_protocol_status expected_final_status;
+};
+
+struct socks5_protocol_testing_step_options {
+    struct aws_allocator *allocator;
+    size_t input_chunk_size;
+    size_t output_chunk_size;
+};
+
+static int s_apply_protocol_testing_step(
+    struct aws_socks5_proxy_impl *impl,
+    struct socks5_protocol_testing_step *step,
+    struct socks5_protocol_testing_step_options *options) {
+    struct aws_allocator *allocator = options->allocator;
+
+    struct aws_byte_cursor input_cursor = step->input_data;
+
+    struct aws_byte_buf temp_output;
+    aws_byte_buf_init(&temp_output, allocator, options->output_chunk_size);
+
+    struct aws_byte_buf full_output;
+    aws_byte_buf_init(&full_output, allocator, 1024);
+
+    int last_error_code = AWS_ERROR_SUCCESS;
+    enum aws_socks5_protocol_status last_status = AWS_S5PS_IN_PROGRESS;
+
+    while (input_cursor.len > 0) {
+        struct aws_byte_cursor chunk_cursor =
+            s_aws_byte_cursor_advance_clipped(&input_cursor, options->input_chunk_size);
+
+        struct aws_socks5_negotiation_context context;
+        AWS_ZERO_STRUCT(context);
+
+        context.data = &chunk_cursor;
+        context.to_write = &temp_output;
+
+        while (chunk_cursor.len > 0) {
+            aws_socks5_proxy_impl_drive_negotiation(impl, &context);
+            last_error_code = context.error_code;
+            last_status = context.status;
+
+            struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&temp_output);
+            if (output_cursor.len > 0) {
+                aws_byte_buf_append_dynamic(&full_output, &output_cursor);
+            }
+
+            aws_byte_buf_reset(&temp_output, false);
+        }
+    }
+
+    while (full_output.len < step->expected_output.len) {
+        struct aws_socks5_negotiation_context context;
+        AWS_ZERO_STRUCT(context);
+
+        context.to_write = &temp_output;
+
+        aws_socks5_proxy_impl_drive_negotiation(impl, &context);
+        last_error_code = context.error_code;
+        last_status = context.status;
+
+        struct aws_byte_cursor output_cursor = aws_byte_cursor_from_buf(&temp_output);
+        if (output_cursor.len > 0) {
+            aws_byte_buf_append_dynamic(&full_output, &output_cursor);
+        }
+
+        aws_byte_buf_reset(&temp_output, false);
+    }
+
+    ASSERT_INT_EQUALS(step->expected_error_code, last_error_code);
+    ASSERT_INT_EQUALS(step->expected_final_status, last_status);
+    ASSERT_BIN_ARRAYS_EQUALS(step->expected_output.ptr, step->expected_output.len, full_output.buffer, full_output.len);
+
+    aws_byte_buf_clean_up(&temp_output);
+    aws_byte_buf_clean_up(&full_output);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_run_testing_steps(
+    struct aws_socks5_proxy_impl *impl,
+    struct socks5_protocol_testing_step **steps,
+    size_t num_steps,
+    struct socks5_protocol_testing_step_options *options) {
+    for (size_t i = 0; i < num_steps; ++i) {
+        ASSERT_SUCCESS(s_apply_protocol_testing_step(impl, steps[i], options));
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static size_t test_matrix_chunk_sizes[] = {1, 2, 3, 5, 7, 11, 19, 31};
+
+static int s_run_test_matrix(
+    struct aws_socks5_proxy_negotiation_strategy *strategy,
+    struct aws_allocator *allocator,
+    struct socks5_protocol_testing_step **steps,
+    size_t num_steps) {
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(test_matrix_chunk_sizes); ++i) {
+        for (size_t j = 0; j < AWS_ARRAY_SIZE(test_matrix_chunk_sizes); ++j) {
+            struct aws_socks5_proxy_options proxy_options = {
+                .proxy_host = aws_byte_cursor_from_c_str("krusty.krab.com"),
+                .proxy_port = 80,
+                .negotiation_strategy = strategy,
+                .negotiation_timeout_ms = 1000,
+            };
+
+            struct aws_socks5_proxy_config *config = aws_socks5_proxy_config_new(allocator, &proxy_options);
+
+            struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config);
+
+            struct socks5_protocol_testing_step_options test_options = {
+                .allocator = allocator,
+                .input_chunk_size = test_matrix_chunk_sizes[j],
+                .output_chunk_size = test_matrix_chunk_sizes[i]};
+
+            ASSERT_SUCCESS(s_run_testing_steps(impl, steps, num_steps, &test_options));
+
+            aws_socks5_proxy_impl_destroy(impl);
+            aws_socks5_proxy_config_release(config);
+        }
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static uint8_t no_auth_expected_methods_bytes[] = {0x05, 0x01, 0x00};
+static struct socks5_protocol_testing_step no_auth_methods_step = {
+    .input_data = {.ptr = NULL, .len = 0},
+    .expected_output = {.ptr = no_auth_expected_methods_bytes, .len = AWS_ARRAY_SIZE(no_auth_expected_methods_bytes)},
+    .expected_error_code = AWS_ERROR_SUCCESS,
+    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+};
+
+static uint8_t connect_request_bytes[] = {
+    0x05, 0x01, 0x00, 0x03, 0x0F, 0x6B, 0x72, 0x75, 0x73, 0x74,
+    0x79, 0x2E, 0x6B, 0x72, 0x61, 0x62, 0x2E, 0x63, 0x6F, 0x6D, // "krusty.krab.com"
+    0x00, 0x50                                                  // port 80
+};
+static uint8_t no_auth_method_selection_bytes[] = {0x05, 0x00};
+static struct socks5_protocol_testing_step no_auth_method_selection_step = {
+    .input_data = {.ptr = no_auth_method_selection_bytes, .len = AWS_ARRAY_SIZE(no_auth_method_selection_bytes)},
+    .expected_output = {.ptr = connect_request_bytes, .len = AWS_ARRAY_SIZE(connect_request_bytes)},
+    .expected_error_code = AWS_ERROR_SUCCESS,
+    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+};
+
+static uint8_t connect_response_success_bytes[] = {
+    0x05,
+    0x00,
+    0x00,
+    0x01,
+    0x7F,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x51 // 127.0.0.1:81 outbound addr
+};
+static struct socks5_protocol_testing_step connect_response_success_step = {
+    .input_data = {.ptr = connect_response_success_bytes, .len = AWS_ARRAY_SIZE(connect_response_success_bytes)},
+    .expected_output = {.ptr = NULL, .len = 0},
+    .expected_error_code = AWS_ERROR_SUCCESS,
+    .expected_final_status = AWS_S5PS_SUCCESS,
+};
+
+static int s_socks5_impl_no_auth_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct socks5_protocol_testing_step *steps[] = {
+        &no_auth_methods_step,
+        &no_auth_method_selection_step,
+        &connect_response_success_step,
+    };
+
+    s_run_test_matrix(NULL, allocator, steps, AWS_ARRAY_SIZE(steps));
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_no_auth_negotiation_success, s_socks5_impl_no_auth_negotiation_success_fn)
+
+static uint8_t basic_auth_expected_methods_bytes[] = {0x05, 0x01, 0x02};
+static struct socks5_protocol_testing_step basic_auth_methods_step = {
+    .input_data = {.ptr = NULL, .len = 0},
+    .expected_output =
+        {.ptr = basic_auth_expected_methods_bytes, .len = AWS_ARRAY_SIZE(basic_auth_expected_methods_bytes)},
+    .expected_error_code = AWS_ERROR_SUCCESS,
+    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+};
+
+static uint8_t basic_auth_request_bytes[] = {0x01, 0x06, 0x73, 0x70, 0x6F, 0x6E, 0x67, 0x65, 0x03, 0x62, 0x6F, 0x62};
+static uint8_t basic_auth_method_selection_bytes[] = {0x05, 0x02};
+static struct socks5_protocol_testing_step basic_auth_method_selection_step = {
+    .input_data = {.ptr = basic_auth_method_selection_bytes, .len = AWS_ARRAY_SIZE(basic_auth_method_selection_bytes)},
+    .expected_output = {.ptr = basic_auth_request_bytes, .len = AWS_ARRAY_SIZE(basic_auth_request_bytes)},
+    .expected_error_code = AWS_ERROR_SUCCESS,
+    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+};
+
+static uint8_t basic_auth_success_bytes[] = {0x01, 0x00};
+static struct socks5_protocol_testing_step basic_auth_response_step = {
+    .input_data = {.ptr = basic_auth_success_bytes, .len = AWS_ARRAY_SIZE(basic_auth_success_bytes)},
+    .expected_output = {.ptr = connect_request_bytes, .len = AWS_ARRAY_SIZE(connect_request_bytes)},
+    .expected_error_code = AWS_ERROR_SUCCESS,
+    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+};
+
+static int s_socks5_impl_basic_auth_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_strategy *strategy = s_create_basic_auth_strategy(allocator);
+
+    struct socks5_protocol_testing_step *steps[] = {
+        &basic_auth_methods_step,
+        &basic_auth_method_selection_step,
+        &basic_auth_response_step,
+        &connect_response_success_step,
+    };
+
+    s_run_test_matrix(strategy, allocator, steps, AWS_ARRAY_SIZE(steps));
+
+    aws_socks5_proxy_negotiation_strategy_release(strategy);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_basic_auth_negotiation_success, s_socks5_impl_basic_auth_negotiation_success_fn)
