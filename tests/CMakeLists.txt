@@ -127,6 +127,11 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_net_test_case(tls_client_channel_negotiation_failure_tls1_3)
 endif()
 
+# Apple Network Framework race condition tests (dispatch_queue event loop only)
+if(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+    add_net_test_case(nw_socket_close_while_data_pending)
+endif()
+
 add_test_case(channel_setup)
 add_test_case(channel_single_slot_cleans_up)
 add_test_case(channel_slots_clean_up)
