@@ -26,6 +26,7 @@ struct close_race_test_args {
     struct aws_condition_variable cv;
     bool connect_completed;
     bool incoming_ready;
+    bool listener_ready;
     bool readable_fired;
     bool close_completed;
     bool shutdown_complete;
@@ -42,6 +43,10 @@ static bool s_incoming_pred(void *arg) {
 
 static bool s_close_pred(void *arg) {
     return ((struct close_race_test_args *)arg)->close_completed;
+}
+
+static bool s_listener_ready_pred(void *arg) {
+    return ((struct close_race_test_args *)arg)->listener_ready;
 }
 
 static bool s_shutdown_pred(void *arg) {
@@ -71,6 +76,16 @@ static void s_race_test_on_accept(
         args->socket = new_socket;
         args->incoming_ready = true;
     }
+    aws_mutex_unlock(&args->mutex);
+    aws_condition_variable_notify_one(&args->cv);
+}
+
+static void s_race_test_on_accept_start(struct aws_socket *socket, int error_code, void *user_data) {
+    (void)socket;
+    (void)error_code;
+    struct close_race_test_args *args = user_data;
+    aws_mutex_lock(&args->mutex);
+    args->listener_ready = true;
     aws_mutex_unlock(&args->mutex);
     aws_condition_variable_notify_one(&args->cv);
 }
@@ -168,10 +183,6 @@ static int s_test_nw_socket_close_while_data_pending(struct aws_allocator *alloc
     ASSERT_SUCCESS(aws_socket_bind(&listener, &bind_opts));
     ASSERT_SUCCESS(aws_socket_listen(&listener, 1024));
 
-    /* Get the OS-assigned port */
-    struct aws_socket_endpoint bound_endpoint;
-    ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
-
     struct close_race_test_args listener_args = {
         .mutex = AWS_MUTEX_INIT,
         .cv = AWS_CONDITION_VARIABLE_INIT,
@@ -180,8 +191,20 @@ static int s_test_nw_socket_close_while_data_pending(struct aws_allocator *alloc
     struct aws_socket_listener_options listener_options = {
         .on_accept_result = s_race_test_on_accept,
         .on_accept_result_user_data = &listener_args,
+        .on_accept_start = s_race_test_on_accept_start,
+        .on_accept_start_user_data = &listener_args,
     };
     ASSERT_SUCCESS(aws_socket_start_accept(&listener, event_loop, listener_options));
+
+    /* Wait for listener to be ready -- Apple NW Framework assigns port asynchronously */
+    aws_mutex_lock(&listener_args.mutex);
+    aws_condition_variable_wait_pred(&listener_args.cv, &listener_args.mutex, s_listener_ready_pred, &listener_args);
+    aws_mutex_unlock(&listener_args.mutex);
+
+    /* NOW get the OS-assigned port */
+    struct aws_socket_endpoint bound_endpoint;
+    ASSERT_SUCCESS(aws_socket_get_bound_address(&listener, &bound_endpoint));
+    ASSERT_TRUE(bound_endpoint.port > 0);
 
     /* Run the race scenario multiple times to increase TSAN detection probability */
     const int iterations = 50;
