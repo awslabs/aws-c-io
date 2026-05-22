@@ -118,6 +118,17 @@ static void s_race_test_shutdown_fn(void *user_data) {
     aws_condition_variable_notify_one(&args->cv);
 }
 
+static void s_race_test_on_write_complete(
+    struct aws_socket *socket,
+    int error_code,
+    size_t bytes_written,
+    void *user_data) {
+    (void)socket;
+    (void)error_code;
+    (void)bytes_written;
+    (void)user_data;
+}
+
 /**
  * Write data from the server socket then immediately close the client socket.
  * This creates the race window: Network.framework enqueues s_process_incoming_data_task
@@ -134,7 +145,7 @@ static void s_race_test_write_then_close_task(struct aws_task *task, void *arg, 
     const char data[] = "X";
     struct aws_byte_buf buf = aws_byte_buf_from_array((const uint8_t *)data, 1);
     struct aws_byte_cursor cursor = aws_byte_cursor_from_buf(&buf);
-    aws_socket_write(args->socket, &cursor, NULL, NULL);
+    aws_socket_write(args->socket, &cursor, s_race_test_on_write_complete, NULL);
 }
 
 /**
@@ -171,8 +182,7 @@ static int s_test_nw_socket_close_while_data_pending(struct aws_allocator *alloc
     };
 
     struct aws_socket_endpoint endpoint = {
-        .address = "127.0.0.1",
-        .port = 0, /* OS-assigned */
+        .address = "127.0.0.1", .port = 0, /* OS-assigned */
     };
 
     /* Set up listener */
