@@ -261,21 +261,25 @@ static int s_test_nw_socket_close_while_data_pending(struct aws_allocator *alloc
         ASSERT_SUCCESS(aws_socket_subscribe_to_readable_events(&client, s_race_test_on_readable, &client_args));
 
         /* Schedule: server writes data (triggers nw_connection_receive on client side) */
-        struct close_race_test_args server_write_args = {
+        struct close_race_test_args combined_args = {
             .socket = server_sock,
             .mutex = AWS_MUTEX_INIT,
             .cv = AWS_CONDITION_VARIABLE_INIT,
         };
         struct aws_task write_task = {
             .fn = s_race_test_write_then_close_task,
-            .arg = &server_write_args,
+            .arg = &combined_args,
         };
         aws_event_loop_schedule_task_now(event_loop, &write_task);
 
-        /* Small delay to let the write get dispatched but not necessarily delivered */
-        aws_thread_current_sleep(aws_timestamp_convert(1, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
-
-        /* Close client socket -- the race: data may be in-flight on dispatch queue */
+        /* Close the client socket immediately after write is scheduled.
+         * The close task runs on the same serial queue after the write task.
+         * s_process_incoming_data_task (enqueued by NW receive completion) will
+         * typically run AFTER close on the serial queue.
+         *
+         * BUG: s_socket_close_fn doesn't NULL on_readable, so the data task
+         * still calls on_readable after close.
+         * FIX: NULL on_readable in close, so data task skips the callback. */
         client_args.socket = &client;
         client_args.close_completed = false;
         client_args.shutdown_complete = false;
@@ -290,6 +294,31 @@ static int s_test_nw_socket_close_while_data_pending(struct aws_allocator *alloc
         aws_mutex_lock(&client_args.mutex);
         aws_condition_variable_wait_pred(&client_args.cv, &client_args.mutex, s_close_pred, &client_args);
         aws_mutex_unlock(&client_args.mutex);
+
+        /* Reset readable_fired AFTER close completes -- we only care about
+         * on_readable calls that happen after close */
+        aws_mutex_lock(&client_args.mutex);
+        client_args.readable_fired = false;
+        aws_mutex_unlock(&client_args.mutex);
+
+        /* Give time for s_process_incoming_data_task to fire (it may be enqueued
+         * on the serial queue after close) */
+        aws_thread_current_sleep(aws_timestamp_convert(50, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
+
+        /* ASSERT: on_readable should NOT fire after close.
+         * Without the fix, on_readable fires because s_socket_close_fn doesn't NULL it.
+         * With the fix, on_readable is NULLed, so s_process_incoming_data_task skips it. */
+        aws_mutex_lock(&client_args.mutex);
+        bool readable_fired_after_close = client_args.readable_fired;
+        aws_mutex_unlock(&client_args.mutex);
+
+        if (readable_fired_after_close) {
+            /* The bug is proven: on_readable was called after socket close.
+             * In production this causes EXC_BAD_ACCESS when the channel/slot is freed. */
+            ASSERT_FALSE(
+                readable_fired_after_close,
+                "on_readable fired after socket close - race condition bug (iteration %d)!");
+        }
 
         aws_socket_clean_up(&client);
         aws_mutex_lock(&client_args.mutex);
