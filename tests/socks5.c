@@ -677,7 +677,10 @@ static int s_apply_protocol_testing_step(
     int last_error_code = AWS_ERROR_SUCCESS;
     enum aws_socks5_protocol_status last_status = AWS_S5PS_IN_PROGRESS;
 
-    while (input_cursor.len > 0) {
+    // make sure we call it at least once
+    bool driven = false;
+
+    while ((input_cursor.len > 0 || !driven) && last_status == AWS_S5PS_IN_PROGRESS) {
         struct aws_byte_cursor chunk_cursor =
             s_aws_byte_cursor_advance_clipped(&input_cursor, options->input_chunk_size);
 
@@ -687,7 +690,7 @@ static int s_apply_protocol_testing_step(
         context.data = &chunk_cursor;
         context.to_write = &temp_output;
 
-        while (chunk_cursor.len > 0) {
+        while (chunk_cursor.len > 0 || !driven) {
             aws_socks5_proxy_impl_drive_negotiation(impl, &context);
             last_error_code = context.error_code;
             last_status = context.status;
@@ -698,10 +701,11 @@ static int s_apply_protocol_testing_step(
             }
 
             aws_byte_buf_reset(&temp_output, false);
+            driven = true;
         }
     }
 
-    while (full_output.len < step->expected_output.len) {
+    while ((full_output.len < step->expected_output.len) && last_status == AWS_S5PS_IN_PROGRESS) {
         struct aws_socks5_negotiation_context context;
         AWS_ZERO_STRUCT(context);
 
@@ -886,3 +890,295 @@ static int s_socks5_impl_basic_auth_negotiation_success_fn(struct aws_allocator 
 }
 
 AWS_TEST_CASE(socks5_impl_basic_auth_negotiation_success, s_socks5_impl_basic_auth_negotiation_success_fn)
+
+struct aws_socks5_proxy_negotiation_strategy_bad_methods {
+    struct aws_socks5_proxy_negotiation_strategy base;
+
+    int (*get_methods)(struct aws_socks5_proxy_negotiation_strategy_instance *, struct aws_array_list *);
+};
+
+static void s_aws_socks5_proxy_negotiation_strategy_bad_methods_final_release(void *value) {
+    if (value == NULL) {
+        return;
+    }
+
+    struct aws_socks5_proxy_negotiation_strategy *base = value;
+    struct aws_socks5_proxy_negotiation_strategy_bad_methods *strategy = base->impl;
+
+    aws_mem_release(strategy->base.allocator, strategy);
+}
+
+struct aws_socks5_proxy_negotiation_strategy_instance_bad_methods {
+    struct aws_socks5_proxy_negotiation_strategy_instance base;
+
+    int (*get_methods)(struct aws_socks5_proxy_negotiation_strategy_instance *, struct aws_array_list *);
+};
+
+static void s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_destroy(
+    struct aws_socks5_proxy_negotiation_strategy_instance *instance) {
+    if (instance == NULL) {
+        return;
+    }
+
+    struct aws_socks5_proxy_negotiation_strategy_instance_bad_methods *bad_methods_instance = instance->impl;
+
+    aws_mem_release(bad_methods_instance->base.allocator, bad_methods_instance);
+}
+
+static void s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_drive_negotiation(
+    struct aws_socks5_proxy_negotiation_strategy_instance *instance,
+    struct aws_socks5_negotiation_context *context) {
+
+    context->status = AWS_S5PS_FAILURE;
+    context->error_code = AWS_ERROR_UNIMPLEMENTED;
+}
+
+static int s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_get_auth_methods(
+    struct aws_socks5_proxy_negotiation_strategy_instance *instance,
+    struct aws_array_list *methods) {
+    (void)instance;
+
+    struct aws_socks5_proxy_negotiation_strategy_instance_bad_methods *bad_methods_instance = instance->impl;
+    return (*bad_methods_instance).get_methods(instance, methods);
+}
+
+static struct aws_socks5_proxy_negotiation_strategy_instance_vtable s_bad_methods_strategy_instance_vtable = {
+    .destroy = s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_destroy,
+    .drive_negotiation = s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_drive_negotiation,
+    .get_auth_methods = s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_get_auth_methods,
+};
+
+static struct aws_socks5_proxy_negotiation_strategy_instance *
+    s_aws_socks5_proxy_negotiation_strategy_bad_methods_new_instance(
+        struct aws_socks5_proxy_negotiation_strategy *strategy) {
+    struct aws_socks5_proxy_negotiation_strategy_instance_bad_methods *instance = aws_mem_calloc(
+        strategy->allocator, 1, sizeof(struct aws_socks5_proxy_negotiation_strategy_instance_bad_methods));
+    instance->base.allocator = strategy->allocator;
+    instance->base.vtable = &s_bad_methods_strategy_instance_vtable;
+    instance->base.impl = instance;
+
+    struct aws_socks5_proxy_negotiation_strategy_bad_methods *bad_methods_strategy = strategy->impl;
+    instance->get_methods = bad_methods_strategy->get_methods;
+
+    return &instance->base;
+}
+
+static struct aws_socks5_proxy_negotiation_strategy_vtable s_bad_methods_strategy_vtable = {
+    .new_instance = s_aws_socks5_proxy_negotiation_strategy_bad_methods_new_instance,
+};
+
+static struct aws_socks5_proxy_negotiation_strategy *s_aws_socks5_proxy_negotiation_strategy_new_bad_methods(
+    struct aws_allocator *allocator,
+    int (*get_methods)(struct aws_socks5_proxy_negotiation_strategy_instance *, struct aws_array_list *)) {
+    struct aws_socks5_proxy_negotiation_strategy_bad_methods *strategy =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_proxy_negotiation_strategy_bad_methods));
+
+    strategy->base.allocator = allocator;
+    strategy->base.vtable = &s_bad_methods_strategy_vtable;
+    strategy->base.impl = strategy;
+    aws_ref_count_init(
+        &strategy->base.ref_count, &strategy->base, s_aws_socks5_proxy_negotiation_strategy_bad_methods_final_release);
+    strategy->get_methods = get_methods;
+
+    return &strategy->base;
+}
+
+static struct socks5_protocol_testing_step bad_methods_step = {
+    .input_data = {.ptr = NULL, .len = 0},
+    .expected_output = {.ptr = NULL, .len = 0},
+    .expected_error_code = AWS_IO_SOCKS5_INTERNAL_FAILURE,
+    .expected_final_status = AWS_S5PS_FAILURE,
+};
+
+static int s_get_methods_none(
+    struct aws_socks5_proxy_negotiation_strategy_instance *instance,
+    struct aws_array_list *methods) {
+    (void)instance;
+    (void)methods;
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_socks5_impl_no_methods_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_strategy *strategy =
+        s_aws_socks5_proxy_negotiation_strategy_new_bad_methods(allocator, s_get_methods_none);
+
+    struct socks5_protocol_testing_step *steps[] = {
+        &bad_methods_step,
+    };
+
+    s_run_test_matrix(strategy, allocator, steps, AWS_ARRAY_SIZE(steps));
+
+    aws_socks5_proxy_negotiation_strategy_release(strategy);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_no_methods_failure, s_socks5_impl_no_methods_failure_fn)
+
+static int s_get_methods_too_many(
+    struct aws_socks5_proxy_negotiation_strategy_instance *instance,
+    struct aws_array_list *methods) {
+    (void)instance;
+
+    for (size_t i = 0; i < 256; ++i) {
+        uint8_t method = i % 256;
+        aws_array_list_push_back(methods, &method);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_socks5_impl_too_many_methods_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_strategy *strategy =
+        s_aws_socks5_proxy_negotiation_strategy_new_bad_methods(allocator, s_get_methods_too_many);
+
+    struct socks5_protocol_testing_step *steps[] = {
+        &bad_methods_step,
+    };
+
+    s_run_test_matrix(strategy, allocator, steps, AWS_ARRAY_SIZE(steps));
+
+    aws_socks5_proxy_negotiation_strategy_release(strategy);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_too_many_methods_failure, s_socks5_impl_too_many_methods_failure_fn)
+
+static uint8_t basic_auth_response_rejected_bytes[] = {0x01, 0x01};
+static struct socks5_protocol_testing_step basic_auth_response_rejected_step = {
+    .input_data =
+        {.ptr = basic_auth_response_rejected_bytes, .len = AWS_ARRAY_SIZE(basic_auth_response_rejected_bytes)},
+    .expected_output = {.ptr = NULL, .len = 0},
+    .expected_error_code = AWS_IO_SOCKS5_SUBNEGOTIATION_REJECTED,
+    .expected_final_status = AWS_S5PS_FAILURE,
+};
+
+static int s_socks5_impl_auth_subnegotiation_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_strategy *strategy = s_create_basic_auth_strategy(allocator);
+
+    struct socks5_protocol_testing_step *steps[] = {
+        &basic_auth_methods_step,
+        &basic_auth_method_selection_step,
+        &basic_auth_response_rejected_step,
+    };
+
+    s_run_test_matrix(strategy, allocator, steps, AWS_ARRAY_SIZE(steps));
+
+    aws_socks5_proxy_negotiation_strategy_release(strategy);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_auth_subnegotiation_failure, s_socks5_impl_auth_subnegotiation_failure_fn)
+
+static uint8_t connect_response_bad_address_type_bytes[] = {
+    0x05,
+    0x00,
+    0x00,
+    0x07, // bad address type
+    0x7F,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x51 // 127.0.0.1:81 outbound addr
+};
+static struct socks5_protocol_testing_step connect_response_bad_address_type_step = {
+    .input_data =
+        {.ptr = connect_response_bad_address_type_bytes,
+         .len = AWS_ARRAY_SIZE(connect_response_bad_address_type_bytes)},
+    .expected_output = {.ptr = NULL, .len = 0},
+    .expected_error_code = AWS_IO_SOCKS5_PROTOCOL_FAILURE,
+    .expected_final_status = AWS_S5PS_FAILURE,
+};
+
+static int s_socks5_impl_connect_response_bad_address_type_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_strategy *strategy = s_create_basic_auth_strategy(allocator);
+
+    struct socks5_protocol_testing_step *steps[] = {
+        &basic_auth_methods_step,
+        &basic_auth_method_selection_step,
+        &basic_auth_response_step,
+        &connect_response_bad_address_type_step,
+    };
+
+    s_run_test_matrix(strategy, allocator, steps, AWS_ARRAY_SIZE(steps));
+
+    aws_socks5_proxy_negotiation_strategy_release(strategy);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    socks5_impl_connect_response_bad_address_type_failure,
+    s_socks5_impl_connect_response_bad_address_type_failure_fn)
+
+static uint8_t connect_refused_bytes[] = {
+    0x05,
+    0x01, // connect refused
+    0x00,
+    0x01,
+    0x7F,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x51 // 127.0.0.1:81 outbound addr
+};
+static struct socks5_protocol_testing_step connect_refused_step = {
+    .input_data = {.ptr = connect_refused_bytes, .len = AWS_ARRAY_SIZE(connect_refused_bytes)},
+    .expected_output = {.ptr = NULL, .len = 0},
+    .expected_error_code = AWS_IO_SOCKS5_CONNECT_REQUEST_FAILED,
+    .expected_final_status = AWS_S5PS_FAILURE,
+};
+
+static int s_socks5_impl_connect_refused_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_strategy *strategy = s_create_basic_auth_strategy(allocator);
+
+    struct socks5_protocol_testing_step *steps[] = {
+        &basic_auth_methods_step,
+        &basic_auth_method_selection_step,
+        &basic_auth_response_step,
+        &connect_refused_step,
+    };
+
+    s_run_test_matrix(strategy, allocator, steps, AWS_ARRAY_SIZE(steps));
+
+    aws_socks5_proxy_negotiation_strategy_release(strategy);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socks5_impl_connect_refused_failure, s_socks5_impl_connect_refused_failure_fn)

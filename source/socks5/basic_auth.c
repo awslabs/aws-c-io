@@ -330,7 +330,8 @@ error:
 }
 
 static struct aws_socks5_proxy_negotiation_strategy_vtable s_basic_auth_strategy_vtable = {
-    .new_instance = s_aws_socks5_proxy_negotiation_strategy_basic_auth_new_instance};
+    .new_instance = s_aws_socks5_proxy_negotiation_strategy_basic_auth_new_instance,
+};
 
 struct aws_socks5_proxy_negotiation_strategy *aws_socks5_proxy_negotiation_strategy_new_basic_auth(
     struct aws_allocator *allocator,

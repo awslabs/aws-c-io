@@ -208,7 +208,8 @@ error:
 }
 
 static struct aws_socks5_proxy_negotiation_strategy_vtable s_no_auth_strategy_vtable = {
-    .new_instance = s_aws_socks5_proxy_negotiation_strategy_no_auth_new_instance};
+    .new_instance = s_aws_socks5_proxy_negotiation_strategy_no_auth_new_instance,
+};
 
 struct aws_socks5_proxy_negotiation_strategy *aws_socks5_proxy_negotiation_strategy_new_no_auth(
     struct aws_allocator *allocator) {
