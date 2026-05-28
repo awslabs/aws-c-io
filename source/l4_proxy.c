@@ -1,0 +1,40 @@
+/**
+* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * SPDX-License-Identifier: Apache-2.0.
+ */
+
+#include <aws/io/l4_proxy.h>
+#include <aws/io/private/l4_proxy_impl.h>
+
+void aws_l4_proxy_config_clean_up(struct aws_l4_proxy_config *config) {
+    aws_byte_buf_clean_up(&config->proxy_host);
+}
+
+struct aws_l4_proxy_config *aws_l4_proxy_config_release(struct aws_l4_proxy_config *config) {
+    if (config) {
+        aws_ref_count_release(&config->ref_count);
+    }
+
+    return NULL;
+}
+
+struct aws_l4_proxy_config *aws_l4_proxy_config_acquire(struct aws_l4_proxy_config *config) {
+    if (config) {
+        aws_ref_count_acquire(&config->ref_count);
+    }
+
+    return config;
+}
+
+struct aws_l4_proxy_channel_handler *aws_l4_proxy_config_new_channel_handler(struct aws_l4_proxy_config *config) {
+    return config->vtable->new_channel_handler(config);
+}
+
+int aws_l4_proxy_channel_handler_redirect(struct aws_l4_proxy_channel_handler *handler, struct aws_socket_options *socket_options, struct aws_connection_remote *original_remote, struct aws_connection_remote *new_remote) {
+    (void)handler;
+    (void)socket_options;
+    (void)original_remote;
+    (void)new_remote;
+
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}

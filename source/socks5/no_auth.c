@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/socks5.h>
+#include <aws/io/l4_proxy.h>
 
 #include <aws/common/allocator.h>
 #include <aws/common/byte_buf.h>
@@ -84,7 +84,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_change_stat
 
 static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(
     struct aws_socks5_proxy_negotiation_strategy_instance_no_auth *instance,
-    struct aws_socks5_negotiation_context *context,
+    struct aws_l4_proxy_negotiation_context *context,
     int error_code) {
     if (instance->state != AWS_S5NANS_COMPLETE_FAILURE) {
         AWS_LOGF_WARN(
@@ -102,7 +102,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(
 
 static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_service_pending_method_selection(
     struct aws_socks5_proxy_negotiation_strategy_instance_no_auth *instance,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
     size_t bytes_needed = METHOD_SELECTION_LENGTH - aws_min_size(instance->inbound_buffer.len, METHOD_SELECTION_LENGTH);
     size_t bytes_available = aws_min_size(bytes_needed, (context->data) ? context->data->len : 0);
 
@@ -141,10 +141,10 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_service_pen
 
 static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_drive_negotiation(
     struct aws_socks5_proxy_negotiation_strategy_instance *instance,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
     struct aws_socks5_proxy_negotiation_strategy_instance_no_auth *no_auth_instance = instance->impl;
 
-    context->status = AWS_S5PS_IN_PROGRESS;
+    context->status = AWS_L4PPS_IN_PROGRESS;
     context->error_code = AWS_ERROR_SUCCESS;
 
     enum aws_socks5_no_auth_negotiation_state last_state = AWS_S5NANS_INVALID;
@@ -157,7 +157,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_drive_negot
                 break;
 
             case AWS_S5NANS_COMPLETE_SUCCESS:
-                context->status = AWS_S5PS_SUCCESS;
+                context->status = AWS_L4PPS_SUCCESS;
                 return;
 
             default:
@@ -166,7 +166,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_drive_negot
     }
 
     if (no_auth_instance->state == AWS_S5NANS_COMPLETE_FAILURE) {
-        context->status = AWS_S5PS_FAILURE;
+        context->status = AWS_L4PPS_FAILURE;
     }
 }
 

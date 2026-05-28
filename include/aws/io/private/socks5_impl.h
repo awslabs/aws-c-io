@@ -11,7 +11,8 @@
 #include <aws/common/array_list.h>
 #include <aws/common/byte_buf.h>
 #include <aws/common/ref_count.h>
-#include <aws/io/socks5.h>
+#include <aws/io/l4_proxy.h>
+#include <aws/io/private/l4_proxy_impl.h>
 
 #include <stdint.h>
 
@@ -21,40 +22,9 @@
 #define NO_ACCEPTABLE_METHODS_ID 255
 
 struct aws_socks5_proxy_config {
-    struct aws_allocator *allocator;
-
-    struct aws_ref_count ref_count;
-
-    struct aws_byte_buf proxy_host;
-    uint16_t proxy_port;
+    struct aws_l4_proxy_config base;
 
     struct aws_socks5_proxy_negotiation_strategy *negotiation_strategy;
-
-    uint32_t negotiation_timeout_ms;
-};
-
-enum aws_socks5_protocol_status {
-    AWS_S5PS_IN_PROGRESS,
-    AWS_S5PS_SUCCESS,
-    AWS_S5PS_FAILURE,
-};
-
-/*
- * Input-output structure containing the results of an attempt to progress the auth negotiation
- */
-struct aws_socks5_negotiation_context {
-
-    /* Incoming data to be processed.  Negotiation instance will update this based on bytes consumed */
-    struct aws_byte_cursor *data;
-
-    /* Resulting current status of the negotiation */
-    enum aws_socks5_protocol_status status;
-
-    /* Data to write to the socket as part of the negotiation.  Caller must always initialize this. */
-    struct aws_byte_buf *to_write;
-
-    /* if the negotiation failed, this has the error code in it */
-    int error_code;
 };
 
 struct aws_socks5_proxy_negotiation_strategy_instance;
@@ -63,7 +33,7 @@ struct aws_socks5_proxy_negotiation_strategy_instance_vtable {
     void (*destroy)(struct aws_socks5_proxy_negotiation_strategy_instance *);
     void (*drive_negotiation)(
         struct aws_socks5_proxy_negotiation_strategy_instance *,
-        struct aws_socks5_negotiation_context *);
+        struct aws_l4_proxy_negotiation_context *);
 
     /*
      * By keeping this separate from drive_negotiation we make it possible to compose strategies.  In particular,
@@ -108,7 +78,7 @@ AWS_IO_API void aws_socks5_proxy_negotiation_strategy_instance_destroy(
 
 AWS_IO_API void aws_socks5_proxy_negotiation_strategy_instance_drive_negotiation(
     struct aws_socks5_proxy_negotiation_strategy_instance *instance,
-    struct aws_socks5_negotiation_context *context);
+    struct aws_l4_proxy_negotiation_context *context);
 
 AWS_IO_API int aws_socks5_proxy_negotiation_strategy_instance_get_auth_methods(
     struct aws_socks5_proxy_negotiation_strategy_instance *instance,
@@ -116,9 +86,6 @@ AWS_IO_API int aws_socks5_proxy_negotiation_strategy_instance_get_auth_methods(
 
 AWS_IO_API struct aws_socks5_proxy_negotiation_strategy_instance *aws_socks5_proxy_negotiation_strategy_new_instance(
     struct aws_socks5_proxy_negotiation_strategy *strategy);
-
-AWS_IO_API struct aws_socks5_proxy_negotiation_strategy *aws_socks5_proxy_negotiation_strategy_new_no_auth(
-    struct aws_allocator *allocator);
 
 AWS_IO_API struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
     struct aws_allocator *allocator,
@@ -128,7 +95,7 @@ AWS_IO_API void aws_socks5_proxy_impl_destroy(struct aws_socks5_proxy_impl *impl
 
 AWS_IO_API void aws_socks5_proxy_impl_drive_negotiation(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context);
+    struct aws_l4_proxy_negotiation_context *context);
 
 AWS_EXTERN_C_END
 

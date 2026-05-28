@@ -3,33 +3,49 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/socks5.h>
+#include <aws/io/l4_proxy.h>
 
 #include <aws/common/allocator.h>
 #include <aws/common/byte_buf.h>
 #include <aws/common/ref_count.h>
 #include <aws/io/logging.h>
+#include <aws/io/private/l4_proxy_impl.h>
 #include <aws/io/private/socks5_impl.h>
+#include <aws/io/socks5.h>
+
 
 static void s_aws_socks5_proxy_config_destroy(void *value) {
-    struct aws_socks5_proxy_config *config = value;
-    if (!config) {
+    struct aws_l4_proxy_config *l4_config = value;
+    if (!l4_config) {
         return;
     }
 
-    aws_byte_buf_clean_up(&config->proxy_host);
+    struct aws_socks5_proxy_config *config = l4_config->impl;
+
+    aws_l4_proxy_config_clean_up(l4_config);
     aws_socks5_proxy_negotiation_strategy_release(config->negotiation_strategy);
 
-    aws_mem_release(config->allocator, config);
+    aws_mem_release(config->base.allocator, config);
 }
 
-struct aws_socks5_proxy_config *aws_socks5_proxy_config_new(
+static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config);
+
+static struct aws_l4_proxy_config_vtable s_aws_socks5_proxy_config_vtable = {
+    .new_channel_handler = s_aws_l4_proxy_channel_handler_new_socks5,
+};
+
+struct aws_l4_proxy_config *aws_l4_proxy_config_new_socks5(
     struct aws_allocator *allocator,
     struct aws_socks5_proxy_options *options) {
 
     struct aws_socks5_proxy_config *config = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_proxy_config));
-    config->allocator = allocator;
-    config->proxy_port = options->proxy_port;
+    config->base.allocator = allocator;
+    config->base.vtable = &s_aws_socks5_proxy_config_vtable;
+    aws_ref_count_init(&config->base.ref_count, config, s_aws_socks5_proxy_config_destroy);
+    config->base.proxy_port = options->proxy_port;
+    aws_byte_buf_init_copy_from_cursor(&config->base.proxy_host, allocator, options->proxy_host);
+    config->base.negotiation_timeout_ms = options->negotiation_timeout_ms;
+    config->base.impl = config;
 
     /* ensure we always have a strategy */
     if (options->negotiation_strategy) {
@@ -38,29 +54,7 @@ struct aws_socks5_proxy_config *aws_socks5_proxy_config_new(
         config->negotiation_strategy = aws_socks5_proxy_negotiation_strategy_new_no_auth(allocator);
     }
 
-    config->negotiation_timeout_ms = options->negotiation_timeout_ms;
-
-    aws_byte_buf_init_copy_from_cursor(&config->proxy_host, allocator, options->proxy_host);
-
-    aws_ref_count_init(&config->ref_count, config, s_aws_socks5_proxy_config_destroy);
-
-    return config;
-}
-
-struct aws_socks5_proxy_config *aws_socks5_proxy_config_release(struct aws_socks5_proxy_config *config) {
-    if (config) {
-        aws_ref_count_release(&config->ref_count);
-    }
-
-    return NULL;
-}
-
-struct aws_socks5_proxy_config *aws_socks5_proxy_config_acquire(struct aws_socks5_proxy_config *config) {
-    if (config) {
-        aws_ref_count_acquire(&config->ref_count);
-    }
-
-    return config;
+    return &config->base;
 }
 
 // general negotiation strategy
@@ -97,7 +91,7 @@ void aws_socks5_proxy_negotiation_strategy_instance_destroy(
 
 void aws_socks5_proxy_negotiation_strategy_instance_drive_negotiation(
     struct aws_socks5_proxy_negotiation_strategy_instance *instance,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
     instance->vtable->drive_negotiation(instance, context);
 }
 
@@ -158,7 +152,7 @@ void aws_socks5_proxy_impl_destroy(struct aws_socks5_proxy_impl *impl) {
     aws_byte_buf_clean_up(&impl->write_buffer);
     aws_byte_buf_clean_up(&impl->read_buffer);
 
-    aws_socks5_proxy_config_release(impl->config);
+    aws_l4_proxy_config_release(&impl->config->base);
 
     aws_mem_release(impl->allocator, impl);
 }
@@ -176,7 +170,8 @@ struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
 
     struct aws_socks5_proxy_impl *impl = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_proxy_impl));
     impl->allocator = allocator;
-    impl->config = aws_socks5_proxy_config_acquire(config);
+    impl->config = config;
+    aws_l4_proxy_config_acquire(&impl->config->base);
     impl->auth_instance = aws_socks5_proxy_negotiation_strategy_new_instance(config->negotiation_strategy);
     impl->state = AWS_S5PIS_START;
     if (aws_byte_buf_init(&impl->write_buffer, allocator, DEFAULT_SOCKS5_PROTOCOL_BUFFER_SIZE) ||
@@ -195,7 +190,7 @@ failure:
 
 static void s_on_socks5_protocol_error(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context,
+    struct aws_l4_proxy_negotiation_context *context,
     int error_code) {
     context->error_code = error_code;
     impl->final_error_code = error_code;
@@ -250,7 +245,7 @@ static const size_t SOCKS_RESPONSE_REPLY_CODE_INDEX = 1;
 
 static void s_handle_socks5_impl_state_start(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
 
     struct aws_array_list methods;
     aws_array_list_init_dynamic(&methods, impl->allocator, 1, sizeof(uint8_t));
@@ -287,7 +282,7 @@ done:
 
 static void s_handle_socks5_impl_state_pending_method_request(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
 
     size_t write_length =
         aws_min_size(context->to_write->capacity - context->to_write->len, impl->pending_write_data.len);
@@ -306,40 +301,40 @@ static void s_build_connect_request(struct aws_socks5_proxy_impl *impl) {
 
     // version (1 byte) + command (1 byte) + reserved (1 byte) + address type (1 byte) +
     //   address length (1 byte) + address (variable length) + port (2 bytes)
-    size_t requiredBytes = 7 + impl->config->proxy_host.len;
+    size_t requiredBytes = 7 + impl->config->base.proxy_host.len;
     aws_byte_buf_reserve(&impl->write_buffer, requiredBytes);
 
     aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_VERSION);                         // version byte
     aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_TYPE_CONNECT);            // command byte
     aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_RESERVED_VALUE);          // reserved byte
     aws_byte_buf_write_u8(&impl->write_buffer, AWS_SOCKS5_ADDRESS_TYPE_DOMAIN_NAME);   // address type byte
-    aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)impl->config->proxy_host.len); // address length byte
+    aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)impl->config->base.proxy_host.len); // address length byte
 
-    struct aws_byte_cursor connect_cursor = aws_byte_cursor_from_buf(&impl->config->proxy_host);
+    struct aws_byte_cursor connect_cursor = aws_byte_cursor_from_buf(&impl->config->base.proxy_host);
     aws_byte_buf_append(&impl->write_buffer, &connect_cursor);              // address
-    aws_byte_buf_write_be16(&impl->write_buffer, impl->config->proxy_port); // port
+    aws_byte_buf_write_be16(&impl->write_buffer, impl->config->base.proxy_port); // port
 
     impl->pending_write_data = aws_byte_cursor_from_buf(&impl->write_buffer);
 }
 
 static void s_handle_socks5_impl_state_pending_auth_subnegotiation(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
 
-    struct aws_socks5_negotiation_context auth_context = *context;
+    struct aws_l4_proxy_negotiation_context auth_context = *context;
     aws_socks5_proxy_negotiation_strategy_instance_drive_negotiation(impl->auth_instance, &auth_context);
 
     context->data = auth_context.data;
     context->error_code = auth_context.error_code;
 
     switch (auth_context.status) {
-        case AWS_S5PS_SUCCESS:
+        case AWS_L4PPS_SUCCESS:
             s_build_connect_request(impl);
             s_transition_socks5_impl_state(impl, AWS_S5PIS_PENDING_REQUEST);
             break;
 
-        case AWS_S5PS_FAILURE:
-            context->status = AWS_S5PS_FAILURE;
+        case AWS_L4PPS_FAILURE:
+            context->status = AWS_L4PPS_FAILURE;
             s_on_socks5_protocol_error(impl, context, auth_context.error_code);
             s_transition_socks5_impl_state(impl, AWS_S5PIS_FAILURE);
             break;
@@ -351,7 +346,7 @@ static void s_handle_socks5_impl_state_pending_auth_subnegotiation(
 
 static void s_handle_socks5_impl_state_pending_request(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
     size_t write_length =
         aws_min_size(context->to_write->capacity - context->to_write->len, impl->pending_write_data.len);
     if (write_length > 0) {
@@ -367,7 +362,7 @@ static void s_handle_socks5_impl_state_pending_request(
 
 static bool s_read_required_bytes_for_response(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context,
+    struct aws_l4_proxy_negotiation_context *context,
     size_t num_bytes_required) {
 
     if (impl->read_buffer.len >= num_bytes_required) {
@@ -426,7 +421,7 @@ static const char *s_socks5_reply_code_strings[] = {
 
 static void s_handle_socks5_impl_state_pending_response(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
 
     if (!s_read_required_bytes_for_response(impl, context, MINIMUM_RESPONSE_BYTES_REQUIRED)) {
         return;
@@ -462,21 +457,21 @@ static void s_handle_socks5_impl_state_pending_response(
                 (void *)impl,
                 (int)reply_code);
         }
-        context->status = AWS_S5PS_FAILURE;
+        context->status = AWS_L4PPS_FAILURE;
         s_on_socks5_protocol_error(impl, context, AWS_IO_SOCKS5_CONNECT_REQUEST_FAILED);
         s_transition_socks5_impl_state(impl, AWS_S5PIS_FAILURE);
         return;
     }
 
     AWS_LOGF_INFO(AWS_LS_IO_SOCKS5, "(%p) Connect request successful", (void *)impl);
-    context->status = AWS_S5PS_SUCCESS;
+    context->status = AWS_L4PPS_SUCCESS;
     s_transition_socks5_impl_state(impl, AWS_S5PIS_SUCCESS);
 }
 
 void aws_socks5_proxy_impl_drive_negotiation(
     struct aws_socks5_proxy_impl *impl,
-    struct aws_socks5_negotiation_context *context) {
-    context->status = AWS_S5PS_IN_PROGRESS;
+    struct aws_l4_proxy_negotiation_context *context) {
+    context->status = AWS_L4PPS_IN_PROGRESS;
 
     enum aws_socks5_proxy_impl_state last_state = AWS_S5PIS_INVALID;
     while (last_state != impl->state) {
@@ -503,13 +498,19 @@ void aws_socks5_proxy_impl_drive_negotiation(
                 break;
 
             case AWS_S5PIS_SUCCESS:
-                context->status = AWS_S5PS_SUCCESS;
+                context->status = AWS_L4PPS_SUCCESS;
                 break;
 
             default:
-                context->status = AWS_S5PS_FAILURE;
+                context->status = AWS_L4PPS_FAILURE;
                 context->error_code = impl->final_error_code;
                 break;
         }
     }
+}
+
+static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config) {
+    (void)config;
+
+    return NULL;
 }

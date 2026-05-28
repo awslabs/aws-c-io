@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include <aws/io/socks5.h>
+#include <aws/io/l4_proxy.h>
 
 #include <aws/io/private/socks5_impl.h>
+#include <aws/io/socks5.h>
 #include <aws/testing/aws_test_harness.h>
 
 static struct aws_byte_cursor s_aws_byte_cursor_advance_clipped(struct aws_byte_cursor *cursor, size_t len) {
@@ -89,7 +90,7 @@ AWS_TEST_CASE(socks5_negotiation_no_auth_get_method_ids, s_socks5_negotiation_no
 struct auth_negotiation_test_context {
     struct aws_byte_buf *output_buffer;
     struct aws_byte_cursor *input_cursor;
-    struct aws_socks5_negotiation_context *negotiation_step_context;
+    struct aws_l4_proxy_negotiation_context *negotiation_step_context;
     size_t chunk_length;
     int expected_final_error_code;
 };
@@ -101,13 +102,13 @@ static int s_verify_negotiation(void *verify_context) {
     ASSERT_INT_EQUALS(0, context->negotiation_step_context->data->len); // used all data
 
     if (context->input_cursor->len > 0) {
-        ASSERT_INT_EQUALS(AWS_S5PS_IN_PROGRESS, context->negotiation_step_context->status);
+        ASSERT_INT_EQUALS(AWS_L4PPS_IN_PROGRESS, context->negotiation_step_context->status);
         ASSERT_INT_EQUALS(AWS_ERROR_SUCCESS, context->negotiation_step_context->error_code);
     } else {
         if (context->expected_final_error_code == AWS_ERROR_SUCCESS) {
-            ASSERT_INT_EQUALS(AWS_S5PS_SUCCESS, context->negotiation_step_context->status);
+            ASSERT_INT_EQUALS(AWS_L4PPS_SUCCESS, context->negotiation_step_context->status);
         } else {
-            ASSERT_INT_EQUALS(AWS_S5PS_FAILURE, context->negotiation_step_context->status);
+            ASSERT_INT_EQUALS(AWS_L4PPS_FAILURE, context->negotiation_step_context->status);
         }
 
         ASSERT_INT_EQUALS(context->expected_final_error_code, context->negotiation_step_context->error_code);
@@ -137,7 +138,7 @@ static int s_do_first_phase_auth_negotiation_test(
         struct aws_byte_cursor chunk_cursor = s_aws_byte_cursor_advance_clipped(&input_cursor, i);
 
         while (chunk_cursor.len > 0) {
-            struct aws_socks5_negotiation_context context;
+            struct aws_l4_proxy_negotiation_context context;
             AWS_ZERO_STRUCT(context);
             context.data = &chunk_cursor;
             context.to_write = &output_buffer;
@@ -399,7 +400,7 @@ AWS_TEST_CASE(
 struct second_phase_negotiation_test_context {
     struct aws_byte_buf *output_buffer;
     struct aws_byte_cursor *input_cursor;
-    struct aws_socks5_negotiation_context *negotiation_step_context;
+    struct aws_l4_proxy_negotiation_context *negotiation_step_context;
     size_t chunk_length;
 };
 
@@ -434,7 +435,7 @@ static int s_do_second_phase_auth_negotiation_test(
                 struct aws_byte_cursor input_cursor = aws_byte_cursor_from_buf(&phase_one_input_buffer);
                 struct aws_byte_cursor chunk_cursor = s_aws_byte_cursor_advance_clipped(&input_cursor, i);
 
-                struct aws_socks5_negotiation_context context;
+                struct aws_l4_proxy_negotiation_context context;
                 AWS_ZERO_STRUCT(context);
 
                 while (chunk_cursor.len > 0) {
@@ -443,7 +444,7 @@ static int s_do_second_phase_auth_negotiation_test(
 
                     aws_socks5_proxy_negotiation_strategy_instance_drive_negotiation(instance, &context);
 
-                    ASSERT_INT_EQUALS(AWS_S5PS_IN_PROGRESS, context.status);
+                    ASSERT_INT_EQUALS(AWS_L4PPS_IN_PROGRESS, context.status);
 
                     chunk_cursor = s_aws_byte_cursor_advance_clipped(&input_cursor, i);
                 }
@@ -459,7 +460,7 @@ static int s_do_second_phase_auth_negotiation_test(
                     context.data = NULL;
 
                     aws_socks5_proxy_negotiation_strategy_instance_drive_negotiation(instance, &context);
-                    ASSERT_INT_EQUALS(AWS_S5PS_IN_PROGRESS, context.status);
+                    ASSERT_INT_EQUALS(AWS_L4PPS_IN_PROGRESS, context.status);
                 }
 
                 input_cursor = aws_byte_cursor_from_buf(&phase_two_input_buffer);
@@ -600,11 +601,11 @@ static int s_socks5_impl_no_auth_create_destroy_fn(struct aws_allocator *allocat
         .negotiation_timeout_ms = 10000,
     };
 
-    struct aws_socks5_proxy_config *config = aws_socks5_proxy_config_new(allocator, &options);
-    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config);
+    struct aws_l4_proxy_config *config = aws_l4_proxy_config_new_socks5(allocator, &options);
+    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl);
 
     aws_socks5_proxy_impl_destroy(impl);
-    aws_socks5_proxy_config_release(config);
+    aws_l4_proxy_config_release(config);
 
     aws_io_library_clean_up();
 
@@ -633,11 +634,11 @@ static int s_socks5_impl_basic_auth_create_destroy_fn(struct aws_allocator *allo
         .negotiation_timeout_ms = 10000,
     };
 
-    struct aws_socks5_proxy_config *config = aws_socks5_proxy_config_new(allocator, &options);
-    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config);
+    struct aws_l4_proxy_config *config = aws_l4_proxy_config_new_socks5(allocator, &options);
+    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl);
 
     aws_socks5_proxy_impl_destroy(impl);
-    aws_socks5_proxy_config_release(config);
+    aws_l4_proxy_config_release(config);
     aws_socks5_proxy_negotiation_strategy_release(strategy);
 
     aws_io_library_clean_up();
@@ -651,7 +652,7 @@ struct socks5_protocol_testing_step {
     struct aws_byte_cursor input_data;
     struct aws_byte_cursor expected_output;
     int expected_error_code;
-    enum aws_socks5_protocol_status expected_final_status;
+    enum aws_l4_proxy_protocol_status expected_final_status;
 };
 
 struct socks5_protocol_testing_step_options {
@@ -675,16 +676,16 @@ static int s_apply_protocol_testing_step(
     aws_byte_buf_init(&full_output, allocator, 1024);
 
     int last_error_code = AWS_ERROR_SUCCESS;
-    enum aws_socks5_protocol_status last_status = AWS_S5PS_IN_PROGRESS;
+    enum aws_l4_proxy_protocol_status last_status = AWS_L4PPS_IN_PROGRESS;
 
     // make sure we call it at least once
     bool driven = false;
 
-    while ((input_cursor.len > 0 || !driven) && last_status == AWS_S5PS_IN_PROGRESS) {
+    while ((input_cursor.len > 0 || !driven) && last_status == AWS_L4PPS_IN_PROGRESS) {
         struct aws_byte_cursor chunk_cursor =
             s_aws_byte_cursor_advance_clipped(&input_cursor, options->input_chunk_size);
 
-        struct aws_socks5_negotiation_context context;
+        struct aws_l4_proxy_negotiation_context context;
         AWS_ZERO_STRUCT(context);
 
         context.data = &chunk_cursor;
@@ -705,8 +706,8 @@ static int s_apply_protocol_testing_step(
         }
     }
 
-    while ((full_output.len < step->expected_output.len) && last_status == AWS_S5PS_IN_PROGRESS) {
-        struct aws_socks5_negotiation_context context;
+    while ((full_output.len < step->expected_output.len) && last_status == AWS_L4PPS_IN_PROGRESS) {
+        struct aws_l4_proxy_negotiation_context context;
         AWS_ZERO_STRUCT(context);
 
         context.to_write = &temp_output;
@@ -761,9 +762,9 @@ static int s_run_test_matrix(
                 .negotiation_timeout_ms = 1000,
             };
 
-            struct aws_socks5_proxy_config *config = aws_socks5_proxy_config_new(allocator, &proxy_options);
+            struct aws_l4_proxy_config *config = aws_l4_proxy_config_new_socks5(allocator, &proxy_options);
 
-            struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config);
+            struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl);
 
             struct socks5_protocol_testing_step_options test_options = {
                 .allocator = allocator,
@@ -773,7 +774,7 @@ static int s_run_test_matrix(
             ASSERT_SUCCESS(s_run_testing_steps(impl, steps, num_steps, &test_options));
 
             aws_socks5_proxy_impl_destroy(impl);
-            aws_socks5_proxy_config_release(config);
+            aws_l4_proxy_config_release(config);
         }
     }
 
@@ -785,7 +786,7 @@ static struct socks5_protocol_testing_step no_auth_methods_step = {
     .input_data = {.ptr = NULL, .len = 0},
     .expected_output = {.ptr = no_auth_expected_methods_bytes, .len = AWS_ARRAY_SIZE(no_auth_expected_methods_bytes)},
     .expected_error_code = AWS_ERROR_SUCCESS,
-    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+    .expected_final_status = AWS_L4PPS_IN_PROGRESS,
 };
 
 static uint8_t connect_request_bytes[] = {
@@ -798,7 +799,7 @@ static struct socks5_protocol_testing_step no_auth_method_selection_step = {
     .input_data = {.ptr = no_auth_method_selection_bytes, .len = AWS_ARRAY_SIZE(no_auth_method_selection_bytes)},
     .expected_output = {.ptr = connect_request_bytes, .len = AWS_ARRAY_SIZE(connect_request_bytes)},
     .expected_error_code = AWS_ERROR_SUCCESS,
-    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+    .expected_final_status = AWS_L4PPS_IN_PROGRESS,
 };
 
 static uint8_t connect_response_success_bytes[] = {
@@ -817,7 +818,7 @@ static struct socks5_protocol_testing_step connect_response_success_step = {
     .input_data = {.ptr = connect_response_success_bytes, .len = AWS_ARRAY_SIZE(connect_response_success_bytes)},
     .expected_output = {.ptr = NULL, .len = 0},
     .expected_error_code = AWS_ERROR_SUCCESS,
-    .expected_final_status = AWS_S5PS_SUCCESS,
+    .expected_final_status = AWS_L4PPS_SUCCESS,
 };
 
 static int s_socks5_impl_no_auth_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
@@ -846,7 +847,7 @@ static struct socks5_protocol_testing_step basic_auth_methods_step = {
     .expected_output =
         {.ptr = basic_auth_expected_methods_bytes, .len = AWS_ARRAY_SIZE(basic_auth_expected_methods_bytes)},
     .expected_error_code = AWS_ERROR_SUCCESS,
-    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+    .expected_final_status = AWS_L4PPS_IN_PROGRESS,
 };
 
 static uint8_t basic_auth_request_bytes[] = {0x01, 0x06, 0x73, 0x70, 0x6F, 0x6E, 0x67, 0x65, 0x03, 0x62, 0x6F, 0x62};
@@ -855,7 +856,7 @@ static struct socks5_protocol_testing_step basic_auth_method_selection_step = {
     .input_data = {.ptr = basic_auth_method_selection_bytes, .len = AWS_ARRAY_SIZE(basic_auth_method_selection_bytes)},
     .expected_output = {.ptr = basic_auth_request_bytes, .len = AWS_ARRAY_SIZE(basic_auth_request_bytes)},
     .expected_error_code = AWS_ERROR_SUCCESS,
-    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+    .expected_final_status = AWS_L4PPS_IN_PROGRESS,
 };
 
 static uint8_t basic_auth_success_bytes[] = {0x01, 0x00};
@@ -863,7 +864,7 @@ static struct socks5_protocol_testing_step basic_auth_response_step = {
     .input_data = {.ptr = basic_auth_success_bytes, .len = AWS_ARRAY_SIZE(basic_auth_success_bytes)},
     .expected_output = {.ptr = connect_request_bytes, .len = AWS_ARRAY_SIZE(connect_request_bytes)},
     .expected_error_code = AWS_ERROR_SUCCESS,
-    .expected_final_status = AWS_S5PS_IN_PROGRESS,
+    .expected_final_status = AWS_L4PPS_IN_PROGRESS,
 };
 
 static int s_socks5_impl_basic_auth_negotiation_success_fn(struct aws_allocator *allocator, void *ctx) {
@@ -927,9 +928,9 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_destroy
 
 static void s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_drive_negotiation(
     struct aws_socks5_proxy_negotiation_strategy_instance *instance,
-    struct aws_socks5_negotiation_context *context) {
+    struct aws_l4_proxy_negotiation_context *context) {
 
-    context->status = AWS_S5PS_FAILURE;
+    context->status = AWS_L4PPS_FAILURE;
     context->error_code = AWS_ERROR_UNIMPLEMENTED;
 }
 
@@ -987,7 +988,7 @@ static struct socks5_protocol_testing_step bad_methods_step = {
     .input_data = {.ptr = NULL, .len = 0},
     .expected_output = {.ptr = NULL, .len = 0},
     .expected_error_code = AWS_IO_SOCKS5_INTERNAL_FAILURE,
-    .expected_final_status = AWS_S5PS_FAILURE,
+    .expected_final_status = AWS_L4PPS_FAILURE,
 };
 
 static int s_get_methods_none(
@@ -1064,7 +1065,7 @@ static struct socks5_protocol_testing_step basic_auth_response_rejected_step = {
         {.ptr = basic_auth_response_rejected_bytes, .len = AWS_ARRAY_SIZE(basic_auth_response_rejected_bytes)},
     .expected_output = {.ptr = NULL, .len = 0},
     .expected_error_code = AWS_IO_SOCKS5_SUBNEGOTIATION_REJECTED,
-    .expected_final_status = AWS_S5PS_FAILURE,
+    .expected_final_status = AWS_L4PPS_FAILURE,
 };
 
 static int s_socks5_impl_auth_subnegotiation_failure_fn(struct aws_allocator *allocator, void *ctx) {
@@ -1109,7 +1110,7 @@ static struct socks5_protocol_testing_step connect_response_bad_address_type_ste
          .len = AWS_ARRAY_SIZE(connect_response_bad_address_type_bytes)},
     .expected_output = {.ptr = NULL, .len = 0},
     .expected_error_code = AWS_IO_SOCKS5_PROTOCOL_FAILURE,
-    .expected_final_status = AWS_S5PS_FAILURE,
+    .expected_final_status = AWS_L4PPS_FAILURE,
 };
 
 static int s_socks5_impl_connect_response_bad_address_type_failure_fn(struct aws_allocator *allocator, void *ctx) {
@@ -1155,7 +1156,7 @@ static struct socks5_protocol_testing_step connect_refused_step = {
     .input_data = {.ptr = connect_refused_bytes, .len = AWS_ARRAY_SIZE(connect_refused_bytes)},
     .expected_output = {.ptr = NULL, .len = 0},
     .expected_error_code = AWS_IO_SOCKS5_CONNECT_REQUEST_FAILED,
-    .expected_final_status = AWS_S5PS_FAILURE,
+    .expected_final_status = AWS_L4PPS_FAILURE,
 };
 
 static int s_socks5_impl_connect_refused_failure_fn(struct aws_allocator *allocator, void *ctx) {

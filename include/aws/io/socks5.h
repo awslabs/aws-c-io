@@ -1,5 +1,5 @@
 /**
- * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
 
@@ -8,7 +8,10 @@
 
 #include <aws/io/io.h>
 
-struct aws_socks5_proxy_config;
+#include <aws/common/byte_buf.h>
+
+#include <stdint.h>
+
 struct aws_socks5_proxy_negotiation_strategy;
 
 struct aws_socks5_proxy_negotiation_basic_auth_options {
@@ -27,13 +30,9 @@ struct aws_socks5_proxy_options {
 
 AWS_EXTERN_C_BEGIN
 
-AWS_IO_API struct aws_socks5_proxy_config *aws_socks5_proxy_config_new(
+AWS_IO_API struct aws_l4_proxy_config *aws_l4_proxy_config_new_socks5(
     struct aws_allocator *allocator,
     struct aws_socks5_proxy_options *options);
-
-AWS_IO_API struct aws_socks5_proxy_config *aws_socks5_proxy_config_acquire(struct aws_socks5_proxy_config *config);
-
-AWS_IO_API struct aws_socks5_proxy_config *aws_socks5_proxy_config_release(struct aws_socks5_proxy_config *config);
 
 AWS_IO_API struct aws_socks5_proxy_negotiation_strategy *aws_socks5_proxy_negotiation_strategy_new_basic_auth(
     struct aws_allocator *allocator,
