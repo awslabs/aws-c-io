@@ -1499,4 +1499,3 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
 }
 
 AWS_TEST_CASE(socket_handler_read_before_shutdown_task, s_socket_read_before_shutdown_task_test)
-
