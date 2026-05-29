@@ -1314,3 +1314,189 @@ static int s_open_channel_statistics_test(struct aws_allocator *allocator, void 
 }
 
 AWS_TEST_CASE(open_channel_statistics_test, s_open_channel_statistics_test)
+
+/* Regression test for a race condition where a readable event fires after the setup callback
+ * calls aws_channel_shutdown but before the shutdown task executes.
+ *
+ * In this window, socket_handler->slot->adj_right is NULL (no downstream handler was added),
+ * and calling s_do_read() would crash at aws_channel_slot_downstream_read_window() which
+ * asserts adj_right != NULL.
+ *
+ * The fix adds a guard in s_do_read() to return early when adj_right is NULL.
+ *
+ * The server sends data immediately upon connection. When the server and client are on
+ * different event loops, the server's data can arrive at the client socket before the
+ * client's setup callback is called. The readable event then fires in the same event-loop
+ * tick as the connect event, after the setup callback schedules shutdown but before the
+ * shutdown task runs.
+ */
+
+/* Server setup callback that immediately sends data to the client upon connection.
+ * This makes the client socket readable, potentially before the client's setup callback
+ * calls aws_channel_shutdown(). */
+static void s_socket_handler_setup_failure_server_setup_callback(
+    struct aws_server_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+
+    aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->channel = channel;
+
+    if (setup_test_args->rw_handler != NULL) {
+        struct aws_channel_slot *rw_slot = aws_channel_slot_new(channel);
+        aws_channel_slot_insert_end(channel, rw_slot);
+        aws_channel_slot_set_handler(rw_slot, setup_test_args->rw_handler);
+        setup_test_args->rw_slot = rw_slot;
+    }
+
+    aws_mutex_unlock(setup_test_args->mutex);
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+
+    /* Send data immediately so the client socket becomes readable.
+     * If the server and client are on different event loops, this data arrives at the
+     * client socket before the client's setup callback runs. The readable event then
+     * fires in the same epoll/kqueue batch as the connect event, after the setup callback
+     * schedules shutdown but before the shutdown task runs. */
+    if (setup_test_args->rw_slot != NULL) {
+        struct aws_byte_buf msg = aws_byte_buf_from_c_str("hello");
+        rw_handler_write(setup_test_args->rw_handler, setup_test_args->rw_slot, &msg);
+    }
+}
+
+/* Client setup callback that simulates a setup failure: shuts down the channel without
+ * adding any downstream handler. If the server's data has already arrived at the client
+ * socket, the readable event will fire before the shutdown task runs, calling s_do_read()
+ * with adj_right == NULL. The fix ensures this is handled gracefully. */
+static void s_socket_handler_setup_failure_client_setup_callback(
+    struct aws_client_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+
+    (void)bootstrap;
+    (void)error_code;
+
+    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+
+    aws_mutex_lock(setup_test_args->mutex);
+    setup_test_args->channel = channel;
+    aws_mutex_unlock(setup_test_args->mutex);
+    aws_condition_variable_notify_one(setup_test_args->condition_variable);
+
+    /* Simulate setup failure: shut down without adding a downstream handler.
+     * adj_right remains NULL. If the server's data has already arrived, the readable
+     * event fires before the shutdown task runs. Without the fix, s_do_read() crashes
+     * at aws_channel_slot_downstream_read_window() which asserts adj_right != NULL. */
+    aws_channel_shutdown(channel, AWS_ERROR_UNKNOWN);
+}
+
+static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    s_socket_common_tester_init(allocator, &c_tester);
+
+    uint8_t server_received_message[128] = {0};
+    struct socket_test_rw_args server_rw_args;
+    ASSERT_SUCCESS(s_rw_args_init(
+        &server_rw_args,
+        &c_tester,
+        aws_byte_buf_from_empty_array(server_received_message, sizeof(server_received_message)),
+        0));
+
+    struct aws_channel_handler *server_rw_handler =
+        rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
+    ASSERT_NOT_NULL(server_rw_handler);
+
+    struct socket_test_args server_args;
+    ASSERT_SUCCESS(s_socket_test_args_init(&server_args, &c_tester, server_rw_handler));
+
+    /* Client has no downstream handler - setup callback will call aws_channel_shutdown without adding one */
+    struct socket_test_args client_args;
+    ASSERT_SUCCESS(s_socket_test_args_init(&client_args, &c_tester, NULL));
+
+    /* Set up server with a custom incoming callback that sends data immediately.
+     * We set this up manually (not via s_local_server_tester_init) to use our custom callback. */
+    struct aws_socket_options socket_options;
+    AWS_ZERO_STRUCT(socket_options);
+    socket_options.connect_timeout_ms = 3000;
+    socket_options.type = AWS_SOCKET_STREAM;
+    socket_options.domain = AWS_SOCKET_LOCAL;
+
+    struct aws_socket_endpoint endpoint;
+    aws_socket_endpoint_init_local_address_for_test(&endpoint);
+
+    struct aws_server_bootstrap *server_bootstrap = aws_server_bootstrap_new(allocator, c_tester.el_group);
+    ASSERT_NOT_NULL(server_bootstrap);
+
+    struct aws_server_socket_channel_bootstrap_options server_bootstrap_options = {
+        .bootstrap = server_bootstrap,
+        .enable_read_back_pressure = false,
+        .port = endpoint.port,
+        .host_name = endpoint.address,
+        .socket_options = &socket_options,
+        .incoming_callback = s_socket_handler_setup_failure_server_setup_callback,
+        .shutdown_callback = s_socket_handler_test_server_shutdown_callback,
+        .destroy_callback = s_socket_handler_test_server_listener_destroy_callback,
+        .setup_callback = s_socket_handler_test_server_listener_setup_callback,
+        .user_data = &server_args,
+    };
+
+    struct aws_socket *listener = aws_server_bootstrap_new_socket_listener(&server_bootstrap_options);
+    ASSERT_NOT_NULL(listener);
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &c_tester.condition_variable, &c_tester.mutex, s_listener_connected_predicate, &server_args));
+    ASSERT_TRUE(server_args.error_code == AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_unlock(&c_tester.mutex));
+
+    ASSERT_SUCCESS(aws_socket_get_bound_address(listener, &endpoint));
+
+    struct aws_client_bootstrap_options client_bootstrap_options = {
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
+    ASSERT_NOT_NULL(client_bootstrap);
+
+    struct aws_socket_channel_bootstrap_options client_channel_options;
+    AWS_ZERO_STRUCT(client_channel_options);
+    client_channel_options.bootstrap = client_bootstrap;
+    client_channel_options.host_name = endpoint.address;
+    client_channel_options.port = endpoint.port;
+    client_channel_options.socket_options = &socket_options;
+    client_channel_options.setup_callback = s_socket_handler_setup_failure_client_setup_callback;
+    client_channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
+    client_channel_options.user_data = &client_args;
+
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_channel_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+
+    /* Wait for client channel to shut down cleanly (no crash).
+     * The server sends data immediately, which may make the client socket readable before
+     * the shutdown task runs. The fix ensures s_do_read() handles adj_right == NULL gracefully. */
+    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
+        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_channel_shutdown_predicate, &client_args));
+
+    aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener);
+    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
+        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_listener_destroy_predicate, &server_args));
+
+    aws_mutex_unlock(&c_tester.mutex);
+
+    aws_server_bootstrap_release(server_bootstrap);
+    aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socket_handler_read_before_shutdown_task, s_socket_read_before_shutdown_task_test)
+
