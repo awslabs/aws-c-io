@@ -17,6 +17,19 @@ set -e
 # ec_unittests.crt:   elliptic curve self-signed certificate
 # ec_unittests.p8:    elliptic curve private key, pkcs#8 syntax
 # ec_unittests.p12:   elliptic curve pkcs#12 file bundling the certificate and private key. Password is "1234"
+# mtls_server_root_ca.pem.crt: self-signed root CA for mTLS server
+# mtls_server_root_ca.key:     private key for mtls_server_root_ca
+# mtls_device_root_ca.pem.crt: self-signed root CA for mTLS device
+# mtls_device_root_ca.key:     private key for mtls_device_root_ca
+# mtls_server.pem.crt: server certificate signed by mtls_server_root_ca
+# mtls_server.key:     private key for mtls_server
+# mtls_device.pem.crt: device certificate signed by mtls_device_root_ca
+# mtls_device.key:     private key for mtls_device
+# mtls_untrusted_server_root_ca.pem.crt: self-signed root CA for untrusted mTLS server
+# mtls_untrusted_server_root_ca.key:     private key for mtls_untrusted_server_root_ca
+# mtls_untrusted_server.pem.crt: server certificate signed by mtls_untrusted_server_root_ca
+# mtls_untrusted_server.key:     private key for mtls_untrusted_server
+# mtls_server_root_ca_trust_settings.plist: macOS trust settings plist for mtls_server_root_ca
 
 # Create directory for use with certificate generation
 mkdir -p certGeneration
@@ -82,6 +95,116 @@ for base in unittests ec_unittests; do
             -password pass:1234
 done
 
+# generate_trust_plist <cert_pem> <output_plist>
+# Generates a macOS trust settings plist that marks the given certificate as trusted (trustRoot).
+# The alternative is to use the 'security add-trusted-cert <cert>' command but it uses a prompt, which I couldn't get
+# around in CI.
+generate_trust_plist() {
+    local CERT="$1"
+    local PLIST="$2"
+    local DER_FILE
+    DER_FILE=$(mktemp)
+    openssl x509 -in "$CERT" -outform DER -out "$DER_FILE"
+
+    local FP
+    FP=$(openssl x509 -in "$CERT" -noout -fingerprint -sha1 | sed 's/.*=//;s/://g')
+
+    # Extract issuer DER bytes (2nd SEQUENCE at d=2 in the certificate ASN.1 structure).
+    local ISSUER_INFO ISSUER_OFFSET ISSUER_HL ISSUER_L ISSUER_B64
+    ISSUER_INFO=$(openssl asn1parse -inform DER -in "$DER_FILE" | awk '/d=2.*cons:.*SEQUENCE/{n++; if(n==2){print; exit}}')
+    ISSUER_OFFSET=$(echo "$ISSUER_INFO" | awk -F: '{gsub(/ /,"",$1); print $1}')
+    ISSUER_HL=$(echo "$ISSUER_INFO" | sed 's/.*hl=\([0-9]*\).*/\1/')
+    ISSUER_L=$(echo "$ISSUER_INFO" | sed 's/.*l= *\([0-9]*\).*/\1/')
+    ISSUER_B64=$(dd if="$DER_FILE" bs=1 skip="$ISSUER_OFFSET" count=$((ISSUER_HL + ISSUER_L)) 2>/dev/null | base64)
+
+    # Extract serial number bytes (1st INTEGER at d=2).
+    local SERIAL_INFO SERIAL_OFFSET SERIAL_HL SERIAL_L SERIAL_B64
+    SERIAL_INFO=$(openssl asn1parse -inform DER -in "$DER_FILE" | awk '/d=2.*prim:.*INTEGER/{print; exit}')
+    SERIAL_OFFSET=$(echo "$SERIAL_INFO" | awk -F: '{gsub(/ /,"",$1); print $1}')
+    SERIAL_HL=$(echo "$SERIAL_INFO" | sed 's/.*hl=\([0-9]*\).*/\1/')
+    SERIAL_L=$(echo "$SERIAL_INFO" | sed 's/.*l= *\([0-9]*\).*/\1/')
+    SERIAL_B64=$(dd if="$DER_FILE" bs=1 skip=$((SERIAL_OFFSET + SERIAL_HL)) count="$SERIAL_L" 2>/dev/null | base64)
+
+    local MOD_DATE
+    MOD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    cat > "$PLIST" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>trustList</key>
+	<dict>
+		<key>${FP}</key>
+		<dict>
+			<key>issuerName</key>
+			<data>
+			${ISSUER_B64}
+			</data>
+			<key>modDate</key>
+			<date>${MOD_DATE}</date>
+			<key>serialNumber</key>
+			<data>
+			${SERIAL_B64}
+			</data>
+			<key>trustSettings</key>
+			<array>
+				<dict>
+					<key>kSecTrustSettingsResult</key>
+					<integer>1</integer>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>trustVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>
+EOF
+
+    rm "$DER_FILE"
+}
+
+# Generate mTLS keys and certs
+SUBJ='/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=localhost/emailAddress=aws-sdk-common-runtime@amazon.com'
+CA_SUBJ='/C=US/ST=Washington/L=Seattle/O=Amazon/OU=SDKs/CN=localhostCA/emailAddress=aws-sdk-common-runtime@amazon.com'
+
+# Generate mtls_server_root_ca key and self-signed cert
+openssl genrsa -out mtls_server_root_ca.key 2048
+openssl req -new -x509 -days 824 -sha256 \
+  -key mtls_server_root_ca.key -subj "$CA_SUBJ" -out mtls_server_root_ca.pem.crt
+
+# Generate mtls_device_root_ca key and self-signed cert
+openssl genrsa -out mtls_device_root_ca.key 2048
+openssl req -new -x509 -days 824 -sha256 \
+  -key mtls_device_root_ca.key -subj "$CA_SUBJ" -out mtls_device_root_ca.pem.crt
+
+# Generate mtls_server key and cert (signed by mtls_server_root_ca)
+openssl genrsa -out mtls_server.key 2048
+openssl req -new -key mtls_server.key -subj "$SUBJ" | \
+openssl x509 -req -CA mtls_server_root_ca.pem.crt -CAkey mtls_server_root_ca.key \
+  -CAcreateserial -days 824 -sha256 -out mtls_server.pem.crt
+
+# Generate mtls_device key and cert (signed by mtls_device_root_ca)
+openssl genrsa -out mtls_device.key 2048
+openssl req -new -key mtls_device.key -subj "$SUBJ" | \
+openssl x509 -req -CA mtls_device_root_ca.pem.crt -CAkey mtls_device_root_ca.key \
+  -CAcreateserial -days 824 -sha256 -out mtls_device.pem.crt
+
+# Generate mtls_untrusted_server_root_ca key and self-signed cert
+openssl genrsa -out mtls_untrusted_server_root_ca.key 2048
+openssl req -new -x509 -days 824 -sha256 \
+  -key mtls_untrusted_server_root_ca.key -subj "$CA_SUBJ" -out mtls_untrusted_server_root_ca.pem.crt
+
+# Generate mtls_untrusted_server key and cert (signed by mtls_untrusted_server_root_ca)
+openssl genrsa -out mtls_untrusted_server.key 2048
+openssl req -new -key mtls_untrusted_server.key -subj "$SUBJ" | \
+openssl x509 -req -CA mtls_untrusted_server_root_ca.pem.crt -CAkey mtls_untrusted_server_root_ca.key \
+  -CAcreateserial -days 824 -sha256 -out mtls_untrusted_server.pem.crt
+
+# Generate trust settings plist for mtls_server_root_ca
+generate_trust_plist mtls_server_root_ca.pem.crt mtls_server_root_ca_trust_settings.plist
+
 # Copy the generated certificates and keys to the resources folder
 cd ..
 cp certGeneration/ca_root.crt ./ca_root.crt
@@ -95,6 +218,18 @@ for base in unittests ec_unittests; do
   cp certGeneration/$base.p8 ./$base.p8
   cp certGeneration/$base.p12 ./$base.p12
 done
+
+for base in mtls_server_root_ca mtls_device_root_ca mtls_untrusted_server_root_ca; do
+  cp certGeneration/$base.pem.crt ./$base.pem.crt
+  cp certGeneration/$base.key ./$base.key
+done
+
+for base in mtls_server mtls_device mtls_untrusted_server; do
+  cp certGeneration/$base.pem.crt ./$base.pem.crt
+  cp certGeneration/$base.key ./$base.key
+done
+
+cp certGeneration/mtls_server_root_ca_trust_settings.plist ./mtls_server_root_ca_trust_settings.plist
 
 # Clean up the certGeneration folder
 rm -r certGeneration
