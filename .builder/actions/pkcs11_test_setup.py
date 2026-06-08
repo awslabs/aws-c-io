@@ -118,5 +118,5 @@ class Pkcs11TestSetup(Builder.Action):
 
     def _get_softhsm2_version(self):
         output = self._exec_softhsm2_util('--version').output
-        match = re.match(r'([0-9+])\.([0-9]+).([0-9]+)', output)
+        match = re.match(r'([0-9]+)\.([0-9]+)\.([0-9]+)', output)
         return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
