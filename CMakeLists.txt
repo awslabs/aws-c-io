@@ -139,6 +139,13 @@ if (BYO_CRYPTO)
 endif()
 
 if (USE_S2N)
+        # On macOS x64, prevent s2n's imported targets from using -isystem for OpenSSL headers,
+        # which would cause the system OpenSSL to shadow s2n's bundled copy.
+        if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+            set(_old_CMAKE_NO_SYSTEM_FROM_IMPORTED ${CMAKE_NO_SYSTEM_FROM_IMPORTED})
+            set(CMAKE_NO_SYSTEM_FROM_IMPORTED ON)
+        endif()
+
         file(GLOB AWS_IO_TLS_SRC
                 "source/s2n/*.c"
                 )
@@ -153,6 +160,10 @@ if (USE_S2N)
             # Set flag to use in-source path to  <s2n/unstable/*.h> headers if we do an IN_SOURCE_BUILD.
             aws_use_package(s2n)
             add_definitions(-DAWS_S2N_INSOURCE_PATH)
+        endif()
+
+        if (CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+            set(CMAKE_NO_SYSTEM_FROM_IMPORTED ${_old_CMAKE_NO_SYSTEM_FROM_IMPORTED})
         endif()
 endif()
 
