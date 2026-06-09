@@ -181,6 +181,12 @@ file(GLOB IO_SRC
 
 add_library(${PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})
 aws_set_common_properties(${PROJECT_NAME})
+
+# On macOS x64, prevent imported targets from using -isystem for OpenSSL headers,
+# which would cause the system OpenSSL to shadow s2n's bundled copy.
+if (USE_S2N AND CMAKE_SYSTEM_NAME STREQUAL "Darwin" AND CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
+    set_target_properties(${PROJECT_NAME} PROPERTIES NO_SYSTEM_FROM_IMPORTED ON)
+endif()
 aws_prepare_symbol_visibility_args(${PROJECT_NAME} "AWS_IO")
 aws_check_headers(${PROJECT_NAME} ${AWS_IO_HEADERS})
 
