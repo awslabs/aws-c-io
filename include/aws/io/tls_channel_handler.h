@@ -293,6 +293,21 @@ struct aws_tls_ctx_options {
      * cipher preferences that allow TLS 1.3. If this is set, we will always use non TLS 1.3 preferences.
      */
     struct aws_custom_key_op_handler *custom_key_op_handler;
+
+    /**
+     * Set to true to disable certificate revocation checking during TLS negotiation.
+     *
+     * On Windows (SChannel), this prevents the TLS handshake from making outbound network calls
+     * to CRL/OCSP revocation endpoints, which can block for minutes when the endpoints are unreachable
+     * (e.g., in private subnets without internet access).
+     *
+     * On Linux (s2n), this disables validation of OCSP stapled responses provided by the server.
+     *
+     * On Apple platforms, this is a no-op as revocation checking is not enabled by default.
+     *
+     * Default is false (revocation checking enabled).
+     */
+    bool disable_certificate_revocation_check;
 };
 
 struct aws_tls_negotiated_protocol_message {
@@ -676,6 +691,19 @@ AWS_IO_API int aws_tls_ctx_options_set_alpn_list(struct aws_tls_ctx_options *opt
  * set verify_peer to true.
  */
 AWS_IO_API void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bool verify_peer);
+
+/**
+ * Enables or disables certificate revocation checking during TLS negotiation.
+ *
+ * On Windows (SChannel), when enabled (the default), the TLS handshake will make outbound network calls
+ * to CRL/OCSP revocation endpoints. In environments without internet access, this can cause the handshake
+ * to block for minutes while waiting for network timeouts.
+ *
+ * Set this to true to skip revocation checking entirely.
+ */
+AWS_IO_API void aws_tls_ctx_options_set_certificate_revocation_check_disabled(
+    struct aws_tls_ctx_options *options,
+    bool disabled);
 
 /**
  * Sets preferred TLS Cipher List
