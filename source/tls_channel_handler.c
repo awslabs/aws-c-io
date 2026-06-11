@@ -511,9 +511,7 @@ void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bo
     options->verify_peer = verify_peer;
 }
 
-void aws_tls_ctx_options_set_certificate_revocation_check_disabled(
-    struct aws_tls_ctx_options *options,
-    bool disabled) {
+void aws_tls_ctx_options_set_certificate_revocation_check_disabled(struct aws_tls_ctx_options *options, bool disabled) {
     options->disable_certificate_revocation_check = disabled;
 }
 
