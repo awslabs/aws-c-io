@@ -243,9 +243,12 @@ if(NOT BYO_CRYPTO)
         add_net_test_case(tls_client_channel_negotiation_error_revoked)
     endif()
 
-    # This test will verify that our no_certificate_revocation option works
-    # as expected.
-    add_net_test_case(tls_client_channel_negotiation_revoked_no_check)
+    # This test verifies that our no_certificate_revocation option works.
+    # Runs on Windows (proves revocation is skipped) and Linux (proves option doesn't break s2n).
+    # Skipped on Apple where revocation is never checked and cert validity issues cause false failures.
+    if(NOT APPLE)
+        add_net_test_case(tls_client_channel_negotiation_revoked_no_check)
+    endif()
 
     # Badssl - Broken Crypto endpoint suite
     # We don't include dh1024 as it succeeds on the windows baseline configuration and there does not seem
