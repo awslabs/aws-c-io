@@ -2424,7 +2424,7 @@ struct aws_tls_ctx *s_ctx_new(
         dw_flags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK | SCH_CRED_IGNORE_REVOCATION_OFFLINE |
                     SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
     } else if (is_client_mode) {
-        if (!options->disable_certificate_revocation_check) {
+        if (!options->no_certificate_revocation) {
             dw_flags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
         }
     }

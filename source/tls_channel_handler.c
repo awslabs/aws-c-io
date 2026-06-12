@@ -511,8 +511,8 @@ void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bo
     options->verify_peer = verify_peer;
 }
 
-void aws_tls_ctx_options_set_certificate_revocation_check_disabled(struct aws_tls_ctx_options *options, bool disabled) {
-    options->disable_certificate_revocation_check = disabled;
+void aws_tls_ctx_options_set_no_certificate_revocation(struct aws_tls_ctx_options *options, bool no_revocation) {
+    options->no_certificate_revocation = no_revocation;
 }
 
 void aws_tls_ctx_options_set_minimum_tls_version(

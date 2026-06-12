@@ -243,7 +243,7 @@ if(NOT BYO_CRYPTO)
         add_net_test_case(tls_client_channel_negotiation_error_revoked)
     endif()
 
-    # This test will verify that our disable_certificate_revocation_check option works
+    # This test will verify that our no_certificate_revocation option works
     # as expected.
     add_net_test_case(tls_client_channel_negotiation_revoked_no_check)
 

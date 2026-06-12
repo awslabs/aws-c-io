@@ -1794,7 +1794,7 @@ AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel
 #    endif /* _WIN32 */
 
 static void s_disable_revocation_check(struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_set_certificate_revocation_check_disabled(options, true);
+    aws_tls_ctx_options_set_no_certificate_revocation(options, true);
 }
 
 /* On Windows, connecting to a revoked cert should succeed when revocation checking is disabled */
