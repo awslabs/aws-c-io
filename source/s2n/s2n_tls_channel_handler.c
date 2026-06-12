@@ -1698,17 +1698,20 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->verify_peer) {
-        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
-            if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
-                s_log_and_raise_s2n_errno("ctx: ocsp status request cannot be set");
-                goto cleanup_s2n_config;
-            }
-        } else {
-            if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
-                AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
+
+        if (!options->no_certificate_revocation) {
+            if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
+                if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
+                    s_log_and_raise_s2n_errno("ctx: ocsp status request cannot be set");
+                    goto cleanup_s2n_config;
+                }
             } else {
-                s_log_and_raise_s2n_errno("ctx: cannot enable ocsp stapling");
-                goto cleanup_s2n_config;
+                if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
+                    AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
+                } else {
+                    s_log_and_raise_s2n_errno("ctx: cannot enable ocsp stapling");
+                    goto cleanup_s2n_config;
+                }
             }
         }
 
