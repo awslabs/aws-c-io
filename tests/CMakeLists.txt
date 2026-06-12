@@ -237,13 +237,15 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
     add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
 
-    # Badssl - Certificate Revocation suite (Windows only)
+    # Badssl - Certificate Revocation (Windows only)
     # On Windows, SChannel performs CRL/OCSP revocation checks by default.
-    # These tests verify that our disable_certificate_revocation_check option works.
     if(WIN32)
         add_net_test_case(tls_client_channel_negotiation_error_revoked)
-        add_net_test_case(tls_client_channel_negotiation_revoked_no_check)
     endif()
+
+    # This test will verify that our disable_certificate_revocation_check option works
+    # as expected.
+    add_net_test_case(tls_client_channel_negotiation_revoked_no_check)
 
     # Badssl - Broken Crypto endpoint suite
     # We don't include dh1024 as it succeeds on the windows baseline configuration and there does not seem
