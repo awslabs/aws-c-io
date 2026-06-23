@@ -34,6 +34,9 @@ jobs:
           - rhel8-x64
           - al2-x64
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -41,11 +44,15 @@ jobs:
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
         aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        sed -i 's/docker run/docker run --network host/' ./linux-container-ci.sh # use host network so container can reach local badssl
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }}
 
   linux-byo-crypto:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -98,6 +105,9 @@ jobs:
           # our base Linux image to Ubuntu 22.
             extra-build-flag: --cmake-extra=-DCMAKE_EXE_LINKER_FLAGS="-lresolv"
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -110,6 +120,9 @@ jobs:
   linux-debug:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -126,6 +139,9 @@ jobs:
       matrix:
         sanitizers: [",thread", ",address,undefined"]
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -139,6 +155,9 @@ jobs:
   linux-shared-libs:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -154,6 +173,9 @@ jobs:
   downstream:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
