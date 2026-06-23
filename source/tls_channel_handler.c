@@ -511,6 +511,10 @@ void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bo
     options->verify_peer = verify_peer;
 }
 
+void aws_tls_ctx_options_set_no_certificate_revocation(struct aws_tls_ctx_options *options, bool no_revocation) {
+    options->no_certificate_revocation = no_revocation;
+}
+
 void aws_tls_ctx_options_set_minimum_tls_version(
     struct aws_tls_ctx_options *options,
     enum aws_tls_versions minimum_tls_version) {

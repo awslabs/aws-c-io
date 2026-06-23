@@ -2424,7 +2424,9 @@ struct aws_tls_ctx *s_ctx_new(
         dw_flags |= SCH_CRED_IGNORE_NO_REVOCATION_CHECK | SCH_CRED_IGNORE_REVOCATION_OFFLINE |
                     SCH_CRED_NO_SERVERNAME_CHECK | SCH_CRED_MANUAL_CRED_VALIDATION;
     } else if (is_client_mode) {
-        dw_flags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
+        if (!options->no_certificate_revocation) {
+            dw_flags |= SCH_CRED_REVOCATION_CHECK_CHAIN | SCH_CRED_IGNORE_REVOCATION_OFFLINE;
+        }
     }
 
     /* if someone wants to use broken algorithms like rc4/md5/des they'll need to ask for a special control */
