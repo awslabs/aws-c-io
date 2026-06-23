@@ -63,6 +63,30 @@ def install_trust_store():
         print(f"    {CA_ROOT_SRC}")
 
 
+def update_hosts():
+    """Add *.badssl.test entries to /etc/hosts."""
+    hosts_path = Path("/etc/hosts")
+    marker_start = "#### start of badssl.test hosts ####"
+    marker_end = "#### end of badssl.test hosts ####"
+
+    # Get host list from Makefile
+    result = subprocess.run(
+        ["make", "list-hosts"], cwd=BADSSL_DIR, capture_output=True, text=True)
+    entries = [l for l in result.stdout.splitlines() if l.startswith("127.0.0.1")]
+
+    current = hosts_path.read_text()
+
+    # Remove old block if present
+    if marker_start in current:
+        before = current[:current.index(marker_start)]
+        after = current[current.index(marker_end) + len(marker_end):]
+        current = before.rstrip("\n") + after
+
+    block = "\n".join([marker_start] + entries + [marker_end])
+    hosts_path.write_text(current.rstrip("\n") + "\n" + block + "\n")
+    print(f"[+] Added {len(entries)} host entries to /etc/hosts")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Setup local badssl.com for TLS testing")
     parser.add_argument("--stop", action="store_true", help="Stop and remove container")
@@ -82,6 +106,7 @@ def main():
          "-p", "80:80", "-p", "443:443", "-p", "1000-1024:1000-1024",
          "badssl"])
     install_trust_store()
+    update_hosts()
     print("[+] Done. badssl.test running on ports 80, 443, 1000-1024")
 
 
