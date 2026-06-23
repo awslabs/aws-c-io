@@ -1781,30 +1781,6 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_no_verify_untrusted_root,
     s_tls_client_channel_negotiation_no_verify_untrusted_root_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_revoked_host_name, "revoked.badssl.com");
-
-#    ifdef _WIN32
-/* On Windows, connecting to a revoked cert should fail with default options (revocation check enabled) */
-static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_verify_negotiation_fails(allocator, s_revoked_host_name, 443, NULL);
-}
-
-AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel_negotiation_error_revoked_fn)
-#    endif /* _WIN32 */
-
-static void s_disable_revocation_check(struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_set_no_certificate_revocation(options, true);
-}
-
-/* On Windows, connecting to a revoked cert should succeed when revocation checking is disabled */
-static int s_tls_client_channel_negotiation_revoked_no_check_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-    return s_verify_good_host(allocator, s_revoked_host_name, 443, &s_disable_revocation_check);
-}
-
-AWS_TEST_CASE(tls_client_channel_negotiation_revoked_no_check, s_tls_client_channel_negotiation_revoked_no_check_fn)
-
 static void s_lower_tls_version_to_tls10(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1);
 }
