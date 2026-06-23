@@ -41,6 +41,25 @@
 #    define AWS_TEST_LOCAL_TLS13_PORT 59443
 #    define AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT 60443
 
+AWS_STATIC_STRING_FROM_LITERAL(s_badssl_ca_root_env, "BADSSL_CA_ROOT");
+
+/* If BADSSL_CA_ROOT env var is set, override the default trust store with the given CA cert. */
+static void s_override_badssl_trust_store(
+    struct aws_allocator *allocator,
+    struct aws_tls_ctx_options *ctx_options,
+    const struct aws_string *host_name) {
+
+    if (!strstr(aws_string_c_str(host_name), BADSSL_DOMAIN)) {
+        return;
+    }
+    struct aws_string *ca_root = NULL;
+    aws_get_environment_value(allocator, s_badssl_ca_root_env, &ca_root);
+    if (ca_root) {
+        aws_tls_ctx_options_override_default_trust_store_from_path(ctx_options, NULL, aws_string_c_str(ca_root));
+        aws_string_destroy(ca_root);
+    }
+}
+
 bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
     if (strstr(aws_string_c_str(host_name), BADSSL_DOMAIN) != NULL) {
         if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
@@ -1044,6 +1063,7 @@ static int s_verify_negotiation_fails(
 
     struct aws_tls_ctx_options client_ctx_options;
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
+    s_override_badssl_trust_store(allocator, &client_ctx_options, host_name);
 
     if (context_options_override_fn) {
         (*context_options_override_fn)(&client_ctx_options);
@@ -1386,6 +1406,7 @@ static int s_verify_good_host(
     aws_tls_ctx_options_set_verify_peer(&client_ctx_options, true);
     aws_tls_ctx_options_init_default_client(&client_ctx_options, allocator);
     aws_tls_ctx_options_set_alpn_list(&client_ctx_options, "http/1.1");
+    s_override_badssl_trust_store(allocator, &client_ctx_options, host_name);
 
     if (override_tls_options_fn) {
         (*override_tls_options_fn)(&client_ctx_options);
