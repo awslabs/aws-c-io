@@ -1053,6 +1053,12 @@ static int s_verify_negotiation_fails_helper(
     return AWS_OP_SUCCESS;
 }
 
+static int s_verify_good_host(
+    struct aws_allocator *allocator,
+    const struct aws_string *host_name,
+    uint32_t port,
+    void (*override_tls_options_fn)(struct aws_tls_ctx_options *));
+
 static int s_verify_negotiation_fails(
     struct aws_allocator *allocator,
     const struct aws_string *host_name,
@@ -1115,7 +1121,9 @@ static int s_default_pki_path_exists_fn(struct aws_allocator *allocator, void *c
 AWS_TEST_CASE(default_pki_path_exists, s_default_pki_path_exists_fn)
 #    endif /* defined(USE_S2N) */
 
-AWS_STATIC_STRING_FROM_LITERAL(s_expired_host_name, "expired." BADSSL_DOMAIN);
+/* Use public badssl.com for expired cert test -- local badssl.test generates certs with 1-day validity,
+ * so they're never actually expired at test time. The public cert has been expired since 2020. */
+AWS_STATIC_STRING_FROM_LITERAL(s_expired_host_name, "expired.badssl.com");
 
 static int s_tls_client_channel_negotiation_error_expired_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1185,7 +1193,9 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override,
     s_tls_client_channel_negotiation_error_untrusted_root_due_to_ca_override_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_rc4_host_name, "rc4." BADSSL_DOMAIN);
+/* Broken/legacy crypto tests use public badssl.com -- local nginx on AL2023/Ubuntu rejects these
+ * ciphers and protocols via system crypto-policy (RC4, DH<1024, TLS 1.0/1.1 all disabled). */
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_rc4_host_name, "rc4.badssl.com");
 
 static int s_tls_client_channel_negotiation_error_broken_crypto_rc4_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1196,7 +1206,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_broken_crypto_rc4,
     s_tls_client_channel_negotiation_error_broken_crypto_rc4_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_rc4_md5_host_name, "rc4-md5." BADSSL_DOMAIN);
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_rc4_md5_host_name, "rc4-md5.badssl.com");
 
 static int s_tls_client_channel_negotiation_error_broken_crypto_rc4_md5_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1207,7 +1217,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_broken_crypto_rc4_md5,
     s_tls_client_channel_negotiation_error_broken_crypto_rc4_md5_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_dh480_host_name, "dh480." BADSSL_DOMAIN);
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_dh480_host_name, "dh480.badssl.com");
 
 static int s_tls_client_channel_negotiation_error_broken_crypto_dh480_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1218,7 +1228,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_broken_crypto_dh480,
     s_tls_client_channel_negotiation_error_broken_crypto_dh480_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_dh512_host_name, "dh512." BADSSL_DOMAIN);
+AWS_STATIC_STRING_FROM_LITERAL(s_broken_crypto_dh512_host_name, "dh512.badssl.com");
 
 static int s_tls_client_channel_negotiation_error_broken_crypto_dh512_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -1251,7 +1261,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_broken_crypto_null,
     s_tls_client_channel_negotiation_error_broken_crypto_null_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls10_host_name, "tls-v1-0." BADSSL_DOMAIN);
+AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls10_host_name, "tls-v1-0.badssl.com");
 
 static void s_raise_tls_version_to_11(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
@@ -1266,7 +1276,7 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_error_legacy_crypto_tls10,
     s_tls_client_channel_negotiation_error_legacy_crypto_tls10_fn)
 
-AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls11_host_name, "tls-v1-1." BADSSL_DOMAIN);
+AWS_STATIC_STRING_FROM_LITERAL(s_legacy_crypto_tls11_host_name, "tls-v1-1.badssl.com");
 
 static void s_raise_tls_version_to_12(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1_2);
@@ -1298,7 +1308,14 @@ AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_no_subject_host_name, "no-subject." BA
 
 static int s_tls_client_channel_negotiation_error_no_subject_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_negotiation_fails(allocator, s_uncommon_no_subject_host_name, 443, NULL);
+#    ifdef __linux__
+    /* Local badssl.test: cert has SAN matching hostname, so TLS succeeds despite empty subject. */
+    return s_verify_good_host(allocator, s_uncommon_no_subject_host_name, 443, NULL);
+#    else
+    /* Public badssl.com: cert expired (2020), skip. */
+    (void)allocator;
+    return AWS_OP_SKIP;
+#    endif
 }
 
 AWS_TEST_CASE(tls_client_channel_negotiation_error_no_subject, s_tls_client_channel_negotiation_error_no_subject_fn)
@@ -1307,7 +1324,14 @@ AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_no_common_name_host_name, "no-common-n
 
 static int s_tls_client_channel_negotiation_error_no_common_name_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-    return s_verify_negotiation_fails(allocator, s_uncommon_no_common_name_host_name, 443, NULL);
+#    ifdef __linux__
+    /* Local badssl.test: cert has SAN matching hostname, so TLS succeeds despite no CN in subject. */
+    return s_verify_good_host(allocator, s_uncommon_no_common_name_host_name, 443, NULL);
+#    else
+    /* Public badssl.com: cert expired (2020), skip. */
+    (void)allocator;
+    return AWS_OP_SKIP;
+#    endif
 }
 
 AWS_TEST_CASE(

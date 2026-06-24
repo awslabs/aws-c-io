@@ -38,40 +38,6 @@ def clone_repo():
     run(["git", "clone", "--depth=1", REPO_URL, str(BADSSL_DIR)])
 
 
-def override_expired_cert():
-    """Re-sign the expired cert using this run's keys so it's actually expired."""
-    gen_dir = BADSSL_DIR / "certs" / "sets" / "current" / "gen"
-    csr = gen_dir / "csr" / "wildcard-main.csr"
-    ca_key = gen_dir / "key" / "ca-intermediate.key"
-    ca_crt = gen_dir / "crt" / "ca-intermediate.crt"
-    conf = BADSSL_DIR / "certs" / "src" / "conf" / "wildcard.conf"
-    out_crt = gen_dir / "crt" / "wildcard-expired.crt"
-    out_chain = gen_dir / "chain" / "wildcard-expired.pem"
-
-    if not all(p.exists() for p in [csr, ca_key, ca_crt, conf]):
-        print("[!] Missing files for expired cert generation, skipping")
-        return
-
-    # Generate expired cert: 3 days ago -> 1 day ago
-    cmd = (
-        f'START=$(date -u -d "3 days ago" +%Y%m%d%H%M%SZ) && '
-        f'END=$(date -u -d "1 day ago" +%Y%m%d%H%M%SZ) && '
-        f'openssl x509 -req -sha256 '
-        f'-in {csr} -CAkey {ca_key} -CA {ca_crt} '
-        f'-CAcreateserial -CAserial /tmp/ca-intermediate.srl '
-        f'-extensions req_v3_usr '
-        f'-extfile <(sed "s/__DOMAIN__/badssl.test/g" {conf}) '
-        f'-out {out_crt} '
-        f'-not_before "$START" -not_after "$END"'
-    )
-    subprocess.run(['bash', '-c', cmd], check=True, cwd=BADSSL_DIR)
-    print(f"  $ {cmd[:80]}...")
-
-    # Build chain: leaf + intermediate
-    with open(out_chain, 'w') as f:
-        f.write(out_crt.read_text())
-        f.write(ca_crt.read_text())
-    print("[+] Generated expired cert from this run's CA keys")
 
 
 def install_trust_store():
@@ -124,7 +90,6 @@ def main():
     clone_repo()
     print("[*] Generating certs...")
     run("make certs-test", cwd=BADSSL_DIR)
-    override_expired_cert()
     print("[*] Building Docker image...")
     run("make docker-build", cwd=BADSSL_DIR)
     print("[*] Starting container (detached)...")
