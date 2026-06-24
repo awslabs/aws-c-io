@@ -28,11 +28,13 @@
 #    include <aws/io/private/pki_utils.h>
 #    include <aws/io/private/tls_channel_handler_private.h>
 
+#    include <aws/common/platform.h>
+
 /* badssl has occasional lags, make this timeout longer so we have a
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
-#    ifdef __linux__
+#    if defined(AWS_OS_LINUX) || defined(AWS_OS_APPLE)
 #        define BADSSL_DOMAIN "badssl.test"
 #    else
 #        define BADSSL_DOMAIN "badssl.com"
@@ -74,7 +76,7 @@ bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code)
 
 bool s_is_apple_with_secure_transport(struct aws_allocator *allocator) {
     (void)allocator;
-#    ifdef __APPLE__
+#    ifdef AWS_OS_APPLE
     struct aws_string *use_non_fips_13 = aws_get_env_nonempty(allocator, "AWS_CRT_USE_NON_FIPS_TLS_13");
     if (use_non_fips_13) {
         aws_string_destroy(use_non_fips_13);
@@ -689,7 +691,7 @@ static int s_set_socket_channel(struct tls_channel_server_client_tester *server_
     ASSERT_FALSE(server_client_tester->server_args.error_invoked);
 
 /* currently it seems ALPN doesn't work in server mode. Just leaving this check out for now. */
-#    ifndef __APPLE__
+#    ifndef AWS_OS_APPLE
     struct aws_byte_buf expected_protocol = aws_byte_buf_from_c_str("h2");
 
     /* check ALPN and SNI was properly negotiated */
@@ -1308,7 +1310,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_no_subject_host_name, "no-subject." BA
 
 static int s_tls_client_channel_negotiation_error_no_subject_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-#    ifdef __linux__
+#    ifdef AWS_OS_LINUX
     /* Local badssl.test: cert has SAN matching hostname, so TLS succeeds despite empty subject. */
     return s_verify_good_host(allocator, s_uncommon_no_subject_host_name, 443, NULL);
 #    else
@@ -1324,7 +1326,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_uncommon_no_common_name_host_name, "no-common-n
 
 static int s_tls_client_channel_negotiation_error_no_common_name_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
-#    ifdef __linux__
+#    ifdef AWS_OS_LINUX
     /* Local badssl.test: cert has SAN matching hostname, so TLS succeeds despite no CN in subject. */
     return s_verify_good_host(allocator, s_uncommon_no_common_name_host_name, 443, NULL);
 #    else
