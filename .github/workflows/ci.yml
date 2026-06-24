@@ -295,7 +295,6 @@ jobs:
       run: sudo python3 setup_badssl.py
     - name: Verify local badssl is accessible
       run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
-    - uses: aws-actions/configure-aws-credentials@v4
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
@@ -378,7 +377,6 @@ jobs:
       run: sudo python3 setup_badssl.py
     - name: Verify local badssl is accessible
       run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
-    - uses: aws-actions/configure-aws-credentials@v4
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
@@ -400,7 +398,6 @@ jobs:
       run: sudo python3 setup_badssl.py
     - name: Verify local badssl is accessible
       run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
-    - uses: aws-actions/configure-aws-credentials@v4
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
