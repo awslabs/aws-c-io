@@ -42,17 +42,27 @@ def clone_repo():
 
 def install_trust_store():
     """Install badssl CA root into system trust store (for curl verify step)."""
+    import platform
     ca_root = BADSSL_DIR / "certs" / "sets" / "current" / "gen" / "crt" / "ca-root.crt"
     if not ca_root.exists():
         return
-    debian = Path("/usr/local/share/ca-certificates")
-    rhel = Path("/etc/pki/ca-trust/source/anchors")
-    if rhel.exists():
-        shutil.copy2(ca_root, rhel / "badssl-ca-root.crt")
+
+    system = platform.system()
+    if system == "Darwin":
+        # macOS: add to System keychain as trusted root
+        run(["security", "add-trusted-cert", "-d", "-r", "trustRoot",
+             "-k", "/Library/Keychains/System.keychain", str(ca_root)])
+    elif Path("/etc/pki/ca-trust/source/anchors").exists():
+        # RHEL / Fedora / AL2023
+        shutil.copy2(ca_root, "/etc/pki/ca-trust/source/anchors/badssl-ca-root.crt")
         run("update-ca-trust")
-    elif debian.exists():
-        shutil.copy2(ca_root, debian / "badssl-ca-root.crt")
+    elif Path("/usr/local/share/ca-certificates").exists():
+        # Debian / Ubuntu
+        shutil.copy2(ca_root, "/usr/local/share/ca-certificates/badssl-ca-root.crt")
         run("update-ca-certificates")
+    else:
+        print(f"[!] Unknown OS/trust store. Manually trust: {ca_root}")
+        return
     print("[+] CA root installed to system trust store")
 
 
