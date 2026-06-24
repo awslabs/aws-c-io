@@ -79,8 +79,7 @@ bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code)
     /* Public badssl.com has occasional lags -- allow timeout as flaky. */
     if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT ||
         error_code == AWS_IO_SOCKET_CLOSED) {
-        fprintf(
-            AWS_TESTING_REPORT_FD, "Warning: badssl.com is timing out right now. Maybe run the test again later?\n");
+        fprintf(AWS_TESTING_REPORT_FD, "Warning: badssl.com is flaky. Allow the transiet error to happen\n");
         return true;
     }
     return false;
