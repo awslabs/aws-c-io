@@ -34,7 +34,7 @@
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
-#    if defined(AWS_OS_LINUX) || defined(AWS_OS_APPLE)
+#    ifdef AWS_OS_LINUX
 #        define BADSSL_DOMAIN "badssl.test"
 #    else
 #        define BADSSL_DOMAIN "badssl.com"
@@ -63,13 +63,25 @@ static void s_override_badssl_trust_store(
 }
 
 bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
-    if (strstr(aws_string_c_str(host_name), BADSSL_DOMAIN) != NULL) {
-        if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
-            fprintf(
-                AWS_TESTING_REPORT_FD,
-                "Warning: " BADSSL_DOMAIN " is timing out right now. Maybe run the test again later?\n");
-            return true;
-        }
+    const char *host = aws_string_c_str(host_name);
+    bool is_local = strstr(host, "badssl.test") != NULL;
+    bool is_public = strstr(host, "badssl.com") != NULL;
+
+    if (!is_local && !is_public) {
+        return false;
+    }
+
+    /* Local badssl.test should never be flaky -- fail immediately if it times out. */
+    if (is_local) {
+        return false;
+    }
+
+    /* Public badssl.com has occasional lags -- allow timeout as flaky. */
+    if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT ||
+        error_code == AWS_IO_SOCKET_CLOSED) {
+        fprintf(
+            AWS_TESTING_REPORT_FD, "Warning: badssl.com is timing out right now. Maybe run the test again later?\n");
+        return true;
     }
     return false;
 }

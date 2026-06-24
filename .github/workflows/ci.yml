@@ -287,15 +287,10 @@ jobs:
         eventloop: ["kqueue", "dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
-    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
-    - name: Setup local badssl
-      run: sudo python3 setup_badssl.py
-    - name: Verify local badssl is accessible
-      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
@@ -305,15 +300,10 @@ jobs:
   macos-x64:
     runs-on: macos-14-large # latest
     steps:
-    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
-    - name: Setup local badssl
-      run: sudo python3 setup_badssl.py
-    - name: Verify local badssl is accessible
-      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
@@ -325,11 +315,6 @@ jobs:
     env:
       AWS_CRT_USE_NON_FIPS_TLS_13: 1
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup local badssl
-      run: sudo python3 setup_badssl.py
-    - name: Verify local badssl is accessible
-      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -350,11 +335,6 @@ jobs:
         eventloop: ["kqueue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
-    - uses: actions/checkout@v4
-    - name: Setup local badssl
-      run: sudo python3 setup_badssl.py
-    - name: Verify local badssl is accessible
-      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -373,15 +353,10 @@ jobs:
         eventloop: ["kqueue", "dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
-    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
-    - name: Setup local badssl
-      run: sudo python3 setup_badssl.py
-    - name: Verify local badssl is accessible
-      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
@@ -395,15 +370,10 @@ jobs:
       matrix:
         sanitizers: [",thread", ",address,undefined"]
     steps:
-    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
-    - name: Setup local badssl
-      run: sudo python3 setup_badssl.py
-    - name: Verify local badssl is accessible
-      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
         python3 -c "from urllib.request import urlretrieve; urlretrieve('${{ env.BUILDER_HOST }}/${{ env.BUILDER_SOURCE }}/${{ env.BUILDER_VERSION }}/builder.pyz?run=${{ env.RUN }}', 'builder')"
