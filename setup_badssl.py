@@ -32,6 +32,27 @@ def clone_repo():
     print(f"[*] Cloning badssl.com -> {BADSSL_DIR}")
     run(["git", "clone", "--depth=1", REPO_URL, str(BADSSL_DIR)])
 
+def install_trust_store():
+    """Install badssl CA root into system trust store."""
+    if not CA_ROOT_SRC.exists():
+        print("[!] ca-root.crt not found, skipping trust store install")
+        return
+
+    if SYSTEM_TRUST_DIR.exists():
+        # AL2023 / RHEL / Fedora path
+        dest = SYSTEM_TRUST_DIR / "badssl-ca-root.crt"
+        shutil.copy2(CA_ROOT_SRC, dest)
+        run("update-ca-trust")
+        print(f"[+] CA root installed to {dest} and trust store updated")
+    elif Path("/usr/local/share/ca-certificates").exists():
+        # Debian / Ubuntu path
+        dest = Path("/usr/local/share/ca-certificates/badssl-ca-root.crt")
+        shutil.copy2(CA_ROOT_SRC, dest)
+        run("update-ca-certificates")
+        print(f"[+] CA root installed to {dest} and trust store updated")
+    else:
+        print("[!] Unknown trust store layout. Manually add:")
+        print(f"    {CA_ROOT_SRC}")
 
 def update_hosts():
     """Add *.badssl.test entries to /etc/hosts."""
@@ -73,6 +94,7 @@ def main():
     run(["docker", "run", "-d", "--name", "badssl",
          "-p", "80:80", "-p", "443:443", "-p", "1000-1024:1000-1024",
          "badssl"])
+    install_trust_store()
     update_hosts()
 
     ca_root = BADSSL_DIR / "certs" / "sets" / "current" / "gen" / "crt" / "ca-root.crt"
