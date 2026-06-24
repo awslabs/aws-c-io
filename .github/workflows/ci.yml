@@ -287,6 +287,7 @@ jobs:
         eventloop: ["kqueue", "dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
+    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -304,6 +305,7 @@ jobs:
   macos-x64:
     runs-on: macos-14-large # latest
     steps:
+    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -323,6 +325,7 @@ jobs:
     env:
       AWS_CRT_USE_NON_FIPS_TLS_13: 1
     steps:
+    - uses: actions/checkout@v4
     - name: Setup local badssl
       run: sudo python3 setup_badssl.py
     - name: Verify local badssl is accessible
@@ -347,6 +350,7 @@ jobs:
         eventloop: ["kqueue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
+    - uses: actions/checkout@v4
     - name: Setup local badssl
       run: sudo python3 setup_badssl.py
     - name: Verify local badssl is accessible
@@ -369,6 +373,7 @@ jobs:
         eventloop: ["kqueue", "dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
+    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -390,6 +395,7 @@ jobs:
       matrix:
         sanitizers: [",thread", ",address,undefined"]
     steps:
+    - uses: actions/checkout@v4
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
