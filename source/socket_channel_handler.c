@@ -126,6 +126,18 @@ static void s_do_read(struct socket_handler *socket_handler) {
         return;
     }
 
+    /* Guard against the race condition where a readable event fires after the setup callback
+     * calls aws_channel_shutdown but before the shutdown task runs.
+     * In this window, adj_right is NULL (no downstream handler was added yet),
+     * and calling aws_channel_slot_downstream_read_window() would assert-crash. */
+    if (socket_handler->slot->adj_right == NULL) {
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET_HANDLER,
+            "id=%p: shutdown in progress, ignoring read.",
+            (void *)socket_handler->slot->handler);
+        return;
+    }
+
     size_t downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     size_t max_to_read =
         downstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : downstream_window;
