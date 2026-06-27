@@ -35,8 +35,9 @@ struct aws_pkcs11_tls_op_handler {
     CK_KEY_TYPE private_key_type;
 };
 
-static void s_aws_custom_key_op_handler_destroy(struct aws_custom_key_op_handler *key_op_handler) {
+static void s_aws_custom_key_op_handler_destroy(void *user_data) {
 
+    struct aws_custom_key_op_handler *key_op_handler = user_data;
     struct aws_pkcs11_tls_op_handler *handler = (struct aws_pkcs11_tls_op_handler *)key_op_handler->impl;
 
     if (handler->session_handle != 0) {
@@ -143,7 +144,7 @@ struct aws_custom_key_op_handler *aws_pkcs11_tls_op_handler_new(
     aws_ref_count_init(
         &pkcs11_handler->base.ref_count,
         &pkcs11_handler->base,
-        (aws_simple_completion_callback *)s_aws_custom_key_op_handler_destroy);
+        s_aws_custom_key_op_handler_destroy);
 
     pkcs11_handler->base.impl = (void *)pkcs11_handler;
     pkcs11_handler->base.vtable = &s_aws_custom_key_op_handler_vtable;
