@@ -4,38 +4,42 @@
  */
 #include <aws/io/tls_channel_handler.h>
 
-#include <aws/common/clock.h>
-#include <aws/common/encoding.h>
-#include <aws/common/mutex.h>
-#include <aws/common/string.h>
-#include <aws/common/task_scheduler.h>
-#include <aws/common/thread.h>
-#include <aws/io/channel.h>
-#include <aws/io/event_loop.h>
-#include <aws/io/file_utils.h>
-#include <aws/io/logging.h>
-#include <aws/io/private/event_loop_impl.h>
-#include <aws/io/private/pki_utils.h>
-#include <aws/io/private/tls_channel_handler_shared.h>
-#include <aws/io/statistics.h>
+/* Check for USE_S2N needed to handle cross-compilation for Apple non-macOS platforms that can't use s2n-tls. */
+#ifdef USE_S2N
 
-#include <s2n.h>
-#ifdef AWS_S2N_INSOURCE_PATH
-#    include <api/unstable/cleanup.h>
-#else
-#    include <s2n/unstable/cleanup.h>
-#endif
+#    include <aws/common/clock.h>
+#    include <aws/common/encoding.h>
+#    include <aws/common/mutex.h>
+#    include <aws/common/string.h>
+#    include <aws/common/task_scheduler.h>
+#    include <aws/common/thread.h>
+#    include <aws/io/channel.h>
+#    include <aws/io/event_loop.h>
+#    include <aws/io/file_utils.h>
+#    include <aws/io/logging.h>
+#    include <aws/io/private/event_loop_impl.h>
+#    include <aws/io/private/pki_utils.h>
+#    include <aws/io/private/tls_channel_handler_private.h>
+#    include <aws/io/private/tls_channel_handler_shared.h>
+#    include <aws/io/statistics.h>
 
-#include <errno.h>
-#include <inttypes.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#    include <s2n.h>
+#    ifdef AWS_S2N_INSOURCE_PATH
+#        include <api/unstable/cleanup.h>
+#    else
+#        include <s2n/unstable/cleanup.h>
+#    endif
 
-#define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
-#define KB_1 1024
-#define MAX_RECORD_SIZE (KB_1 * 16)
-#define EST_HANDSHAKE_SIZE (7 * KB_1)
+#    include <errno.h>
+#    include <inttypes.h>
+#    include <math.h>
+#    include <stdio.h>
+#    include <stdlib.h>
+
+#    define EST_TLS_RECORD_OVERHEAD 53 /* 5 byte header + 32 + 16 bytes for padding */
+#    define KB_1 1024
+#    define MAX_RECORD_SIZE (KB_1 * 16)
+#    define EST_HANDSHAKE_SIZE (7 * KB_1)
 
 static const char *s_default_ca_dir = NULL;
 static const char *s_default_ca_file = NULL;
@@ -107,7 +111,59 @@ AWS_STATIC_STRING_FROM_LITERAL(s_android_path, "/system/etc/security/cacerts");
 AWS_STATIC_STRING_FROM_LITERAL(s_free_bsd_path, "/usr/local/share/certs");
 AWS_STATIC_STRING_FROM_LITERAL(s_net_bsd_path, "/etc/openssl/certs");
 
-AWS_IO_API const char *aws_determine_default_pki_dir(void) {
+#    include "s2n_apple_keychain.h"
+
+static void s_tls_init_static_state(struct aws_allocator *alloc);
+static void s_tls_clean_up_static_state(void);
+static bool s_tls_is_alpn_available(void);
+static bool s_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref);
+static int s_tls_client_handler_start_negotiation(struct aws_channel_handler *handler);
+static void s_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output);
+static void s_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code);
+static struct aws_byte_cursor s_tls_key_operation_get_input(const struct aws_tls_key_operation *operation);
+static enum aws_tls_key_operation_type s_tls_key_operation_get_type(const struct aws_tls_key_operation *operation);
+static enum aws_tls_signature_algorithm s_tls_key_operation_get_signature_algorithm(
+    const struct aws_tls_key_operation *operation);
+static enum aws_tls_hash_algorithm s_tls_key_operation_get_digest_algorithm(
+    const struct aws_tls_key_operation *operation);
+static struct aws_byte_buf s_tls_handler_protocol(struct aws_channel_handler *handler);
+static struct aws_byte_buf s_tls_handler_server_name(struct aws_channel_handler *handler);
+static struct aws_channel_handler *s_tls_client_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot);
+static struct aws_channel_handler *s_tls_server_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot);
+static struct aws_tls_ctx *s_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options);
+static struct aws_tls_ctx *s_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options);
+
+static struct aws_tls_vtable s_vtable = {
+    .init_static_state = s_tls_init_static_state,
+    .clean_up_static_state = s_tls_clean_up_static_state,
+    .is_alpn_available = s_tls_is_alpn_available,
+    .is_cipher_pref_supported = s_tls_is_cipher_pref_supported,
+    .client_handler_start_negotiation = s_tls_client_handler_start_negotiation,
+    .key_operation_complete = s_tls_key_operation_complete,
+    .key_operation_complete_with_error = s_tls_key_operation_complete_with_error,
+    .key_operation_get_input = s_tls_key_operation_get_input,
+    .key_operation_get_type = s_tls_key_operation_get_type,
+    .key_operation_get_signature_algorithm = s_tls_key_operation_get_signature_algorithm,
+    .key_operation_get_digest_algorithm = s_tls_key_operation_get_digest_algorithm,
+    .handler_protocol = s_tls_handler_protocol,
+    .handler_server_name = s_tls_handler_server_name,
+    .client_handler_new = s_tls_client_handler_new,
+    .server_handler_new = s_tls_server_handler_new,
+    .server_ctx_new = s_tls_server_ctx_new,
+    .client_ctx_new = s_tls_client_ctx_new,
+};
+
+void s2n_init_tls_vtable(struct aws_tls_vtable *vtable) {
+    *vtable = s_vtable;
+}
+
+const char *aws_determine_default_pki_dir(void) {
     /* debian variants; OpenBSD (although the directory doesn't exist by default) */
     if (aws_path_exists(s_debian_path)) {
         return aws_string_c_str(s_debian_path);
@@ -143,7 +199,7 @@ AWS_STATIC_STRING_FROM_LITERAL(s_open_elec_ca_file_path, "/etc/pki/tls/cacert.pe
 AWS_STATIC_STRING_FROM_LITERAL(s_modern_rhel_ca_file_path, "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem");
 AWS_STATIC_STRING_FROM_LITERAL(s_openbsd_ca_file_path, "/etc/ssl/cert.pem");
 
-AWS_IO_API const char *aws_determine_default_pki_ca_file(void) {
+const char *aws_determine_default_pki_ca_file(void) {
     /* debian variants */
     if (aws_path_exists(s_debian_ca_file_path)) {
         return aws_string_c_str(s_debian_ca_file_path);
@@ -203,7 +259,7 @@ static int s_s2n_mem_free(void *ptr, uint32_t size) {
 /* If s2n is already initialized, then we don't call s2n_init() or s2n_cleanup() ourselves */
 static bool s_s2n_initialized_externally = false;
 
-void aws_tls_init_static_state(struct aws_allocator *alloc) {
+static void s_tls_init_static_state(struct aws_allocator *alloc) {
     AWS_FATAL_ASSERT(alloc);
     AWS_LOGF_INFO(AWS_LS_IO_TLS, "static: Initializing TLS using s2n.");
 
@@ -251,18 +307,18 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
     }
 }
 
-void aws_tls_clean_up_static_state(void) {
+static void s_tls_clean_up_static_state(void) {
     /* only clean up s2n if we were the ones that initialized it */
     if (!s_s2n_initialized_externally) {
         s2n_cleanup_final();
     }
 }
 
-bool aws_tls_is_alpn_available(void) {
+static bool s_tls_is_alpn_available(void) {
     return true;
 }
 
-bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+static bool s_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
     switch (cipher_pref) {
         case AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT:
         case AWS_IO_TLS_CIPHER_PREF_PQ_TLSV1_2_2024_10:
@@ -500,7 +556,7 @@ static void s_negotiation_task(struct aws_channel_task *task, void *arg, aws_tas
     }
 }
 
-int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
+static int s_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
     AWS_LOGF_TRACE(AWS_LS_IO_TLS, "id=%p: Kicking off TLS negotiation.", (void *)handler);
@@ -813,7 +869,7 @@ done:
     aws_channel_schedule_task_now(s2n_handler->slot->channel, &operation->completion_task);
 }
 
-void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
+static void s_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
     if (operation == NULL) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Operation complete: operation is null and therefore cannot be set to complete!");
         return;
@@ -827,7 +883,7 @@ void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, str
     s_tls_key_operation_complete_common(operation, 0, &output);
 }
 
-void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
+static void s_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
     if (operation == NULL) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_TLS, "Operation complete with error: operation is null and therefore cannot be set to complete!");
@@ -950,20 +1006,21 @@ error:
     return NULL;
 }
 
-struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation) {
+static struct aws_byte_cursor s_tls_key_operation_get_input(const struct aws_tls_key_operation *operation) {
     return aws_byte_cursor_from_buf(&operation->input_data);
 }
 
-enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation) {
+static enum aws_tls_key_operation_type s_tls_key_operation_get_type(const struct aws_tls_key_operation *operation) {
     return operation->operation_type;
 }
 
-enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
+static enum aws_tls_signature_algorithm s_tls_key_operation_get_signature_algorithm(
     const struct aws_tls_key_operation *operation) {
     return operation->signature_algorithm;
 }
 
-enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation) {
+static enum aws_tls_hash_algorithm s_tls_key_operation_get_digest_algorithm(
+    const struct aws_tls_key_operation *operation) {
     return operation->digest_algorithm;
 }
 
@@ -1174,12 +1231,12 @@ static void s_s2n_handler_gather_statistics(struct aws_channel_handler *handler,
     aws_array_list_push_back(stats, &stats_base);
 }
 
-struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
+static struct aws_byte_buf s_tls_handler_protocol(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
     return s2n_handler->protocol;
 }
 
-struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
+static struct aws_byte_buf s_tls_handler_server_name(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
     return s2n_handler->server_name;
 }
@@ -1384,7 +1441,7 @@ cleanup_conn:
     return NULL;
 }
 
-struct aws_channel_handler *aws_tls_client_handler_new(
+static struct aws_channel_handler *s_tls_client_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
@@ -1392,7 +1449,7 @@ struct aws_channel_handler *aws_tls_client_handler_new(
     return s_new_tls_handler(allocator, options, slot, S2N_CLIENT);
 }
 
-struct aws_channel_handler *aws_tls_server_handler_new(
+static struct aws_channel_handler *s_tls_server_handler_new(
     struct aws_allocator *allocator,
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
@@ -1446,7 +1503,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     const struct aws_tls_ctx_options *options,
     s2n_mode mode) {
 
-    if (!aws_tls_is_cipher_pref_supported(options->cipher_pref)) {
+    if (!s_tls_is_cipher_pref_supported(options->cipher_pref)) {
         aws_raise_error(AWS_IO_TLS_CIPHER_PREF_UNSUPPORTED);
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: TLS Cipher Preference is not supported: %d.", options->cipher_pref);
         return NULL;
@@ -1641,17 +1698,20 @@ static struct aws_tls_ctx *s_tls_ctx_new(
     }
 
     if (options->verify_peer) {
-        if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
-            if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
-                s_log_and_raise_s2n_errno("ctx: ocsp status request cannot be set");
-                goto cleanup_s2n_config;
-            }
-        } else {
-            if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
-                AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
+
+        if (!options->no_certificate_revocation) {
+            if (s2n_config_set_check_stapled_ocsp_response(s2n_ctx->s2n_config, 1) == S2N_SUCCESS) {
+                if (s2n_config_set_status_request_type(s2n_ctx->s2n_config, S2N_STATUS_REQUEST_OCSP) != S2N_SUCCESS) {
+                    s_log_and_raise_s2n_errno("ctx: ocsp status request cannot be set");
+                    goto cleanup_s2n_config;
+                }
             } else {
-                s_log_and_raise_s2n_errno("ctx: cannot enable ocsp stapling");
-                goto cleanup_s2n_config;
+                if (s2n_error_get_type(s2n_errno) == S2N_ERR_T_USAGE) {
+                    AWS_LOGF_INFO(AWS_LS_IO_TLS, "ctx: cannot enable ocsp stapling: %s", s2n_strerror(s2n_errno, "EN"));
+                } else {
+                    s_log_and_raise_s2n_errno("ctx: cannot enable ocsp stapling");
+                    goto cleanup_s2n_config;
+                }
             }
         }
 
@@ -1700,6 +1760,10 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                     AWS_LS_IO_TLS, "Failed to set ca_path: %s and ca_file %s\n", s_default_ca_dir, s_default_ca_file);
                 goto cleanup_s2n_config;
             }
+#    ifdef __APPLE__
+            /* On macOS, load user root CAs from keychains */
+            aws_tls_s2n_load_macos_keychain_root_cas(s2n_ctx->s2n_config, alloc);
+#    endif
         } else {
             /* Cannot find system's trust store */
             aws_raise_error(AWS_IO_TLS_ERROR_DEFAULT_TRUST_STORE_NOT_FOUND);
@@ -1765,12 +1829,18 @@ cleanup_s2n_config:
     return NULL;
 }
 
-struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+static struct aws_tls_ctx *s_tls_server_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options) {
     aws_io_fatal_assert_library_initialized();
     return s_tls_ctx_new(alloc, options, S2N_SERVER);
 }
 
-struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+static struct aws_tls_ctx *s_tls_client_ctx_new(
+    struct aws_allocator *alloc,
+    const struct aws_tls_ctx_options *options) {
     aws_io_fatal_assert_library_initialized();
     return s_tls_ctx_new(alloc, options, S2N_CLIENT);
 }
+
+#endif /* USE_S2N */
