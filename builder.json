@@ -5,7 +5,7 @@
         { "name": "aws-c-cal" },
         {
             "name": "s2n",
-            "targets": ["linux", "android", "freebsd", "openbsd"]
+            "targets": ["linux", "android", "freebsd", "openbsd", "macos"]
         }
     ],
     "downstream": [
@@ -21,6 +21,9 @@
         "windows": {
             "+pre_build_steps": ["tls-server-setup"]
 
+        },
+        "macos": {
+            "+pre_build_steps": ["custom-keychain-test-setup", "tls-server-setup"]
         }
     },
     "build_env": {

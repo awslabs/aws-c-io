@@ -8,6 +8,7 @@
 #include <aws/io/logging.h>
 #include <aws/io/pkcs11.h>
 #include <aws/io/private/pem_utils.h>
+#include <aws/io/private/tls_channel_handler_private.h>
 #include <aws/io/private/tls_channel_handler_shared.h>
 #include <aws/io/tls_channel_handler.h>
 
@@ -15,7 +16,11 @@
 
 #include "./pkcs11_private.h"
 
+#include <aws/common/environment.h>
 #include <aws/common/string.h>
+
+/* Global TLS v-table, populated at init time with the platform-specific TLS implementation. */
+static struct aws_tls_vtable s_tls_channel_handler_vtable;
 
 void aws_tls_ctx_options_init_default_client(struct aws_tls_ctx_options *options, struct aws_allocator *allocator) {
     AWS_ZERO_STRUCT(*options);
@@ -506,6 +511,10 @@ void aws_tls_ctx_options_set_verify_peer(struct aws_tls_ctx_options *options, bo
     options->verify_peer = verify_peer;
 }
 
+void aws_tls_ctx_options_set_no_certificate_revocation(struct aws_tls_ctx_options *options, bool no_revocation) {
+    options->no_certificate_revocation = no_revocation;
+}
+
 void aws_tls_ctx_options_set_minimum_tls_version(
     struct aws_tls_ctx_options *options,
     enum aws_tls_versions minimum_tls_version) {
@@ -783,6 +792,113 @@ void aws_tls_init_static_state(struct aws_allocator *alloc) {
 
 void aws_tls_clean_up_static_state(void) {}
 
+void aws_tls_init_vtable(struct aws_allocator *allocator) {
+    (void)allocator;
+}
+
+#else /* BYO_CRYPTO */
+
+void s2n_init_tls_vtable(struct aws_tls_vtable *vtable);
+void secure_transport_init_tls_vtable(struct aws_tls_vtable *vtable);
+void secure_channel_init_tls_vtable(struct aws_tls_vtable *vtable);
+
+void aws_tls_init_vtable(struct aws_allocator *allocator) {
+    (void)allocator;
+
+    /* Allow the vtable to be set up only once on library initialization. */
+    static bool s_vtable_initialized = false;
+    if (s_vtable_initialized) {
+        return;
+    }
+    s_vtable_initialized = true;
+
+#    if defined(__APPLE__) && defined(AWS_USE_SECITEM)
+    secure_transport_init_tls_vtable(&s_tls_channel_handler_vtable);
+
+#    elif defined(__APPLE__) && defined(USE_S2N)
+    struct aws_string *use_non_fips_13 = aws_get_env_nonempty(allocator, "AWS_CRT_USE_NON_FIPS_TLS_13");
+    if (use_non_fips_13) {
+        s2n_init_tls_vtable(&s_tls_channel_handler_vtable);
+        aws_string_destroy(use_non_fips_13);
+    } else {
+        secure_transport_init_tls_vtable(&s_tls_channel_handler_vtable);
+    }
+
+#    elif defined(__APPLE__)
+    secure_transport_init_tls_vtable(&s_tls_channel_handler_vtable);
+
+#    elif defined(_WIN32)
+    secure_channel_init_tls_vtable(&s_tls_channel_handler_vtable);
+
+#    elif defined(USE_S2N)
+    s2n_init_tls_vtable(&s_tls_channel_handler_vtable);
+
+#    else
+    AWS_FATAL_ASSERT(false && "No TLS implementation available.");
+#    endif
+}
+
+void aws_tls_init_static_state(struct aws_allocator *allocator) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.init_static_state);
+    s_tls_channel_handler_vtable.init_static_state(allocator);
+}
+
+void aws_tls_clean_up_static_state(void) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.clean_up_static_state);
+    s_tls_channel_handler_vtable.clean_up_static_state();
+}
+
+struct aws_tls_ctx *aws_tls_server_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.server_ctx_new);
+    return s_tls_channel_handler_vtable.server_ctx_new(alloc, options);
+}
+
+struct aws_tls_ctx *aws_tls_client_ctx_new(struct aws_allocator *alloc, const struct aws_tls_ctx_options *options) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.client_ctx_new);
+    return s_tls_channel_handler_vtable.client_ctx_new(alloc, options);
+}
+
+struct aws_channel_handler *aws_tls_client_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.client_handler_new);
+    return s_tls_channel_handler_vtable.client_handler_new(allocator, options, slot);
+}
+
+struct aws_channel_handler *aws_tls_server_handler_new(
+    struct aws_allocator *allocator,
+    struct aws_tls_connection_options *options,
+    struct aws_channel_slot *slot) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.server_handler_new);
+    return s_tls_channel_handler_vtable.server_handler_new(allocator, options, slot);
+}
+
+int aws_tls_client_handler_start_negotiation(struct aws_channel_handler *handler) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.client_handler_start_negotiation);
+    return s_tls_channel_handler_vtable.client_handler_start_negotiation(handler);
+}
+
+struct aws_byte_buf aws_tls_handler_protocol(struct aws_channel_handler *handler) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.handler_protocol);
+    return s_tls_channel_handler_vtable.handler_protocol(handler);
+}
+
+struct aws_byte_buf aws_tls_handler_server_name(struct aws_channel_handler *handler) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.handler_server_name);
+    return s_tls_channel_handler_vtable.handler_server_name(handler);
+}
+
+bool aws_tls_is_alpn_available(void) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.is_alpn_available);
+    return s_tls_channel_handler_vtable.is_alpn_available();
+}
+
+bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
+    AWS_PRECONDITION(s_tls_channel_handler_vtable.is_cipher_pref_supported);
+    return s_tls_channel_handler_vtable.is_cipher_pref_supported(cipher_pref);
+}
+
 #endif /* BYO_CRYPTO */
 
 int aws_channel_setup_client_tls(
@@ -876,39 +992,46 @@ const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type opera
     /* clang-format on */
 }
 
-#if !USE_S2N
 void aws_tls_key_operation_complete(struct aws_tls_key_operation *operation, struct aws_byte_cursor output) {
-    (void)operation;
-    (void)output;
+    if (s_tls_channel_handler_vtable.key_operation_complete != NULL) {
+        s_tls_channel_handler_vtable.key_operation_complete(operation, output);
+    }
 }
 
 void aws_tls_key_operation_complete_with_error(struct aws_tls_key_operation *operation, int error_code) {
-    (void)operation;
-    (void)error_code;
+    if (s_tls_channel_handler_vtable.key_operation_complete_with_error) {
+        s_tls_channel_handler_vtable.key_operation_complete_with_error(operation, error_code);
+    }
 }
 
 struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_input) {
+        return s_tls_channel_handler_vtable.key_operation_get_input(operation);
+    }
     return aws_byte_cursor_from_array(NULL, 0);
 }
 
 enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_type != NULL) {
+        return s_tls_channel_handler_vtable.key_operation_get_type(operation);
+    }
     return AWS_TLS_KEY_OPERATION_UNKNOWN;
 }
 
 enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
     const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_signature_algorithm != NULL) {
+        return s_tls_channel_handler_vtable.key_operation_get_signature_algorithm(operation);
+    }
     return AWS_TLS_SIGNATURE_UNKNOWN;
 }
 
 enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation) {
-    (void)operation;
+    if (s_tls_channel_handler_vtable.key_operation_get_digest_algorithm != NULL) {
+        return s_tls_channel_handler_vtable.key_operation_get_digest_algorithm(operation);
+    }
     return AWS_TLS_HASH_UNKNOWN;
 }
-
-#endif
 
 struct aws_custom_key_op_handler *aws_custom_key_op_handler_acquire(struct aws_custom_key_op_handler *key_op_handler) {
     if (key_op_handler != NULL) {
