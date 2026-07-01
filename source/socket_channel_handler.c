@@ -133,7 +133,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
     if (socket_handler->slot->adj_right == NULL) {
         AWS_LOGF_WARN(
             AWS_LS_IO_SOCKET_HANDLER,
-            "id=%p: shutdown in progress, ignoring read.",
+            "id=%p: no downstream handler (adj_right is NULL), ignoring read.",
             (void *)socket_handler->slot->handler);
         return;
     }

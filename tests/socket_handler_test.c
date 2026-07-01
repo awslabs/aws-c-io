@@ -1338,11 +1338,14 @@ struct setup_failure_test_sync {
     bool server_write_completed;
 };
 
-static struct setup_failure_test_sync s_setup_failure_sync;
+struct setup_failure_test_context {
+    struct socket_test_args args;
+    struct setup_failure_test_sync *sync;
+};
 
 static bool s_server_write_completed_predicate(void *user_data) {
-    (void)user_data;
-    return s_setup_failure_sync.server_write_completed;
+    struct setup_failure_test_sync *sync = (struct setup_failure_test_sync *)user_data;
+    return sync->server_write_completed;
 }
 
 /* Server setup callback that immediately sends data to the client upon connection.
@@ -1356,7 +1359,8 @@ static void s_socket_handler_setup_failure_server_setup_callback(
     (void)bootstrap;
     (void)error_code;
 
-    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    struct setup_failure_test_context *ctx = (struct setup_failure_test_context *)user_data;
+    struct socket_test_args *setup_test_args = &ctx->args;
 
     aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->channel = channel;
@@ -1382,10 +1386,10 @@ static void s_socket_handler_setup_failure_server_setup_callback(
     }
 
     /* Signal that the server write has completed, so the client can proceed with shutdown */
-    aws_mutex_lock(&s_setup_failure_sync.mutex);
-    s_setup_failure_sync.server_write_completed = true;
-    aws_mutex_unlock(&s_setup_failure_sync.mutex);
-    aws_condition_variable_notify_one(&s_setup_failure_sync.cv);
+    aws_mutex_lock(&ctx->sync->mutex);
+    ctx->sync->server_write_completed = true;
+    aws_mutex_unlock(&ctx->sync->mutex);
+    aws_condition_variable_notify_one(&ctx->sync->cv);
 }
 
 /* Client setup callback that simulates a setup failure: shuts down the channel without adding any downstream handler.
@@ -1401,7 +1405,8 @@ static void s_socket_handler_setup_failure_client_setup_callback(
     (void)bootstrap;
     (void)error_code;
 
-    struct socket_test_args *setup_test_args = (struct socket_test_args *)user_data;
+    struct setup_failure_test_context *ctx = (struct setup_failure_test_context *)user_data;
+    struct socket_test_args *setup_test_args = &ctx->args;
 
     aws_mutex_lock(setup_test_args->mutex);
     setup_test_args->channel = channel;
@@ -1410,10 +1415,9 @@ static void s_socket_handler_setup_failure_client_setup_callback(
 
     /* Wait for the server's rw_handler_write to complete before shutting down.
      * This is safe because the server is on a different event loop, so we won't deadlock. */
-    aws_mutex_lock(&s_setup_failure_sync.mutex);
-    aws_condition_variable_wait_pred(
-        &s_setup_failure_sync.cv, &s_setup_failure_sync.mutex, s_server_write_completed_predicate, NULL);
-    aws_mutex_unlock(&s_setup_failure_sync.mutex);
+    aws_mutex_lock(&ctx->sync->mutex);
+    aws_condition_variable_wait_pred(&ctx->sync->cv, &ctx->sync->mutex, s_server_write_completed_predicate, ctx->sync);
+    aws_mutex_unlock(&ctx->sync->mutex);
 
     /* Simulate setup failure: shut down without adding a downstream handler.
      * adj_right remains NULL. Since the server's data has already been written (and likely
@@ -1428,11 +1432,12 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
 
     aws_io_library_init(allocator);
 
-    /* Initialize synchronization state for coordinating between server and client callbacks */
-    AWS_ZERO_STRUCT(s_setup_failure_sync);
-    s_setup_failure_sync.mutex = (struct aws_mutex)AWS_MUTEX_INIT;
-    s_setup_failure_sync.cv = (struct aws_condition_variable)AWS_CONDITION_VARIABLE_INIT;
-    s_setup_failure_sync.server_write_completed = false;
+    /* Initialize synchronization state on the stack for coordinating between server and client callbacks */
+    struct setup_failure_test_sync sync;
+    AWS_ZERO_STRUCT(sync);
+    sync.mutex = (struct aws_mutex)AWS_MUTEX_INIT;
+    sync.cv = (struct aws_condition_variable)AWS_CONDITION_VARIABLE_INIT;
+    sync.server_write_completed = false;
 
     /* Create separate event loop groups for server and client to ensure they run on
      * different threads. This allows the client callback to safely wait for the server's
@@ -1464,17 +1469,21 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
         rw_handler_new(allocator, s_socket_test_handle_read, s_socket_test_handle_write, true, 10000, &server_rw_args);
     ASSERT_NOT_NULL(server_rw_handler);
 
-    struct socket_test_args server_args;
-    AWS_ZERO_STRUCT(server_args);
-    server_args.mutex = &mutex;
-    server_args.condition_variable = &condition_variable;
-    server_args.rw_handler = server_rw_handler;
+    /* Use context wrappers to pass sync state through user_data without global mutable state.
+     * socket_test_args is the first member, so shared callbacks that cast to socket_test_args* still work. */
+    struct setup_failure_test_context server_ctx;
+    AWS_ZERO_STRUCT(server_ctx);
+    server_ctx.args.mutex = &mutex;
+    server_ctx.args.condition_variable = &condition_variable;
+    server_ctx.args.rw_handler = server_rw_handler;
+    server_ctx.sync = &sync;
 
-    struct socket_test_args client_args;
-    AWS_ZERO_STRUCT(client_args);
-    client_args.mutex = &mutex;
-    client_args.condition_variable = &condition_variable;
-    client_args.rw_handler = NULL;
+    struct setup_failure_test_context client_ctx;
+    AWS_ZERO_STRUCT(client_ctx);
+    client_ctx.args.mutex = &mutex;
+    client_ctx.args.condition_variable = &condition_variable;
+    client_ctx.args.rw_handler = NULL;
+    client_ctx.sync = &sync;
 
     /* Set up server with a custom incoming callback that sends data immediately.
      * We set this up manually (not via s_local_server_tester_init) to use our custom callback. */
@@ -1501,7 +1510,7 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
         .shutdown_callback = s_socket_handler_test_server_shutdown_callback,
         .destroy_callback = s_socket_handler_test_server_listener_destroy_callback,
         .setup_callback = s_socket_handler_test_server_listener_setup_callback,
-        .user_data = &server_args,
+        .user_data = &server_ctx,
     };
 
     struct aws_socket *listener = aws_server_bootstrap_new_socket_listener(&server_bootstrap_options);
@@ -1509,8 +1518,8 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
 
     ASSERT_SUCCESS(aws_mutex_lock(&mutex));
     ASSERT_SUCCESS(
-        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_listener_connected_predicate, &server_args));
-    ASSERT_TRUE(server_args.error_code == AWS_OP_SUCCESS);
+        aws_condition_variable_wait_pred(&condition_variable, &mutex, s_listener_connected_predicate, &server_ctx));
+    ASSERT_TRUE(server_ctx.args.error_code == AWS_OP_SUCCESS);
     ASSERT_SUCCESS(aws_mutex_unlock(&mutex));
 
     ASSERT_SUCCESS(aws_socket_get_bound_address(listener, &endpoint));
@@ -1538,7 +1547,7 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
     client_channel_options.socket_options = &socket_options;
     client_channel_options.setup_callback = s_socket_handler_setup_failure_client_setup_callback;
     client_channel_options.shutdown_callback = s_socket_handler_test_client_shutdown_callback;
-    client_channel_options.user_data = &client_args;
+    client_channel_options.user_data = &client_ctx;
 
     ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_channel_options));
 
@@ -1546,11 +1555,11 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
 
     /* Wait for client channel to shut down cleanly (no crash).*/
     ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &condition_variable, &mutex, TIMEOUT, s_channel_shutdown_predicate, &client_args));
+        &condition_variable, &mutex, TIMEOUT, s_channel_shutdown_predicate, &client_ctx));
 
     aws_server_bootstrap_destroy_socket_listener(server_bootstrap, listener);
     ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
-        &condition_variable, &mutex, TIMEOUT, s_listener_destroy_predicate, &server_args));
+        &condition_variable, &mutex, TIMEOUT, s_listener_destroy_predicate, &server_ctx));
 
     aws_mutex_unlock(&mutex);
 
@@ -1562,7 +1571,7 @@ static int s_socket_read_before_shutdown_task_test(struct aws_allocator *allocat
     aws_event_loop_group_release(server_el_group);
 
     aws_mutex_clean_up(&mutex);
-    aws_mutex_clean_up(&s_setup_failure_sync.mutex);
+    aws_mutex_clean_up(&sync.mutex);
 
     aws_io_library_clean_up();
 
