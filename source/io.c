@@ -425,7 +425,8 @@ static struct aws_log_subject_info_list s_io_log_subject_list = {
 
 static bool s_io_library_initialized = false;
 
-void aws_tls_init_static_state(struct aws_allocator *alloc);
+void aws_tls_init_vtable(struct aws_allocator *allocator);
+void aws_tls_init_static_state(struct aws_allocator *allocator);
 void aws_tls_clean_up_static_state(void);
 
 void aws_io_library_init(struct aws_allocator *allocator) {
@@ -435,6 +436,7 @@ void aws_io_library_init(struct aws_allocator *allocator) {
         aws_cal_library_init(allocator);
         aws_register_error_info(&s_list);
         aws_register_log_subject_info_list(&s_io_log_subject_list);
+        aws_tls_init_vtable(allocator);
         aws_tls_init_static_state(allocator);
         aws_io_tracing_init();
     }
