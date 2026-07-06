@@ -14,6 +14,7 @@
 #include <aws/io/tls_channel_handler.h>
 
 #include "aws/io/l4_proxy.h"
+#include "aws/io/private/l4_proxy_impl.h"
 
 #ifdef _MSC_VER
 /* non-constant aggregate initializer */
@@ -462,69 +463,33 @@ static int s_setup_client_l4_proxy_negotiation(struct client_connection_args *co
         return AWS_OP_ERR;
     }
 
-    struct aws_l4_proxy_channel_handler *proxy_channel_handler = aws_l4_proxy_config_new_channel_handler(connection_args->l4_proxy_config);
-
     struct aws_connection_remote remote;
     AWS_ZERO_STRUCT(remote);
-    remote.host = aws_byte_cursor_from_string(connection_args->remote_host);
-    remote.port = connection_args->remote_port;
+    remote.host = aws_byte_cursor_from_string(connection_args->original_host);
+    remote.port = connection_args->original_port;
 
-    aws_l4_proxy_channel_handler_set_remote(proxy_channel_handler, &remote);
-
-    struct aws_channel_handler *tls_handler = aws_tls_client_handler_new(
-        connection_args->bootstrap->allocator, &connection_args->channel_data.tls_options, tls_slot);
-
-    if (!tls_handler) {
-        aws_mem_release(connection_args->bootstrap->allocator, (void *)tls_slot);
+    struct aws_l4_proxy_channel_handler *proxy_channel_handler = aws_l4_proxy_config_new_channel_handler(connection_args->l4_proxy_config, &remote);
+    if (!proxy_channel_handler) {
+        aws_mem_release(connection_args->bootstrap->allocator, proxy_slot);
         return AWS_OP_ERR;
     }
 
-    aws_channel_slot_insert_end(channel, tls_slot);
+    aws_channel_slot_insert_end(channel, proxy_slot);
     AWS_LOGF_TRACE(
         AWS_LS_IO_CHANNEL_BOOTSTRAP,
-        "id=%p: Setting up client TLS on channel %p with handler %p on slot %p",
+        "id=%p: Setting up socks5 proxy negotiation on channel %p with handler %p on slot %p",
         (void *)connection_args->bootstrap,
         (void *)channel,
-        (void *)tls_handler,
-        (void *)tls_slot);
+        (void *)proxy_channel_handler,
+        (void *)proxy_slot);
 
-    if (aws_channel_slot_set_handler(tls_slot, tls_handler) != AWS_OP_SUCCESS) {
+    struct aws_channel_handler *channel_handler = &proxy_channel_handler->channel_handler;
+    if (aws_channel_slot_set_handler(proxy_slot, channel_handler) != AWS_OP_SUCCESS) {
+        channel_handler->vtable->destroy(channel_handler);
         return AWS_OP_ERR;
     }
 
-    if (connection_args->channel_data.on_protocol_negotiated) {
-        struct aws_channel_slot *alpn_slot = aws_channel_slot_new(channel);
-
-        if (!alpn_slot) {
-            return AWS_OP_ERR;
-        }
-
-        struct aws_channel_handler *alpn_handler = aws_tls_alpn_handler_new(
-            connection_args->bootstrap->allocator,
-            connection_args->channel_data.on_protocol_negotiated,
-            connection_args->user_data);
-
-        if (!alpn_handler) {
-            aws_mem_release(connection_args->bootstrap->allocator, (void *)alpn_slot);
-            return AWS_OP_ERR;
-        }
-
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_CHANNEL_BOOTSTRAP,
-            "id=%p: Setting up ALPN handler on channel "
-            "%p with handler %p on slot %p",
-            (void *)connection_args->bootstrap,
-            (void *)channel,
-            (void *)alpn_handler,
-            (void *)alpn_slot);
-
-        aws_channel_slot_insert_right(tls_slot, alpn_slot);
-        if (aws_channel_slot_set_handler(alpn_slot, alpn_handler) != AWS_OP_SUCCESS) {
-            return AWS_OP_ERR;
-        }
-    }
-
-    if (aws_tls_client_handler_start_negotiation(tls_handler) != AWS_OP_SUCCESS) {
+    if (aws_l4_proxy_channel_handler_start_negotiation(proxy_channel_handler)) {
         return AWS_OP_ERR;
     }
 

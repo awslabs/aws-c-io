@@ -26,8 +26,8 @@ struct aws_l4_proxy_config *aws_l4_proxy_config_acquire(struct aws_l4_proxy_conf
     return config;
 }
 
-struct aws_l4_proxy_channel_handler *aws_l4_proxy_config_new_channel_handler(struct aws_l4_proxy_config *config) {
-    return config->vtable->new_channel_handler(config);
+struct aws_l4_proxy_channel_handler *aws_l4_proxy_config_new_channel_handler(struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options) {
+    return config->vtable->new_channel_handler(config, options);
 }
 
 void aws_l4_proxy_config_get_proxy_address(struct aws_l4_proxy_config *config, struct aws_connection_remote *new_remote) {
@@ -37,9 +37,6 @@ void aws_l4_proxy_config_get_proxy_address(struct aws_l4_proxy_config *config, s
     new_remote->port = config->proxy_port;
 }
 
-int aws_l4_proxy_channel_handler_set_remote(struct aws_l4_proxy_channel_handler *channel_handler, struct aws_connection_remote *remote) {
-    (void)channel_handler;
-    (void)remote;
-
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+int aws_l4_proxy_channel_handler_start_negotiation(struct aws_l4_proxy_channel_handler *handler) {
+    return handler->vtable->start_negotiation(handler);
 }

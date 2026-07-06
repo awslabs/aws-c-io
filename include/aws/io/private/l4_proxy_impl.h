@@ -17,8 +17,21 @@
 struct aws_l4_proxy_config;
 struct aws_l4_proxy_channel_handler;
 
+struct aws_connection_remote {
+    struct aws_byte_cursor host;
+    uint32_t port;
+};
+
+struct aws_l4_proxy_channel_handler_options {
+
+    struct aws_connection_remote *remote;
+
+    void (*negotiation_complete_callback)(int, void *);
+    void *negotiation_complete_user_data;
+};
+
 struct aws_l4_proxy_config_vtable {
-    struct aws_l4_proxy_channel_handler *(*new_channel_handler)(struct aws_l4_proxy_config *);
+    struct aws_l4_proxy_channel_handler *(*new_channel_handler)(struct aws_l4_proxy_config *, struct aws_l4_proxy_channel_handler_options *);
 };
 
 struct aws_l4_proxy_config {
@@ -58,9 +71,8 @@ struct aws_l4_proxy_negotiation_context {
 };
 
 struct aws_l4_proxy_channel_handler_vtable {
-    void (*set_remote)(struct aws_l4_proxy_channel_handler *, struct aws_connection_remote *);
+    int (*start_negotiation)(struct aws_l4_proxy_channel_handler *);
 };
-
 
 struct aws_l4_proxy_channel_handler {
     struct aws_allocator *allocator;
@@ -69,14 +81,21 @@ struct aws_l4_proxy_channel_handler {
     void *impl;
 
     struct aws_channel_handler channel_handler;
-    struct aws_channel_slot *channel_slot;
 
     struct aws_l4_proxy_config *config;
+
+    struct aws_byte_buf remote_host;
+    uint32_t remote_port;
+
+    void (*negotiation_complete_callback)(int, void *);
+    void *negotiation_complete_user_data;
 };
 
 AWS_EXTERN_C_BEGIN
 
 AWS_IO_API void aws_l4_proxy_config_clean_up(struct aws_l4_proxy_config *config);
+
+AWS_IO_API int aws_l4_proxy_channel_handler_start_negotiation(struct aws_l4_proxy_channel_handler *handler);
 
 AWS_EXTERN_C_END
 

@@ -28,7 +28,7 @@ static void s_aws_socks5_proxy_config_destroy(void *value) {
     aws_mem_release(config->base.allocator, config);
 }
 
-static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config);
+static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options);
 
 static struct aws_l4_proxy_config_vtable s_aws_socks5_proxy_config_vtable = {
     .new_channel_handler = s_aws_l4_proxy_channel_handler_new_socks5,
@@ -509,8 +509,113 @@ void aws_socks5_proxy_impl_drive_negotiation(
     }
 }
 
-static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config) {
-    (void)config;
+struct aws_socks5_channel_handler {
+    struct aws_allocator *allocator;
 
-    return NULL;
+    struct aws_l4_proxy_channel_handler base;
+};
+
+static int s_process_read_message_socks5(
+        struct aws_channel_handler *handler,
+        struct aws_channel_slot *slot,
+        struct aws_io_message *message) {
+
+    // TBI
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+static int s_process_write_message_socks5(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    struct aws_io_message *message) {
+
+    // TBI
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+static int s_increment_read_window_socks5(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
+
+    // TBI
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+static int s_shutdown_socks5(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    enum aws_channel_direction dir,
+    int error_code,
+    bool free_scarce_resources_immediately) {
+
+    (void)handler;
+
+    return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
+}
+
+static size_t s_initial_window_size_socks5(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    return SIZE_MAX;
+}
+
+static void s_destroy_socks5(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    // TBI
+}
+
+static size_t s_message_overhead_socks5(struct aws_channel_handler *handler) {
+    (void)handler;
+
+    return 0;
+}
+
+static struct aws_channel_handler_vtable s_socks5_channel_handle_vtable = {
+    .process_read_message = &s_process_read_message_socks5,
+    .process_write_message = &s_process_write_message_socks5,
+    .increment_read_window = &s_increment_read_window_socks5,
+    .shutdown = &s_shutdown_socks5,
+    .initial_window_size = &s_initial_window_size_socks5,
+    .message_overhead = &s_message_overhead_socks5,
+    .destroy = &s_destroy_socks5,
+    .reset_statistics = NULL,
+    .gather_statistics = NULL,
+    .trigger_read = NULL,
+};
+
+static int s_start_negotiaton(struct aws_l4_proxy_channel_handler *handler) {
+    // TBI
+
+    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+}
+
+static struct aws_l4_proxy_channel_handler_vtable s_socks5_channel_handler_l4_vtable = {
+    .start_negotiation = s_start_negotiaton,
+};
+
+static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options) {
+    struct aws_allocator *allocator = config->allocator;
+    struct aws_socks5_channel_handler *socks5_handler = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_channel_handler));
+
+    socks5_handler->allocator = allocator;
+
+    struct aws_l4_proxy_channel_handler *l4_handler = &socks5_handler->base;
+    l4_handler->allocator = allocator;
+    l4_handler->vtable = &s_socks5_channel_handler_l4_vtable;
+    l4_handler->impl = socks5_handler;
+
+    l4_handler->config = aws_l4_proxy_config_acquire(config);
+
+    aws_byte_buf_init_copy_from_cursor(&l4_handler->remote_host, allocator, options->remote->host);
+    l4_handler->remote_port = options->remote->port;
+
+    l4_handler->negotiation_complete_callback = options->negotiation_complete_callback;
+    l4_handler->negotiation_complete_user_data = options->negotiation_complete_user_data;
+
+    struct aws_channel_handler *handler = &l4_handler->channel_handler;
+    handler->vtable = &s_socks5_channel_handle_vtable;
+    handler->alloc = allocator;
+    handler->slot = NULL;
+    handler->impl = socks5_handler;
+
+    return &socks5_handler->base;
 }
