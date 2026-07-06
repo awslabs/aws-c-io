@@ -30,11 +30,16 @@ struct aws_l4_proxy_channel_handler *aws_l4_proxy_config_new_channel_handler(str
     return config->vtable->new_channel_handler(config);
 }
 
-int aws_l4_proxy_channel_handler_redirect(struct aws_l4_proxy_channel_handler *handler, struct aws_socket_options *socket_options, struct aws_connection_remote *original_remote, struct aws_connection_remote *new_remote) {
-    (void)handler;
-    (void)socket_options;
-    (void)original_remote;
-    (void)new_remote;
+void aws_l4_proxy_config_get_proxy_address(struct aws_l4_proxy_config *config, struct aws_connection_remote *new_remote) {
+    AWS_ZERO_STRUCT(*new_remote);
+
+    new_remote->host = aws_byte_cursor_from_buf(&config->proxy_host);
+    new_remote->port = config->proxy_port;
+}
+
+int aws_l4_proxy_channel_handler_set_remote(struct aws_l4_proxy_channel_handler *channel_handler, struct aws_connection_remote *remote) {
+    (void)channel_handler;
+    (void)remote;
 
     return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
 }

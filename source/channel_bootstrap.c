@@ -13,6 +13,8 @@
 #include <aws/io/socket_channel_handler.h>
 #include <aws/io/tls_channel_handler.h>
 
+#include "aws/io/l4_proxy.h"
+
 #ifdef _MSC_VER
 /* non-constant aggregate initializer */
 #    pragma warning(disable : 4204)
@@ -125,8 +127,10 @@ struct client_connection_args {
     aws_client_bootstrap_on_channel_event_fn *shutdown_callback;
     struct client_channel_data channel_data;
     struct aws_socket_options outgoing_options;
-    uint32_t outgoing_port;
-    struct aws_string *host_name;
+    struct aws_string *original_host;
+    uint32_t original_port;
+    struct aws_string *remote_host;
+    uint32_t remote_port;
     void *user_data;
     uint8_t addresses_count;
     uint8_t failed_count;
@@ -149,6 +153,8 @@ struct client_connection_args {
      *
      */
     struct aws_ref_count ref_count;
+
+    struct aws_l4_proxy_config *l4_proxy_config;
 };
 
 static struct client_connection_args *s_client_connection_args_acquire(struct client_connection_args *args) {
@@ -167,13 +173,14 @@ static void s_client_connection_args_destroy(void *user_data) {
 
     struct aws_allocator *allocator = args->bootstrap->allocator;
     aws_client_bootstrap_release(args->bootstrap);
-    if (args->host_name) {
-        aws_string_destroy(args->host_name);
-    }
+    aws_string_destroy(args->original_host);
+    aws_string_destroy(args->remote_host);
 
     if (args->channel_data.use_tls) {
         aws_tls_connection_options_clean_up(&args->channel_data.tls_options);
     }
+
+    aws_l4_proxy_config_release(args->l4_proxy_config);
 
     aws_mem_release(allocator, args);
 }
@@ -444,6 +451,86 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
     return AWS_OP_SUCCESS;
 }
 
+static int s_setup_client_l4_proxy_negotiation(struct client_connection_args *connection_args, struct aws_channel *channel) {
+    AWS_FATAL_ASSERT(connection_args->l4_proxy_config);
+
+    struct aws_channel_slot *proxy_slot = aws_channel_slot_new(channel);
+
+    /* as far as cleanup goes, since this stuff is being added to a channel, the caller will free this memory
+       when they clean up the channel. */
+    if (!proxy_slot) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_l4_proxy_channel_handler *proxy_channel_handler = aws_l4_proxy_config_new_channel_handler(connection_args->l4_proxy_config);
+
+    struct aws_connection_remote remote;
+    AWS_ZERO_STRUCT(remote);
+    remote.host = aws_byte_cursor_from_string(connection_args->remote_host);
+    remote.port = connection_args->remote_port;
+
+    aws_l4_proxy_channel_handler_set_remote(proxy_channel_handler, &remote);
+
+    struct aws_channel_handler *tls_handler = aws_tls_client_handler_new(
+        connection_args->bootstrap->allocator, &connection_args->channel_data.tls_options, tls_slot);
+
+    if (!tls_handler) {
+        aws_mem_release(connection_args->bootstrap->allocator, (void *)tls_slot);
+        return AWS_OP_ERR;
+    }
+
+    aws_channel_slot_insert_end(channel, tls_slot);
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: Setting up client TLS on channel %p with handler %p on slot %p",
+        (void *)connection_args->bootstrap,
+        (void *)channel,
+        (void *)tls_handler,
+        (void *)tls_slot);
+
+    if (aws_channel_slot_set_handler(tls_slot, tls_handler) != AWS_OP_SUCCESS) {
+        return AWS_OP_ERR;
+    }
+
+    if (connection_args->channel_data.on_protocol_negotiated) {
+        struct aws_channel_slot *alpn_slot = aws_channel_slot_new(channel);
+
+        if (!alpn_slot) {
+            return AWS_OP_ERR;
+        }
+
+        struct aws_channel_handler *alpn_handler = aws_tls_alpn_handler_new(
+            connection_args->bootstrap->allocator,
+            connection_args->channel_data.on_protocol_negotiated,
+            connection_args->user_data);
+
+        if (!alpn_handler) {
+            aws_mem_release(connection_args->bootstrap->allocator, (void *)alpn_slot);
+            return AWS_OP_ERR;
+        }
+
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: Setting up ALPN handler on channel "
+            "%p with handler %p on slot %p",
+            (void *)connection_args->bootstrap,
+            (void *)channel,
+            (void *)alpn_handler,
+            (void *)alpn_slot);
+
+        aws_channel_slot_insert_right(tls_slot, alpn_slot);
+        if (aws_channel_slot_set_handler(alpn_slot, alpn_handler) != AWS_OP_SUCCESS) {
+            return AWS_OP_ERR;
+        }
+    }
+
+    if (aws_tls_client_handler_start_negotiation(tls_handler) != AWS_OP_SUCCESS) {
+        return AWS_OP_ERR;
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
 static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
     struct client_connection_args *connection_args = user_data;
     int err_code = error_code;
@@ -487,6 +574,15 @@ static void s_on_client_channel_on_setup_completed(struct aws_channel *channel, 
         if (aws_channel_slot_set_handler(socket_slot, socket_channel_handler)) {
             err_code = aws_last_error();
             goto error;
+        }
+
+        if (connection_args->l4_proxy_config != NULL) {
+            if (s_setup_client_l4_proxy_negotiation(connection_args, channel)) {
+                err_code = aws_last_error();
+                goto error;
+            }
+
+            return;
         }
 
         if (connection_args->channel_data.use_tls) {
@@ -642,7 +738,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
     if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
         struct aws_host_address host_address;
-        host_address.host = connection_args->host_name;
+        host_address.host = connection_args->remote_host;
         host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
         host_address.record_type = connection_args->outgoing_options.domain == AWS_SOCKET_IPV6
                                        ? AWS_ADDRESS_RECORD_TYPE_AAAA
@@ -935,7 +1031,7 @@ static void s_on_host_resolved(
             struct aws_host_address *host_address_ptr = NULL;
             aws_array_list_get_at_ptr(host_addresses, (void **)&host_address_ptr, i);
 
-            task_data->endpoint.port = client_connection_args->outgoing_port;
+            task_data->endpoint.port = client_connection_args->remote_port;
             AWS_ASSERT(sizeof(task_data->endpoint.address) >= host_address_ptr->address->len + 1);
             memcpy(
                 task_data->endpoint.address,
@@ -1032,6 +1128,18 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         }
     }
 
+    if (options->l4_proxy_config != NULL) {
+        // we only support this with ipv4/ipv6
+        if (!s_aws_socket_domain_uses_dns(socket_options->domain)) {
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+
+        // can't use proxy and secitem at same time
+        if (aws_is_using_secitem()) {
+            return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        }
+    }
+
     struct client_connection_args *client_connection_args =
         aws_mem_calloc(bootstrap->allocator, 1, sizeof(struct client_connection_args));
 
@@ -1055,10 +1163,10 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     client_connection_args->setup_callback = options->setup_callback;
     client_connection_args->shutdown_callback = options->shutdown_callback;
     client_connection_args->outgoing_options = *socket_options;
-    client_connection_args->outgoing_port = port;
     client_connection_args->enable_read_back_pressure = options->enable_read_back_pressure;
     client_connection_args->requested_event_loop = options->requested_event_loop;
     client_connection_args->tls_error_code = AWS_ERROR_SUCCESS;
+    client_connection_args->l4_proxy_config = aws_l4_proxy_config_acquire(options->l4_proxy_config);
 
     if (tls_options) {
         if (aws_tls_connection_options_copy(&client_connection_args->channel_data.tls_options, tls_options)) {
@@ -1093,11 +1201,20 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         client_connection_args->channel_data.tls_options.user_data = client_connection_args;
     }
 
-    if (s_aws_socket_domain_uses_dns(socket_options->domain)) {
-        client_connection_args->host_name = aws_string_new_from_c_str(bootstrap->allocator, host_name);
+    client_connection_args->original_port = port;
+    client_connection_args->remote_port = port;
 
-        if (!client_connection_args->host_name) {
-            goto error;
+    if (s_aws_socket_domain_uses_dns(socket_options->domain)) {
+        client_connection_args->original_host = aws_string_new_from_c_str(bootstrap->allocator, host_name);
+
+        if (client_connection_args->l4_proxy_config) {
+            struct aws_connection_remote remote;
+            aws_l4_proxy_config_get_proxy_address(client_connection_args->l4_proxy_config, &remote);
+
+            client_connection_args->remote_host = aws_string_new_from_cursor(bootstrap->allocator, &remote.host);
+            client_connection_args->remote_port = remote.port;
+        } else {
+            client_connection_args->remote_host = aws_string_new_from_c_str(bootstrap->allocator, host_name);
         }
 
         const struct aws_host_resolution_config *host_resolution_config = &bootstrap->host_resolver_config;
@@ -1107,7 +1224,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
 
         if (aws_host_resolver_resolve_host(
                 bootstrap->host_resolver,
-                client_connection_args->host_name,
+                client_connection_args->remote_host,
                 s_on_host_resolved,
                 host_resolution_config,
                 client_connection_args)) {

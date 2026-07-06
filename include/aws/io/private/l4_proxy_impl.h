@@ -57,7 +57,17 @@ struct aws_l4_proxy_negotiation_context {
     int error_code;
 };
 
+struct aws_l4_proxy_channel_handler_vtable {
+    void (*set_remote)(struct aws_l4_proxy_channel_handler *, struct aws_connection_remote *);
+};
+
+
 struct aws_l4_proxy_channel_handler {
+    struct aws_allocator *allocator;
+
+    struct aws_l4_proxy_channel_handler_vtable *vtable;
+    void *impl;
+
     struct aws_channel_handler channel_handler;
     struct aws_channel_slot *channel_slot;
 
