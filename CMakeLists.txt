@@ -38,8 +38,6 @@ file(GLOB AWS_IO_SRC
         "source/*.c"
         )
 
-set(USE_S2N OFF)
-
 if (WIN32)
     option(USE_IO_COMPLETION_PORTS
             "Use I/O Completion Ports to drive event-loops. \
@@ -110,10 +108,17 @@ elseif (APPLE)
         list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
     endif ()
 
-    # Enable KQUEUE and s2n-tls on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
+    # Enable KQUEUE on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
         list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
-        set(USE_S2N ON)
+    endif()
+
+    # On MacOS s2n-tls is optional (the Apple SecItem/Security framework provides a TLS implementation).
+    # Default to using s2n-tls only when SecItem is not requested. Users can override with -DUSE_S2N=ON/OFF.
+    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
+        option(USE_S2N "Use s2n-tls as the TLS implementation." ON)
+    else()
+        option(USE_S2N "Use s2n-tls as the TLS implementation." OFF)
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
