@@ -370,6 +370,11 @@ jobs:
 
   openbsd:
     runs-on: ubuntu-24.04 # latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # OpenBSD only supports the two most recent releases
+        version: ['7.8', '7.9']
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -382,7 +387,7 @@ jobs:
       with:
         operating_system: openbsd
         architecture: x86-64
-        version: '7.8'
+        version: ${{ matrix.version }}
         cpu_count: 4
         shell: bash
         run: |
