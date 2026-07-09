@@ -13,6 +13,8 @@
 #include <aws/io/private/socks5_impl.h>
 #include <aws/io/socks5.h>
 
+#include "aws/io/event_loop.h"
+
 
 static void s_aws_socks5_proxy_config_destroy(void *value) {
     struct aws_l4_proxy_config *l4_config = value;
@@ -509,19 +511,136 @@ void aws_socks5_proxy_impl_drive_negotiation(
     }
 }
 
+static const size_t AWS_SOCKS5_IO_MESSAGE_DEFAULT_LENGTH = 1024;
+static const size_t DEFAULT_SOCKS5_WINDOW_SIZE = 1024;
+
 struct aws_socks5_channel_handler {
     struct aws_allocator *allocator;
 
     struct aws_l4_proxy_channel_handler base;
+
+    struct aws_socks5_proxy_impl *negotiation_impl;
+
+    enum aws_l4_proxy_protocol_status status;
+
+    // channel handler data processing
+    bool in_service;
+    bool is_service_scheduled;
+    struct aws_channel_task service_task;
+
+    // read backpressure
+    size_t num_pending_read_bytes;
+    struct aws_linked_list pending_read_bytes;
 };
+
+static void s_schedule_socks5_service(struct aws_socks5_channel_handler *handler) {
+    AWS_FATAL_ASSERT(aws_channel_thread_is_callers_thread(handler->base.channel_handler.slot->channel));
+
+    if (handler->is_service_scheduled) {
+        return;
+    }
+
+    handler->is_service_scheduled = true;
+    aws_channel_schedule_task_now(handler->base.channel_handler.slot->channel, &handler->service_task);
+}
+
+static void s_aws_socks5_on_socket_write_completion(
+    struct aws_channel *channel,
+    struct aws_io_message *message,
+    int err_code,
+    void *user_data) {
+
+    (void)channel;
+    (void)message;
+
+    struct aws_socks5_channel_handler *handler = user_data;
+    if (err_code != AWS_ERROR_SUCCESS) {
+        handler->status = AWS_L4PPS_FAILURE;
+    }
+
+    s_schedule_socks5_service(handler);
+}
+
+static int s_drive_negotiation_socks5(struct aws_socks5_channel_handler *handler, struct aws_byte_cursor *incoming_data) {
+    struct aws_channel_slot *slot = handler->base.channel_handler.slot;
+    struct aws_channel *channel = slot->channel;
+
+    AWS_FATAL_ASSERT(aws_channel_thread_is_callers_thread(channel));
+
+    if (handler->status != AWS_L4PPS_IN_PROGRESS) {
+        return aws_raise_error(AWS_ERROR_INVALID_STATE);
+    }
+
+    struct aws_io_message *io_message = aws_channel_acquire_message_from_pool(channel, AWS_IO_MESSAGE_APPLICATION_DATA, AWS_SOCKS5_IO_MESSAGE_DEFAULT_LENGTH);
+    if (io_message == NULL) {
+        return AWS_OP_ERR;
+    }
+
+    struct aws_l4_proxy_negotiation_context negotiation_context;
+    AWS_ZERO_STRUCT(negotiation_context);
+    negotiation_context.to_write = &io_message->message_data;
+    if (incoming_data->len > 0) {
+        negotiation_context.data = incoming_data;
+    }
+
+    aws_socks5_proxy_impl_drive_negotiation(handler->negotiation_impl, &negotiation_context);
+
+    handler->status = negotiation_context.status;
+
+    if (io_message->message_data.len == 0 || negotiation_context.status == AWS_L4PPS_FAILURE) {
+        aws_mem_release(io_message->allocator, io_message);
+        if (negotiation_context.status == AWS_L4PPS_FAILURE) {
+            AWS_FATAL_ASSERT(negotiation_context.error_code != AWS_ERROR_SUCCESS);
+            return aws_raise_error(negotiation_context.error_code);
+        }
+    }
+
+    io_message->on_completion = s_aws_socks5_on_socket_write_completion;
+    io_message->user_data = handler;
+
+    if (aws_channel_slot_send_message(slot, io_message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(io_message->allocator, io_message);
+        return AWS_OP_ERR;
+    }
+
+    if (handler->status == AWS_L4PPS_SUCCESS) {
+        //
+        ??;
+    }
+    ??;
+
+    return AWS_OP_SUCCESS;
+}
+
+static void s_service_socks5(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    (void)channel_task;
+
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        return;
+    }
+
+    struct aws_socks5_channel_handler *handler = arg;
+
+    handler->in_service = true;
+    handler->is_service_scheduled = false;
+
+    ??;
+}
 
 static int s_process_read_message_socks5(
         struct aws_channel_handler *handler,
         struct aws_channel_slot *slot,
         struct aws_io_message *message) {
 
-    // TBI
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    struct aws_channel *channel = handler->slot->channel;
+
+    AWS_FATAL_ASSERT(aws_channel_thread_is_callers_thread(channel));
+
+    struct aws_socks5_channel_handler *socks5_handler = handler->impl;
+
+    socks5_handler->num_pending_read_bytes += ??;
+    aws_linked_list_push_back(&socks5_handler->pending_read_bytes, ??);
+    s_schedule_socks5_service(socks5_handler);
 }
 
 static int s_process_write_message_socks5(
@@ -529,8 +648,37 @@ static int s_process_write_message_socks5(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
+    (void)slot;
+
+    struct aws_socks5_channel_handler *socks5_handler = handler->impl;
+    if (socks5_handler->status != AWS_L4PPS_SUCCESS) {
+        aws_raise_error(AWS_ERROR_INVALID_STATE);
+        goto error;
+    }
+
+    if (aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        goto error;
+    }
+
+    return AWS_OP_SUCCESS;
+
+error:
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_SOCKS5,
+        "id=%p: Destroying write message without passing it along, error %d (%s)",
+        (void *)socks5_handler,
+        aws_last_error(),
+        aws_error_name(aws_last_error()));
+
+    if (message->on_completion) {
+        message->on_completion(handler->slot->channel, message, aws_last_error(), message->user_data);
+    }
+    aws_mem_release(message->allocator, message);
     // TBI
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    //s_shutdown_due_to_error(connection, aws_last_error());
+
+    return AWS_OP_SUCCESS;
 }
 
 static int s_increment_read_window_socks5(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
@@ -554,13 +702,15 @@ static int s_shutdown_socks5(
 static size_t s_initial_window_size_socks5(struct aws_channel_handler *handler) {
     (void)handler;
 
-    return SIZE_MAX;
+    return DEFAULT_SOCKS5_WINDOW_SIZE;
 }
 
 static void s_destroy_socks5(struct aws_channel_handler *handler) {
-    (void)handler;
+    struct aws_socks5_channel_handler *socks5_handler = handler->impl;
+    aws_l4_proxy_channel_handler_clean_up(&socks5_handler->base);
+    aws_socks5_proxy_impl_destroy(socks5_handler->negotiation_impl);
 
-    // TBI
+    aws_mem_release(socks5_handler->allocator, socks5_handler);
 }
 
 static size_t s_message_overhead_socks5(struct aws_channel_handler *handler) {
@@ -582,21 +732,30 @@ static struct aws_channel_handler_vtable s_socks5_channel_handle_vtable = {
     .trigger_read = NULL,
 };
 
-static int s_start_negotiaton(struct aws_l4_proxy_channel_handler *handler) {
-    // TBI
+static int s_start_negotiation(struct aws_l4_proxy_channel_handler *handler) {
+    s_schedule_socks5_service(handler->impl);
 
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    return AWS_OP_SUCCESS;
 }
 
 static struct aws_l4_proxy_channel_handler_vtable s_socks5_channel_handler_l4_vtable = {
-    .start_negotiation = s_start_negotiaton,
+    .start_negotiation = s_start_negotiation,
 };
 
 static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options) {
     struct aws_allocator *allocator = config->allocator;
     struct aws_socks5_channel_handler *socks5_handler = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_channel_handler));
+    struct aws_socks5_proxy_config *socks5_config = config->impl;
 
     socks5_handler->allocator = allocator;
+    socks5_handler->negotiation_impl = aws_socks5_proxy_impl_new(allocator, socks5_config);
+    socks5_handler->status = AWS_L4PPS_IN_PROGRESS;
+    socks5_handler->in_service = false;
+    socks5_handler->is_service_scheduled = false;
+    socks5_handler->num_pending_read_bytes = 0;
+
+    aws_linked_list_init(&socks5_handler->pending_read_bytes);
+    aws_channel_task_init(&socks5_handler->service_task, s_service_socks5, socks5_handler, "socks5_service");
 
     struct aws_l4_proxy_channel_handler *l4_handler = &socks5_handler->base;
     l4_handler->allocator = allocator;

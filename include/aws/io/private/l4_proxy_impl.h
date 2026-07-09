@@ -97,6 +97,8 @@ AWS_IO_API void aws_l4_proxy_config_clean_up(struct aws_l4_proxy_config *config)
 
 AWS_IO_API int aws_l4_proxy_channel_handler_start_negotiation(struct aws_l4_proxy_channel_handler *handler);
 
+AWS_IO_API void aws_l4_proxy_channel_handler_clean_up(struct aws_l4_proxy_channel_handler *handler);
+
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_L4PROXY_IMPL_H */
