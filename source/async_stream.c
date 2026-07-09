@@ -9,6 +9,11 @@
 #include <aws/io/future.h>
 #include <aws/io/stream.h>
 
+static void s_async_input_stream_destroy_wrapper(void *stream) {
+    struct aws_async_input_stream *async_stream = stream;
+    async_stream->vtable->destroy(async_stream);
+}
+
 void aws_async_input_stream_init_base(
     struct aws_async_input_stream *stream,
     struct aws_allocator *alloc,
@@ -25,7 +30,7 @@ void aws_async_input_stream_init_base(
     stream->alloc = alloc;
     stream->vtable = vtable;
     stream->impl = impl;
-    aws_ref_count_init(&stream->ref_count, stream, (aws_simple_completion_callback *)vtable->destroy);
+    aws_ref_count_init(&stream->ref_count, stream, s_async_input_stream_destroy_wrapper);
 }
 
 struct aws_async_input_stream *aws_async_input_stream_acquire(struct aws_async_input_stream *stream) {
