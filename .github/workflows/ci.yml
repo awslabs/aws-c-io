@@ -34,18 +34,28 @@ jobs:
           - rhel8-x64
           - al2-x64
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
+    - name: Verify local badssl is accessible
+      run: curl -v https://badssl.test/
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        aws s3 cp s3://aws-crt-test-stuff/ci/host-network/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ matrix.image }} build -p ${{ env.PACKAGE_NAME }}
 
   linux-byo-crypto:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
+    - name: Verify local badssl is accessible
+      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -53,7 +63,7 @@ jobs:
     # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }} + consumers
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        aws s3 cp s3://aws-crt-test-stuff/ci/host-network/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-al2-x64 build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBYO_CRYPTO=ON
 
   linux-compiler-compat:
@@ -98,25 +108,35 @@ jobs:
           # our base Linux image to Ubuntu 22.
             extra-build-flag: --cmake-extra=-DCMAKE_EXE_LINKER_FLAGS="-lresolv"
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
+    - name: Verify local badssl is accessible
+      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
     - name: Build ${{ matrix.compiler.name }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        aws s3 cp s3://aws-crt-test-stuff/ci/host-network/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=${{ matrix.compiler.name }} ${{ matrix.compiler.extra-build-flag }}
 
   linux-debug:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
+    - name: Verify local badssl is accessible
+      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
         aws-region: ${{ env.AWS_DEFAULT_REGION }}
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        aws s3 cp s3://aws-crt-test-stuff/ci/host-network/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --config Debug
 
   clang-sanitizers:
@@ -126,6 +146,11 @@ jobs:
       matrix:
         sanitizers: [",thread", ",address,undefined"]
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
+    - name: Verify local badssl is accessible
+      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -133,12 +158,17 @@ jobs:
     # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        aws s3 cp s3://aws-crt-test-stuff/ci/host-network/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --compiler=clang-11 --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
 
   linux-shared-libs:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
+    - name: Verify local badssl is accessible
+      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -146,7 +176,7 @@ jobs:
     # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        aws s3 cp s3://aws-crt-test-stuff/ci/host-network/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DBUILD_SHARED_LIBS=ON
 
   # Test downstream repos.
@@ -154,6 +184,11 @@ jobs:
   downstream:
     runs-on: ubuntu-24.04 # latest
     steps:
+    - uses: actions/checkout@v4
+    - name: Setup local badssl
+      run: sudo python3 setup_badssl.py
+    - name: Verify local badssl is accessible
+      run: curl -sf --cacert badssl.com/certs/sets/current/gen/crt/ca-root.crt https://badssl.test/
     - uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ env.CRT_CI_ROLE }}
@@ -161,7 +196,7 @@ jobs:
     # We can't use the `uses: docker://image` version yet, GitHub lacks authentication for actions -> packages
     - name: Build ${{ env.PACKAGE_NAME }}
       run: |
-        aws s3 cp s3://aws-crt-test-stuff/ci/${{ env.BUILDER_VERSION }}/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
+        aws s3 cp s3://aws-crt-test-stuff/ci/host-network/linux-container-ci.sh ./linux-container-ci.sh && chmod a+x ./linux-container-ci.sh
         ./linux-container-ci.sh ${{ env.BUILDER_VERSION }} aws-crt-${{ env.LINUX_BASE_IMAGE }} build downstream -p ${{ env.PACKAGE_NAME }}
 
   windows:
