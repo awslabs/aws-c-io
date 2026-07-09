@@ -782,7 +782,6 @@ The following CMake options control how aws-c-io is built:
 
 Option | Platform | Description | Default
 --- | --- | --- | ---
-`USE_S2N` | Linux | Enables s2n-tls as the TLS implementation. Automatically enabled on Linux. | ON
 `USE_S2N` | macOS | Compiles s2n-tls in as an available TLS implementation. User-overridable via `-DUSE_S2N=ON/OFF`. Note that Apple Secure Transport remains the default backend even when `ON` (s2n-tls is only selected when `AWS_CRT_USE_NON_FIPS_TLS_13` is set); setting `OFF` removes s2n-tls from the macOS build entirely. | ON when `AWS_USE_SECITEM` is not defined, otherwise OFF
 `AWS_USE_SECITEM` | Apple | Uses Apple's SecItem/Secure Transport API instead of s2n-tls. When defined (regardless of value), the Apple Dispatch Queue event loop is used instead of kqueue. | Not defined
 `USE_VSOCK` | Linux | Enables VSOCK socket domain support. Requires an appropriate VSOCK kernel driver. | OFF
