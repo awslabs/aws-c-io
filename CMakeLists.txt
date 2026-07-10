@@ -121,6 +121,12 @@ elseif (APPLE)
         option(USE_S2N "Use s2n-tls as the TLS implementation." OFF)
     endif()
 
+    # Force USE_S2N OFF to avoid pulling in an unused s2n dependency.
+    if (DEFINED AWS_USE_SECITEM AND USE_S2N)
+        message(WARNING "AWS_USE_SECITEM takes precedence over s2n-tls; forcing USE_S2N=OFF to avoid linking unused s2n.")
+        set(USE_S2N OFF CACHE BOOL "Use s2n-tls as the TLS implementation." FORCE)
+    endif()
+
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     file(GLOB AWS_IO_OS_HEADERS
             )
