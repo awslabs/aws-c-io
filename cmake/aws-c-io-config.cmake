@@ -1,6 +1,8 @@
 include(CMakeFindDependencyMacro)
 
-if (UNIX AND NOT BYO_CRYPTO)
+# USE_S2N is substituted at aws-c-io configure time (configure_file @ONLY) with the
+# actual build decision, so this matches whether aws-c-io was really linked against s2n.
+if (@USE_S2N@)
     find_dependency(s2n)
 endif()
 
