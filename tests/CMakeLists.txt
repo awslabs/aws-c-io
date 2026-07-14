@@ -180,6 +180,7 @@ add_test_case(test_der_cert_to_pem_empty_input_fails)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
+add_test_case(socket_handler_read_before_shutdown_task)
 
 
 # These tests fail on Windows due to some bug in our server code where, if the socket is closed
