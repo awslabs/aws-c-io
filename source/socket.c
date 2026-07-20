@@ -128,7 +128,7 @@ enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
  * Ideally we should use the platform definition (e.x.: AWS_OS_APPLE) here, however the platform
  * definition was declared in aws-c-common. We probably do not want to introduce extra dependency here.
  */
-#    if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL)
+#    if defined(AWS_ENABLE_KQUEUE) || defined(AWS_ENABLE_EPOLL) || defined(AWS_ENABLE_POLLSET)
     return AWS_SOCKET_IMPL_POSIX;
 #    elif defined(AWS_ENABLE_DISPATCH_QUEUE)
     return AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK;
@@ -205,7 +205,7 @@ void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint 
 static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type) {
     switch (type) {
         case AWS_SOCKET_IMPL_POSIX:
-#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE)
+#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE) && !defined(AWS_ENABLE_POLLSET)
             AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
             return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 #endif // AWS_SOCKET_IMPL_POSIX
@@ -230,7 +230,7 @@ static int aws_socket_impl_type_validate_platform(enum aws_socket_impl_type type
     return AWS_OP_SUCCESS;
 }
 
-#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE)
+#if !defined(AWS_ENABLE_EPOLL) && !defined(AWS_ENABLE_KQUEUE) && !defined(AWS_ENABLE_POLLSET)
 int aws_socket_init_posix(
     struct aws_socket *socket,
     struct aws_allocator *alloc,
@@ -241,7 +241,7 @@ int aws_socket_init_posix(
     AWS_LOGF_DEBUG(AWS_LS_IO_SOCKET, "Posix socket is not supported on the platform.");
     return aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
 }
-#endif // !AWS_ENABLE_EPOLL && !AWS_ENABLE_KQUEUE
+#endif // !AWS_ENABLE_EPOLL && !AWS_ENABLE_KQUEUE && !AWS_ENABLE_POLLSET
 
 #ifndef AWS_ENABLE_IO_COMPLETION_PORTS
 int aws_socket_init_winsock(
