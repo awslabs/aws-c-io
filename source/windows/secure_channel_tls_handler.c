@@ -783,6 +783,16 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         }
         sc_handler->negotiation_finished = true;
 
+        SecPkgContext_ConnectionInfo connection_info;
+        if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
+            SEC_E_OK) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: (SChannel) Negotiated TLS version %d",
+                (void *)handler,
+                (int)connection_info.dwProtocol);
+        }
+
         /* force query of the sizes so future calls to encrypt will be loaded. */
         s_message_overhead(handler);
 
@@ -1083,6 +1093,17 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             }
         }
         sc_handler->negotiation_finished = true;
+
+        SecPkgContext_ConnectionInfo connection_info;
+        if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
+            SEC_E_OK) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: (SChannel) Negotiated TLS version %d",
+                (void *)handler,
+                (int)connection_info.dwProtocol);
+        }
+
         /* force the sizes query, so future Encrypt message calls work.*/
         s_message_overhead(handler);
 

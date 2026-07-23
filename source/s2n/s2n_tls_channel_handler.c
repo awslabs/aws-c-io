@@ -482,6 +482,12 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 s2n_handler->protocol = aws_byte_buf_from_c_str(protocol);
             }
 
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: (s2n) Negotiated TLS version %d",
+                (void *)handler,
+                s2n_connection_get_actual_protocol_version(s2n_handler->connection));
+
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 
             if (server_name) {

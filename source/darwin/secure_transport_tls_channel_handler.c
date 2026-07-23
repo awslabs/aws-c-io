@@ -342,6 +342,15 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     if (status == noErr) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", (void *)handler);
         secure_transport_handler->negotiation_finished = true;
+
+        SSLProtocol negotiated_protocol = kSSLProtocolUnknown;
+        SSLGetNegotiatedProtocolVersion(secure_transport_handler->ctx, &negotiated_protocol);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "id=%p: (SecureTransport) Negotiated TLS version %d",
+            (void *)handler,
+            (int)negotiated_protocol);
+
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
         if (protocol) {
