@@ -462,45 +462,27 @@ static void s_on_negotiation_result(
     }
 }
 
-/* s2n reports protocol versions using its own S2N_* macros (s2n.h), which are numbered differently
- * from our own enum aws_tls_versions. Stringify both separately to avoid confusing the two. */
-static const char *s_s2n_protocol_version_to_str(int s2n_version) {
+/* s2n reports protocol versions using its own S2N_* macros (s2n.h), e.g. S2N_SSLv3 = 30,
+ * S2N_TLS12 = 33 -- these do not line up with our own enum aws_tls_versions (AWS_IO_SSLv3 = 0,
+ * AWS_IO_TLSv1_2 = 3, etc), so a direct cast between the two would silently produce the wrong
+ * version. This switch is an explicit, one-time mapping from s2n's numbering to ours so the
+ * resulting enum aws_tls_versions value can be printed with the single shared
+ * aws_tls_version_to_string() used by every TLS backend. s2n's SSLv2 has no equivalent in our
+ * enum, so it falls through to the "unrecognized" default like any other unmapped value. */
+static enum aws_tls_versions s_s2n_protocol_version_to_aws_tls_version(int s2n_version) {
     switch (s2n_version) {
-        case S2N_SSLv2:
-            return "SSLv2";
         case S2N_SSLv3:
-            return "SSLv3";
+            return AWS_IO_SSLv3;
         case S2N_TLS10:
-            return "TLS1.0";
+            return AWS_IO_TLSv1;
         case S2N_TLS11:
-            return "TLS1.1";
+            return AWS_IO_TLSv1_1;
         case S2N_TLS12:
-            return "TLS1.2";
+            return AWS_IO_TLSv1_2;
         case S2N_TLS13:
-            return "TLS1.3";
-        case S2N_UNKNOWN_PROTOCOL_VERSION:
-            return "unknown";
+            return AWS_IO_TLSv1_3;
         default:
-            return "unrecognized";
-    }
-}
-
-static const char *s_aws_tls_version_to_str(enum aws_tls_versions version) {
-    switch (version) {
-        case AWS_IO_SSLv3:
-            return "SSLv3";
-        case AWS_IO_TLSv1:
-            return "TLS1.0";
-        case AWS_IO_TLSv1_1:
-            return "TLS1.1";
-        case AWS_IO_TLSv1_2:
-            return "TLS1.2";
-        case AWS_IO_TLSv1_3:
-            return "TLS1.3";
-        case AWS_IO_TLS_VER_SYS_DEFAULTS:
-            return "system defaults";
-        default:
-            return "unrecognized";
+            return (enum aws_tls_versions)-1;
     }
 }
 
@@ -537,10 +519,13 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 "id=%p: (s2n) Negotiated TLS version %s (client max supported %s, server max supported %s, "
                 "locally configured minimum %s)",
                 (void *)handler,
-                s_s2n_protocol_version_to_str(s2n_connection_get_actual_protocol_version(s2n_handler->connection)),
-                s_s2n_protocol_version_to_str(s2n_connection_get_client_protocol_version(s2n_handler->connection)),
-                s_s2n_protocol_version_to_str(s2n_connection_get_server_protocol_version(s2n_handler->connection)),
-                s_aws_tls_version_to_str(s2n_handler->s2n_ctx->minimum_tls_version));
+                aws_tls_version_to_string(s_s2n_protocol_version_to_aws_tls_version(
+                    s2n_connection_get_actual_protocol_version(s2n_handler->connection))),
+                aws_tls_version_to_string(s_s2n_protocol_version_to_aws_tls_version(
+                    s2n_connection_get_client_protocol_version(s2n_handler->connection))),
+                aws_tls_version_to_string(s_s2n_protocol_version_to_aws_tls_version(
+                    s2n_connection_get_server_protocol_version(s2n_handler->connection))),
+                aws_tls_version_to_string(s2n_handler->s2n_ctx->minimum_tls_version));
 
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 
