@@ -119,7 +119,7 @@ static enum aws_tls_versions s_secure_transport_protocol_to_aws_tls_version(SSLP
         case kTLSProtocol13:
             return AWS_IO_TLSv1_3;
         default:
-            return (enum aws_tls_versions)-1;
+            return (enum aws_tls_versions) - 1;
     }
 }
 

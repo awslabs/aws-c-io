@@ -157,7 +157,7 @@ static enum aws_tls_versions s_schannel_protocol_to_aws_tls_version(DWORD protoc
             return AWS_IO_TLSv1_3;
 #endif
         default:
-            return (enum aws_tls_versions)-1;
+            return (enum aws_tls_versions) - 1;
     }
 }
 

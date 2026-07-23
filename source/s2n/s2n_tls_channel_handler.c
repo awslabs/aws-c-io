@@ -482,7 +482,7 @@ static enum aws_tls_versions s_s2n_protocol_version_to_aws_tls_version(int s2n_v
         case S2N_TLS13:
             return AWS_IO_TLSv1_3;
         default:
-            return (enum aws_tls_versions)-1;
+            return (enum aws_tls_versions) - 1;
     }
 }
 
