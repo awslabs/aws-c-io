@@ -130,6 +130,52 @@ struct secure_channel_handler {
     int shutdown_error_code;
 };
 
+/* SChannel reports the negotiated protocol as an SP_PROT_*_CLIENT/SP_PROT_*_SERVER bit flag
+ * (schannel.h), which is numbered differently from our own enum aws_tls_versions. Stringify both
+ * separately to avoid confusing the two. */
+static const char *s_schannel_protocol_to_str(DWORD protocol) {
+    switch (protocol) {
+        case SP_PROT_SSL3_CLIENT:
+        case SP_PROT_SSL3_SERVER:
+            return "SSLv3";
+        case SP_PROT_TLS1_0_CLIENT:
+        case SP_PROT_TLS1_0_SERVER:
+            return "TLS1.0";
+        case SP_PROT_TLS1_1_CLIENT:
+        case SP_PROT_TLS1_1_SERVER:
+            return "TLS1.1";
+        case SP_PROT_TLS1_2_CLIENT:
+        case SP_PROT_TLS1_2_SERVER:
+            return "TLS1.2";
+#if defined(SP_PROT_TLS1_3_CLIENT)
+        case SP_PROT_TLS1_3_CLIENT:
+        case SP_PROT_TLS1_3_SERVER:
+            return "TLS1.3";
+#endif
+        default:
+            return "unrecognized";
+    }
+}
+
+static const char *s_aws_tls_version_to_str(enum aws_tls_versions version) {
+    switch (version) {
+        case AWS_IO_SSLv3:
+            return "SSLv3";
+        case AWS_IO_TLSv1:
+            return "TLS1.0";
+        case AWS_IO_TLSv1_1:
+            return "TLS1.1";
+        case AWS_IO_TLSv1_2:
+            return "TLS1.2";
+        case AWS_IO_TLSv1_3:
+            return "TLS1.3";
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            return "system defaults";
+        default:
+            return "unrecognized";
+    }
+}
+
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -787,12 +833,12 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         SecPkgContext_ConnectionInfo connection_info;
         if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
             SEC_E_OK) {
-            AWS_LOGF_DEBUG(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "id=%p: (SChannel) Negotiated TLS version %d (locally configured minimum %d)",
+                "id=%p: (SChannel) Negotiated TLS version %s (locally configured minimum %s)",
                 (void *)handler,
-                (int)connection_info.dwProtocol,
-                (int)sc_handler->minimum_tls_version);
+                s_schannel_protocol_to_str(connection_info.dwProtocol),
+                s_aws_tls_version_to_str(sc_handler->minimum_tls_version));
         }
 
         /* force query of the sizes so future calls to encrypt will be loaded. */
@@ -1099,12 +1145,12 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         SecPkgContext_ConnectionInfo connection_info;
         if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
             SEC_E_OK) {
-            AWS_LOGF_DEBUG(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "id=%p: (SChannel) Negotiated TLS version %d (locally configured minimum %d)",
+                "id=%p: (SChannel) Negotiated TLS version %s (locally configured minimum %s)",
                 (void *)handler,
-                (int)connection_info.dwProtocol,
-                (int)sc_handler->minimum_tls_version);
+                s_schannel_protocol_to_str(connection_info.dwProtocol),
+                s_aws_tls_version_to_str(sc_handler->minimum_tls_version));
         }
 
         /* force the sizes query, so future Encrypt message calls work.*/

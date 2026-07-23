@@ -462,6 +462,48 @@ static void s_on_negotiation_result(
     }
 }
 
+/* s2n reports protocol versions using its own S2N_* macros (s2n.h), which are numbered differently
+ * from our own enum aws_tls_versions. Stringify both separately to avoid confusing the two. */
+static const char *s_s2n_protocol_version_to_str(int s2n_version) {
+    switch (s2n_version) {
+        case S2N_SSLv2:
+            return "SSLv2";
+        case S2N_SSLv3:
+            return "SSLv3";
+        case S2N_TLS10:
+            return "TLS1.0";
+        case S2N_TLS11:
+            return "TLS1.1";
+        case S2N_TLS12:
+            return "TLS1.2";
+        case S2N_TLS13:
+            return "TLS1.3";
+        case S2N_UNKNOWN_PROTOCOL_VERSION:
+            return "unknown";
+        default:
+            return "unrecognized";
+    }
+}
+
+static const char *s_aws_tls_version_to_str(enum aws_tls_versions version) {
+    switch (version) {
+        case AWS_IO_SSLv3:
+            return "SSLv3";
+        case AWS_IO_TLSv1:
+            return "TLS1.0";
+        case AWS_IO_TLSv1_1:
+            return "TLS1.1";
+        case AWS_IO_TLSv1_2:
+            return "TLS1.2";
+        case AWS_IO_TLSv1_3:
+            return "TLS1.3";
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            return "system defaults";
+        default:
+            return "unrecognized";
+    }
+}
+
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
@@ -490,15 +532,15 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
              * both peers' max if a downgrade occurred (e.g. version-intolerant middlebox,
              * fallback signaling), which is why all three are logged together for diagnosis.
              */
-            AWS_LOGF_DEBUG(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_TLS,
-                "id=%p: (s2n) Negotiated TLS version %d (client max supported %d, server max supported %d, "
-                "locally configured minimum %d)",
+                "id=%p: (s2n) Negotiated TLS version %s (client max supported %s, server max supported %s, "
+                "locally configured minimum %s)",
                 (void *)handler,
-                s2n_connection_get_actual_protocol_version(s2n_handler->connection),
-                s2n_connection_get_client_protocol_version(s2n_handler->connection),
-                s2n_connection_get_server_protocol_version(s2n_handler->connection),
-                (int)s2n_handler->s2n_ctx->minimum_tls_version);
+                s_s2n_protocol_version_to_str(s2n_connection_get_actual_protocol_version(s2n_handler->connection)),
+                s_s2n_protocol_version_to_str(s2n_connection_get_client_protocol_version(s2n_handler->connection)),
+                s_s2n_protocol_version_to_str(s2n_connection_get_server_protocol_version(s2n_handler->connection)),
+                s_aws_tls_version_to_str(s2n_handler->s2n_ctx->minimum_tls_version));
 
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 

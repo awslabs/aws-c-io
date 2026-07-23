@@ -99,6 +99,47 @@ static void s_aws_tls_init_static_state(struct aws_allocator *allocator) {
 
 static void s_tls_clean_up_static_state(void) { /* no op */ }
 
+/* SecureTransport reports the negotiated protocol using its own SSLProtocol enum
+ * (Security/SecureTransport.h), which is numbered differently from our own enum aws_tls_versions.
+ * Stringify both separately to avoid confusing the two. */
+static const char *s_secure_transport_protocol_to_str(SSLProtocol protocol) {
+    switch (protocol) {
+        case kSSLProtocol3:
+            return "SSLv3";
+        case kTLSProtocol1:
+            return "TLS1.0";
+        case kTLSProtocol11:
+            return "TLS1.1";
+        case kTLSProtocol12:
+            return "TLS1.2";
+        case kTLSProtocol13:
+            return "TLS1.3";
+        case kSSLProtocolUnknown:
+            return "unknown";
+        default:
+            return "unrecognized";
+    }
+}
+
+static const char *s_aws_tls_version_to_str(enum aws_tls_versions version) {
+    switch (version) {
+        case AWS_IO_SSLv3:
+            return "SSLv3";
+        case AWS_IO_TLSv1:
+            return "TLS1.0";
+        case AWS_IO_TLSv1_1:
+            return "TLS1.1";
+        case AWS_IO_TLSv1_2:
+            return "TLS1.2";
+        case AWS_IO_TLSv1_3:
+            return "TLS1.3";
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            return "system defaults";
+        default:
+            return "unrecognized";
+    }
+}
+
 struct secure_transport_handler {
     struct aws_channel_handler handler;
     struct aws_tls_channel_handler_shared shared_state;
@@ -346,12 +387,12 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
         SSLProtocol negotiated_protocol = kSSLProtocolUnknown;
         SSLGetNegotiatedProtocolVersion(secure_transport_handler->ctx, &negotiated_protocol);
-        AWS_LOGF_DEBUG(
+        AWS_LOGF_ERROR(
             AWS_LS_IO_TLS,
-            "id=%p: (SecureTransport) Negotiated TLS version %d (locally configured minimum %d)",
+            "id=%p: (SecureTransport) Negotiated TLS version %s (locally configured minimum %s)",
             (void *)handler,
-            (int)negotiated_protocol,
-            (int)secure_transport_handler->minimum_tls_version);
+            s_secure_transport_protocol_to_str(negotiated_protocol),
+            s_aws_tls_version_to_str(secure_transport_handler->minimum_tls_version));
 
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
