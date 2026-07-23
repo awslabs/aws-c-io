@@ -792,6 +792,36 @@ static int s_tls_channel_echo_and_backpressure_test_fn(struct aws_allocator *all
 
 AWS_TEST_CASE(tls_channel_echo_and_backpressure_test, s_tls_channel_echo_and_backpressure_test_fn)
 
+/*
+ * TEMPORARY: This test does nothing but perform a local TLS negotiation and then intentionally fails,
+ * so CI surfaces its log output (including the new negotiated-TLS-version log line) on every platform
+ * this suite runs on. Remove once we've confirmed the log format reads cleanly on all platforms.
+ */
+static int s_tls_negotiation_log_capture_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    ASSERT_SUCCESS(s_tls_channel_server_client_tester_init(allocator));
+
+    ASSERT_SUCCESS(s_set_socket_channel(&s_server_client_tester));
+
+    aws_channel_shutdown(s_server_client_tester.server_args.channel, AWS_OP_SUCCESS);
+    ASSERT_SUCCESS(aws_mutex_lock(&s_server_client_tester.server_mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &s_server_client_tester.server_condition_variable,
+        &s_server_client_tester.server_mutex,
+        s_tls_channel_shutdown_predicate,
+        &s_server_client_tester.server_args));
+    ASSERT_SUCCESS(aws_mutex_unlock(&s_server_client_tester.server_mutex));
+
+    ASSERT_SUCCESS(s_tls_channel_server_client_tester_cleanup());
+
+    /* Intentionally fail so the log output above is surfaced in CI. */
+    ASSERT_TRUE(false, "Intentional failure to surface TLS negotiation log output in CI; remove this test.");
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(tls_negotiation_log_capture, s_tls_negotiation_log_capture_fn)
+
 static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
