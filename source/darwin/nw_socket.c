@@ -525,6 +525,10 @@ static void s_setup_tcp_options(nw_protocol_options_t tcp_options, const struct 
         nw_tcp_options_set_keepalive_count(tcp_options, options->keep_alive_max_failed_probes);
     }
 
+    if (options->tcp_nodelay != AWS_SOCKET_TCP_NODELAY_DEFAULT) {
+        nw_tcp_options_set_no_delay(tcp_options, options->tcp_nodelay == AWS_SOCKET_TCP_NODELAY_ON);
+    }
+
     if (g_aws_channel_max_fragment_size < KB_16) {
         nw_tcp_options_set_maximum_segment_size(tcp_options, (uint32_t)g_aws_channel_max_fragment_size);
     }
