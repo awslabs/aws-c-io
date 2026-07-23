@@ -76,6 +76,7 @@ struct s2n_handler {
 struct s2n_ctx {
     struct aws_tls_ctx ctx;
     struct s2n_config *s2n_config;
+    enum aws_tls_versions minimum_tls_version;
 
     /* Only used in special circumstances (ex: have cert but no key, because key is in PKCS#11) */
     struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
@@ -461,6 +462,30 @@ static void s_on_negotiation_result(
     }
 }
 
+/* s2n reports protocol versions using its own S2N_* macros (s2n.h), e.g. S2N_SSLv3 = 30,
+ * S2N_TLS12 = 33 -- these do not line up with our own enum aws_tls_versions (AWS_IO_SSLv3 = 0,
+ * AWS_IO_TLSv1_2 = 3, etc), so a direct cast between the two would silently produce the wrong
+ * version. This switch is an explicit, one-time mapping from s2n's numbering to ours so the
+ * resulting enum aws_tls_versions value can be printed with the single shared
+ * aws_tls_version_to_string() used by every TLS backend. s2n's SSLv2 has no equivalent in our
+ * enum, so it falls through to the "unrecognized" default like any other unmapped value. */
+static enum aws_tls_versions s_s2n_protocol_version_to_aws_tls_version(int s2n_version) {
+    switch (s2n_version) {
+        case S2N_SSLv3:
+            return AWS_IO_SSLv3;
+        case S2N_TLS10:
+            return AWS_IO_TLSv1;
+        case S2N_TLS11:
+            return AWS_IO_TLSv1_1;
+        case S2N_TLS12:
+            return AWS_IO_TLSv1_2;
+        case S2N_TLS13:
+            return AWS_IO_TLSv1_3;
+        default:
+            return (enum aws_tls_versions) - 1;
+    }
+}
+
 static int s_drive_negotiation(struct aws_channel_handler *handler) {
     struct s2n_handler *s2n_handler = (struct s2n_handler *)handler->impl;
 
@@ -481,6 +506,26 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: Alpn protocol negotiated as %s", (void *)handler, protocol);
                 s2n_handler->protocol = aws_byte_buf_from_c_str(protocol);
             }
+
+            /*
+             * The actual negotiated version is the highest version supported by both peers
+             * (pre-TLS1.3: min of the two; TLS1.3+: highest entry common to the client's
+             * supported_versions list and the server's supported set). It can be lower than
+             * both peers' max if a downgrade occurred (e.g. version-intolerant middlebox,
+             * fallback signaling), which is why all three are logged together for diagnosis.
+             */
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: (s2n) Negotiated TLS version %s (client max supported %s, server max supported %s, "
+                "locally configured minimum %s)",
+                (void *)handler,
+                aws_tls_version_to_string(s_s2n_protocol_version_to_aws_tls_version(
+                    s2n_connection_get_actual_protocol_version(s2n_handler->connection))),
+                aws_tls_version_to_string(s_s2n_protocol_version_to_aws_tls_version(
+                    s2n_connection_get_client_protocol_version(s2n_handler->connection))),
+                aws_tls_version_to_string(s_s2n_protocol_version_to_aws_tls_version(
+                    s2n_connection_get_server_protocol_version(s2n_handler->connection))),
+                aws_tls_version_to_string(s2n_handler->s2n_ctx->minimum_tls_version));
 
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 
@@ -1513,6 +1558,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
+    s2n_ctx->minimum_tls_version = options->minimum_tls_version;
     aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
 
     s2n_ctx->s2n_config = s2n_config_new();

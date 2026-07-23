@@ -901,6 +901,25 @@ bool aws_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref) {
 
 #endif /* BYO_CRYPTO */
 
+const char *aws_tls_version_to_string(enum aws_tls_versions version) {
+    switch (version) {
+        case AWS_IO_SSLv3:
+            return "SSLv3";
+        case AWS_IO_TLSv1:
+            return "TLS1.0";
+        case AWS_IO_TLSv1_1:
+            return "TLS1.1";
+        case AWS_IO_TLSv1_2:
+            return "TLS1.2";
+        case AWS_IO_TLSv1_3:
+            return "TLS1.3";
+        case AWS_IO_TLS_VER_SYS_DEFAULTS:
+            return "system defaults";
+        default:
+            return "unrecognized";
+    }
+}
+
 int aws_channel_setup_client_tls(
     struct aws_channel_slot *right_of_slot,
     struct aws_tls_connection_options *tls_options) {

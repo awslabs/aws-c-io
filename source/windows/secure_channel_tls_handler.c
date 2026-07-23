@@ -100,6 +100,7 @@ struct secure_channel_handler {
     struct aws_channel_slot *slot;
     struct aws_byte_buf protocol;
     struct aws_byte_buf server_name;
+    enum aws_tls_versions minimum_tls_version;
     TimeStamp sspi_timestamp;
     int (*s_connection_state_fn)(struct aws_channel_handler *handler);
     /*
@@ -128,6 +129,37 @@ struct secure_channel_handler {
     enum aws_tls_handler_read_state read_state;
     int shutdown_error_code;
 };
+
+/* SChannel reports the negotiated protocol as an SP_PROT_*_CLIENT/SP_PROT_*_SERVER value
+ * (schannel.h), where each protocol is its own distinct bit flag (e.g. SP_PROT_TLS1_2_CLIENT is
+ * a power-of-two mask bit), not a sequential ordinal like our own enum aws_tls_versions. A direct
+ * cast between the two is not possible here -- the encodings are fundamentally different, not
+ * just offset. This switch is an explicit, one-time mapping from SChannel's bit flags to our enum
+ * so the resulting enum aws_tls_versions value can be printed with the single shared
+ * aws_tls_version_to_string() used by every TLS backend. */
+static enum aws_tls_versions s_schannel_protocol_to_aws_tls_version(DWORD protocol) {
+    switch (protocol) {
+        case SP_PROT_SSL3_CLIENT:
+        case SP_PROT_SSL3_SERVER:
+            return AWS_IO_SSLv3;
+        case SP_PROT_TLS1_0_CLIENT:
+        case SP_PROT_TLS1_0_SERVER:
+            return AWS_IO_TLSv1;
+        case SP_PROT_TLS1_1_CLIENT:
+        case SP_PROT_TLS1_1_SERVER:
+            return AWS_IO_TLSv1_1;
+        case SP_PROT_TLS1_2_CLIENT:
+        case SP_PROT_TLS1_2_SERVER:
+            return AWS_IO_TLSv1_2;
+#if defined(SP_PROT_TLS1_3_CLIENT)
+        case SP_PROT_TLS1_3_CLIENT:
+        case SP_PROT_TLS1_3_SERVER:
+            return AWS_IO_TLSv1_3;
+#endif
+        default:
+            return (enum aws_tls_versions) - 1;
+    }
+}
 
 static size_t s_message_overhead(struct aws_channel_handler *handler) {
     struct secure_channel_handler *sc_handler = handler->impl;
@@ -783,6 +815,17 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         }
         sc_handler->negotiation_finished = true;
 
+        SecPkgContext_ConnectionInfo connection_info;
+        if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
+            SEC_E_OK) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: (SChannel) Negotiated TLS version %s (locally configured minimum %s)",
+                (void *)handler,
+                aws_tls_version_to_string(s_schannel_protocol_to_aws_tls_version(connection_info.dwProtocol)),
+                aws_tls_version_to_string(sc_handler->minimum_tls_version));
+        }
+
         /* force query of the sizes so future calls to encrypt will be loaded. */
         s_message_overhead(handler);
 
@@ -1083,6 +1126,18 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             }
         }
         sc_handler->negotiation_finished = true;
+
+        SecPkgContext_ConnectionInfo connection_info;
+        if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
+            SEC_E_OK) {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_TLS,
+                "id=%p: (SChannel) Negotiated TLS version %s (locally configured minimum %s)",
+                (void *)handler,
+                aws_tls_version_to_string(s_schannel_protocol_to_aws_tls_version(connection_info.dwProtocol)),
+                aws_tls_version_to_string(sc_handler->minimum_tls_version));
+        }
+
         /* force the sizes query, so future Encrypt message calls work.*/
         s_message_overhead(handler);
 
@@ -1991,6 +2046,7 @@ static struct aws_channel_handler *s_tls_handler_new_common(
     sc_handler->on_error = options->on_error;
     sc_handler->on_negotiation_result = options->on_negotiation_result;
     sc_handler->user_data = options->user_data;
+    sc_handler->minimum_tls_version = sc_ctx->minimum_tls_version;
 
     if (!options->alpn_list && sc_ctx->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, sc_ctx->alpn_list);
