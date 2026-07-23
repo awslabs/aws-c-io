@@ -833,7 +833,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         SecPkgContext_ConnectionInfo connection_info;
         if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
             SEC_E_OK) {
-            AWS_LOGF_ERROR(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
                 "id=%p: (SChannel) Negotiated TLS version %s (locally configured minimum %s)",
                 (void *)handler,
@@ -1145,7 +1145,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         SecPkgContext_ConnectionInfo connection_info;
         if (QueryContextAttributes(&sc_handler->sec_handle, SECPKG_ATTR_CONNECTION_INFO, &connection_info) ==
             SEC_E_OK) {
-            AWS_LOGF_ERROR(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
                 "id=%p: (SChannel) Negotiated TLS version %s (locally configured minimum %s)",
                 (void *)handler,

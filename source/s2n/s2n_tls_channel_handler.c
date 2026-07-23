@@ -532,7 +532,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
              * both peers' max if a downgrade occurred (e.g. version-intolerant middlebox,
              * fallback signaling), which is why all three are logged together for diagnosis.
              */
-            AWS_LOGF_ERROR(
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
                 "id=%p: (s2n) Negotiated TLS version %s (client max supported %s, server max supported %s, "
                 "locally configured minimum %s)",

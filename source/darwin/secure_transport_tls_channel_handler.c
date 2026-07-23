@@ -387,7 +387,7 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
 
         SSLProtocol negotiated_protocol = kSSLProtocolUnknown;
         SSLGetNegotiatedProtocolVersion(secure_transport_handler->ctx, &negotiated_protocol);
-        AWS_LOGF_ERROR(
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
             "id=%p: (SecureTransport) Negotiated TLS version %s (locally configured minimum %s)",
             (void *)handler,
