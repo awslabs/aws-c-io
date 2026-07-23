@@ -50,6 +50,19 @@ enum aws_socket_impl_type {
 
 #define AWS_NETWORK_INTERFACE_NAME_MAX 16
 
+/**
+ * Controls the TCP_NODELAY socket option (whether Nagle's algorithm is disabled).
+ * TCP only. Ignored for UDP and AWS_SOCKET_LOCAL sockets.
+ */
+enum aws_socket_tcp_nodelay {
+    /* Leave the OS default in place (Nagle's algorithm enabled on most platforms). */
+    AWS_SOCKET_TCP_NODELAY_DEFAULT = 0,
+    /* Set TCP_NODELAY on, disabling Nagle's algorithm so small writes are sent immediately. */
+    AWS_SOCKET_TCP_NODELAY_ON,
+    /* Set TCP_NODELAY off, explicitly (re)enabling Nagle's algorithm. */
+    AWS_SOCKET_TCP_NODELAY_OFF,
+};
+
 typedef void(aws_socket_on_shutdown_complete_fn)(void *user_data);
 
 struct aws_socket_options {
@@ -66,6 +79,14 @@ struct aws_socket_options {
      * lost. If zero OS defaults are used. On Windows, this option is meaningless until Windows 10 1703.*/
     uint16_t keep_alive_max_failed_probes;
     bool keepalive;
+
+    /**
+     * (Optional) TCP only. Controls the TCP_NODELAY option (Nagle's algorithm).
+     * Defaults to AWS_SOCKET_TCP_NODELAY_DEFAULT, which leaves the OS default in place.
+     * Set to AWS_SOCKET_TCP_NODELAY_ON to disable Nagle's algorithm (send small writes immediately),
+     * or AWS_SOCKET_TCP_NODELAY_OFF to explicitly enable it. Ignored for UDP and AWS_SOCKET_LOCAL.
+     */
+    enum aws_socket_tcp_nodelay tcp_nodelay;
 
     /**
      * THIS IS AN EXPERIMENTAL AND UNSTABLE API

@@ -23,6 +23,15 @@
 #    include <linux/vm_sockets.h>
 #endif
 
+#if defined(_WIN32)
+#    include <winsock2.h>
+#    include <ws2tcpip.h>
+#else
+#    include <netinet/in.h>
+#    include <netinet/tcp.h>
+#    include <sys/socket.h>
+#endif
+
 struct local_listener_args {
     struct aws_socket *incoming;
     struct aws_mutex *mutex;
@@ -803,6 +812,53 @@ static int s_test_tcp_socket_communication(struct aws_allocator *allocator, void
 }
 
 AWS_TEST_CASE(tcp_socket_communication, s_test_tcp_socket_communication)
+
+/*
+ * Verify that the tcp_nodelay option is applied to the underlying socket. aws_socket_init() calls
+ * aws_socket_set_options(), so simply initializing the socket is enough to exercise the option.
+ * We read the option back with getsockopt() on platforms that expose a file descriptor.
+ */
+static int s_test_socket_tcp_nodelay(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    /* Apple Network Framework doesn't expose a file descriptor to read the option back from. */
+    if (aws_socket_get_default_impl_type() == AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+
+    aws_io_library_init(allocator);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    options.tcp_nodelay = AWS_SOCKET_TCP_NODELAY_ON;
+
+    struct aws_socket socket;
+    ASSERT_SUCCESS(aws_socket_init(&socket, allocator, &options));
+
+#if defined(_WIN32)
+    SOCKET fd = (SOCKET)socket.io_handle.data.handle;
+    int nodelay = 0;
+    socklen_t len = sizeof(nodelay);
+    ASSERT_INT_EQUALS(0, getsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&nodelay, &len));
+    ASSERT_TRUE(nodelay != 0);
+#else
+    int fd = socket.io_handle.data.fd;
+    int nodelay = 0;
+    socklen_t len = sizeof(nodelay);
+    ASSERT_INT_EQUALS(0, getsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, &len));
+    ASSERT_TRUE(nodelay != 0);
+#endif
+
+    aws_socket_clean_up(&socket);
+    aws_io_library_clean_up();
+
+    return 0;
+}
+
+AWS_TEST_CASE(socket_tcp_nodelay, s_test_socket_tcp_nodelay)
 
 static int s_test_socket_with_bind_to_interface(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;

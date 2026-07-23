@@ -2376,6 +2376,24 @@ static int s_socket_set_options(struct aws_socket *socket, const struct aws_sock
     socket->options = *options;
 
     if (socket->options.domain != AWS_SOCKET_LOCAL && socket->options.type == AWS_SOCKET_STREAM) {
+        if (socket->options.tcp_nodelay != AWS_SOCKET_TCP_NODELAY_DEFAULT) {
+            int nodelay = socket->options.tcp_nodelay == AWS_SOCKET_TCP_NODELAY_ON ? 1 : 0;
+            if (setsockopt(
+                    (SOCKET)socket->io_handle.data.handle,
+                    IPPROTO_TCP,
+                    TCP_NODELAY,
+                    (char *)&nodelay,
+                    sizeof(nodelay))) {
+                int wsa_err = WSAGetLastError(); /* logging may reset error, so cache it */
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p handle=%p: setsockopt() call for TCP_NODELAY failed with WSAError %d",
+                    (void *)socket,
+                    (void *)socket->io_handle.data.handle,
+                    wsa_err);
+            }
+        }
+
         if (socket->options.keepalive &&
             !(socket->options.keep_alive_interval_sec && socket->options.keep_alive_timeout_sec)) {
             int keep_alive = 1;
