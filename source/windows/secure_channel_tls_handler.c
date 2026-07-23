@@ -100,6 +100,7 @@ struct secure_channel_handler {
     struct aws_channel_slot *slot;
     struct aws_byte_buf protocol;
     struct aws_byte_buf server_name;
+    enum aws_tls_versions minimum_tls_version;
     TimeStamp sspi_timestamp;
     int (*s_connection_state_fn)(struct aws_channel_handler *handler);
     /*
@@ -788,9 +789,10 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
             SEC_E_OK) {
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
-                "id=%p: (SChannel) Negotiated TLS version %d",
+                "id=%p: (SChannel) Negotiated TLS version %d (locally configured minimum %d)",
                 (void *)handler,
-                (int)connection_info.dwProtocol);
+                (int)connection_info.dwProtocol,
+                (int)sc_handler->minimum_tls_version);
         }
 
         /* force query of the sizes so future calls to encrypt will be loaded. */
@@ -1099,9 +1101,10 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
             SEC_E_OK) {
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
-                "id=%p: (SChannel) Negotiated TLS version %d",
+                "id=%p: (SChannel) Negotiated TLS version %d (locally configured minimum %d)",
                 (void *)handler,
-                (int)connection_info.dwProtocol);
+                (int)connection_info.dwProtocol,
+                (int)sc_handler->minimum_tls_version);
         }
 
         /* force the sizes query, so future Encrypt message calls work.*/
@@ -2012,6 +2015,7 @@ static struct aws_channel_handler *s_tls_handler_new_common(
     sc_handler->on_error = options->on_error;
     sc_handler->on_negotiation_result = options->on_negotiation_result;
     sc_handler->user_data = options->user_data;
+    sc_handler->minimum_tls_version = sc_ctx->minimum_tls_version;
 
     if (!options->alpn_list && sc_ctx->alpn_list) {
         sc_handler->alpn_list = aws_string_new_from_string(alloc, sc_ctx->alpn_list);

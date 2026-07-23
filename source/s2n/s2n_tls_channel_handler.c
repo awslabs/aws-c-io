@@ -76,6 +76,7 @@ struct s2n_handler {
 struct s2n_ctx {
     struct aws_tls_ctx ctx;
     struct s2n_config *s2n_config;
+    enum aws_tls_versions minimum_tls_version;
 
     /* Only used in special circumstances (ex: have cert but no key, because key is in PKCS#11) */
     struct s2n_cert_chain_and_key *custom_cert_chain_and_key;
@@ -482,11 +483,22 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
                 s2n_handler->protocol = aws_byte_buf_from_c_str(protocol);
             }
 
+            /*
+             * The actual negotiated version is the highest version supported by both peers
+             * (pre-TLS1.3: min of the two; TLS1.3+: highest entry common to the client's
+             * supported_versions list and the server's supported set). It can be lower than
+             * both peers' max if a downgrade occurred (e.g. version-intolerant middlebox,
+             * fallback signaling), which is why all three are logged together for diagnosis.
+             */
             AWS_LOGF_DEBUG(
                 AWS_LS_IO_TLS,
-                "id=%p: (s2n) Negotiated TLS version %d",
+                "id=%p: (s2n) Negotiated TLS version %d (client max supported %d, server max supported %d, "
+                "locally configured minimum %d)",
                 (void *)handler,
-                s2n_connection_get_actual_protocol_version(s2n_handler->connection));
+                s2n_connection_get_actual_protocol_version(s2n_handler->connection),
+                s2n_connection_get_client_protocol_version(s2n_handler->connection),
+                s2n_connection_get_server_protocol_version(s2n_handler->connection),
+                (int)s2n_handler->s2n_ctx->minimum_tls_version);
 
             const char *server_name = s2n_get_server_name(s2n_handler->connection);
 
@@ -1519,6 +1531,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
     s2n_ctx->ctx.alloc = alloc;
     s2n_ctx->ctx.impl = s2n_ctx;
+    s2n_ctx->minimum_tls_version = options->minimum_tls_version;
     aws_ref_count_init(&s2n_ctx->ctx.ref_count, s2n_ctx, (aws_simple_completion_callback *)s_s2n_ctx_destroy);
 
     s2n_ctx->s2n_config = s2n_config_new();

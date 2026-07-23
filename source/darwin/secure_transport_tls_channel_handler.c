@@ -107,6 +107,7 @@ struct secure_transport_handler {
     struct aws_linked_list input_queue;
     struct aws_channel_slot *parent_slot;
     struct aws_byte_buf protocol;
+    enum aws_tls_versions minimum_tls_version;
     /* Note: This is just a copy of the expected server name.
      * The Secure Transport API doesn't seem to expose actual server name.
      * SSLGetPeerDomainName just returns whatever was passed earlier to SSLSetPeerDomainName */
@@ -347,9 +348,10 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
         SSLGetNegotiatedProtocolVersion(secure_transport_handler->ctx, &negotiated_protocol);
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
-            "id=%p: (SecureTransport) Negotiated TLS version %d",
+            "id=%p: (SecureTransport) Negotiated TLS version %d (locally configured minimum %d)",
             (void *)handler,
-            (int)negotiated_protocol);
+            (int)negotiated_protocol,
+            (int)secure_transport_handler->minimum_tls_version);
 
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
@@ -908,6 +910,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->on_error = options->on_error;
     secure_transport_handler->on_negotiation_result = options->on_negotiation_result;
     secure_transport_handler->user_data = options->user_data;
+    secure_transport_handler->minimum_tls_version = secure_transport_ctx->minimum_tls_version;
 
     aws_tls_channel_handler_shared_init(
         &secure_transport_handler->shared_state, &secure_transport_handler->handler, options);
