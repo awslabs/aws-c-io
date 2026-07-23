@@ -99,6 +99,30 @@ static void s_aws_tls_init_static_state(struct aws_allocator *allocator) {
 
 static void s_tls_clean_up_static_state(void) { /* no op */ }
 
+/* SecureTransport reports the negotiated protocol using its own SSLProtocol enum
+ * (Security/SecureTransport.h), whose values (e.g. kSSLProtocol3, kTLSProtocol12) are not
+ * guaranteed to line up with our own enum aws_tls_versions, so a direct cast between the two
+ * would risk silently producing the wrong version if either enum's values ever shift. This
+ * switch is an explicit, one-time mapping from SecureTransport's enum to ours so the resulting
+ * enum aws_tls_versions value can be printed with the single shared aws_tls_version_to_string()
+ * used by every TLS backend. */
+static enum aws_tls_versions s_secure_transport_protocol_to_aws_tls_version(SSLProtocol protocol) {
+    switch (protocol) {
+        case kSSLProtocol3:
+            return AWS_IO_SSLv3;
+        case kTLSProtocol1:
+            return AWS_IO_TLSv1;
+        case kTLSProtocol11:
+            return AWS_IO_TLSv1_1;
+        case kTLSProtocol12:
+            return AWS_IO_TLSv1_2;
+        case kTLSProtocol13:
+            return AWS_IO_TLSv1_3;
+        default:
+            return (enum aws_tls_versions) - 1;
+    }
+}
+
 struct secure_transport_handler {
     struct aws_channel_handler handler;
     struct aws_tls_channel_handler_shared shared_state;
@@ -107,6 +131,7 @@ struct secure_transport_handler {
     struct aws_linked_list input_queue;
     struct aws_channel_slot *parent_slot;
     struct aws_byte_buf protocol;
+    enum aws_tls_versions minimum_tls_version;
     /* Note: This is just a copy of the expected server name.
      * The Secure Transport API doesn't seem to expose actual server name.
      * SSLGetPeerDomainName just returns whatever was passed earlier to SSLSetPeerDomainName */
@@ -342,6 +367,16 @@ static int s_drive_negotiation(struct aws_channel_handler *handler) {
     if (status == noErr) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "id=%p: negotiation succeeded", (void *)handler);
         secure_transport_handler->negotiation_finished = true;
+
+        SSLProtocol negotiated_protocol = kSSLProtocolUnknown;
+        SSLGetNegotiatedProtocolVersion(secure_transport_handler->ctx, &negotiated_protocol);
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_TLS,
+            "id=%p: (SecureTransport) Negotiated TLS version %s (locally configured minimum %s)",
+            (void *)handler,
+            aws_tls_version_to_string(s_secure_transport_protocol_to_aws_tls_version(negotiated_protocol)),
+            aws_tls_version_to_string(secure_transport_handler->minimum_tls_version));
+
         CFStringRef protocol = s_get_protocol(secure_transport_handler);
 
         if (protocol) {
@@ -899,6 +934,7 @@ static struct aws_channel_handler *s_tls_handler_new(
     secure_transport_handler->on_error = options->on_error;
     secure_transport_handler->on_negotiation_result = options->on_negotiation_result;
     secure_transport_handler->user_data = options->user_data;
+    secure_transport_handler->minimum_tls_version = secure_transport_ctx->minimum_tls_version;
 
     aws_tls_channel_handler_shared_init(
         &secure_transport_handler->shared_state, &secure_transport_handler->handler, options);
