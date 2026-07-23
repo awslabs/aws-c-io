@@ -3,6 +3,17 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+/* winsock headers must be included before anything that pulls in windows.h to avoid
+ * redefinition errors between winsock v1 (from windows.h) and winsock2. */
+#if defined(_WIN32)
+#    include <winsock2.h>
+#    include <ws2tcpip.h>
+#else
+#    include <netinet/in.h>
+#    include <netinet/tcp.h>
+#    include <sys/socket.h>
+#endif
+
 #include <aws/testing/aws_test_harness.h>
 
 #include <aws/common/clock.h>
@@ -21,15 +32,6 @@
 
 #if USE_VSOCK
 #    include <linux/vm_sockets.h>
-#endif
-
-#if defined(_WIN32)
-#    include <winsock2.h>
-#    include <ws2tcpip.h>
-#else
-#    include <netinet/in.h>
-#    include <netinet/tcp.h>
-#    include <sys/socket.h>
 #endif
 
 struct local_listener_args {
