@@ -43,7 +43,7 @@ AWS_EXTERN_C_BEGIN
  * Returns a human-readable name for an aws_tls_versions value (e.g. "TLS1.2"), for logging.
  * Shared across TLS backends so version logging reads consistently regardless of platform.
  */
-AWS_IO_API const char *aws_tls_version_to_string(enum aws_tls_versions version);
+const char *aws_tls_version_to_string(enum aws_tls_versions version);
 
 #ifdef _WIN32
 /**
