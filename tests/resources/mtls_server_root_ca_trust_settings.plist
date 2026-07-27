@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>trustList</key>
+	<dict>
+		<key>1F132B39ACC0E5114FDB9E31541E52FF48F49376</key>
+		<dict>
+			<key>issuerName</key>
+			<data>
+			MIGcMQswCQYDVQQGEwJVUzETMBEGA1UECAwKV2FzaGluZ3RvbjEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwGQW1hem9uMQ0wCwYDVQQLDARTREtzMRQwEgYDVQQDDAtsb2NhbGhvc3RDQTEwMC4GCSqGSIb3DQEJARYhYXdzLXNkay1jb21tb24tcnVudGltZUBhbWF6b24uY29t
+			</data>
+			<key>modDate</key>
+			<date>2026-05-01T18:43:18Z</date>
+			<key>serialNumber</key>
+			<data>
+			RYSCRIWQTJESQLvtiT91g8kVhoU=
+			</data>
+			<key>trustSettings</key>
+			<array>
+				<dict>
+					<key>kSecTrustSettingsResult</key>
+					<integer>1</integer>
+				</dict>
+			</array>
+		</dict>
+	</dict>
+	<key>trustVersion</key>
+	<integer>1</integer>
+</dict>
+</plist>
