@@ -16,18 +16,11 @@
 
 struct aws_l4_proxy_config;
 struct aws_l4_proxy_channel_handler;
+struct aws_l4_proxy_channel_handler_options;
 
 struct aws_connection_remote {
     struct aws_byte_cursor host;
     uint32_t port;
-};
-
-struct aws_l4_proxy_channel_handler_options {
-
-    struct aws_connection_remote *remote;
-
-    void (*negotiation_complete_callback)(int, void *);
-    void *negotiation_complete_user_data;
 };
 
 struct aws_l4_proxy_config_vtable {
@@ -71,7 +64,8 @@ struct aws_l4_proxy_negotiation_context {
 };
 
 struct aws_l4_proxy_channel_handler_vtable {
-    int (*start_negotiation)(struct aws_l4_proxy_channel_handler *);
+    int (*drive_negotiation)(struct aws_l4_proxy_channel_handler *, struct aws_l4_proxy_negotiation_context *context);
+    void (*destroy)(struct aws_l4_proxy_channel_handler *);
 };
 
 struct aws_l4_proxy_channel_handler {
@@ -87,7 +81,29 @@ struct aws_l4_proxy_channel_handler {
     struct aws_byte_buf remote_host;
     uint32_t remote_port;
 
-    void (*negotiation_complete_callback)(int, void *);
+    void (*negotiation_complete_callback)(struct aws_channel *, int, void *);
+    void *negotiation_complete_user_data;
+
+    // new
+    enum aws_l4_proxy_protocol_status status;
+
+    // channel handler data processing
+    bool in_service;
+    bool is_service_scheduled;
+    struct aws_channel_task service_task;
+
+    // read backpressure
+    size_t num_pending_read_bytes;
+    struct aws_linked_list pending_read_bytes;
+
+
+};
+
+struct aws_l4_proxy_channel_handler_options {
+
+    struct aws_connection_remote *remote;
+
+    void (*negotiation_complete_callback)(struct aws_channel *, int, void *);
     void *negotiation_complete_user_data;
 };
 
@@ -95,7 +111,9 @@ AWS_EXTERN_C_BEGIN
 
 AWS_IO_API void aws_l4_proxy_config_clean_up(struct aws_l4_proxy_config *config);
 
-AWS_IO_API int aws_l4_proxy_channel_handler_start_negotiation(struct aws_l4_proxy_channel_handler *handler);
+AWS_IO_API void aws_l4_proxy_channel_handler_start_negotiation(struct aws_l4_proxy_channel_handler *handler);
+
+AWS_IO_API void aws_l4_proxy_channel_handler_init(struct aws_l4_proxy_channel_handler *handler, struct aws_allocator *allocator, struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options);
 
 AWS_IO_API void aws_l4_proxy_channel_handler_clean_up(struct aws_l4_proxy_channel_handler *handler);
 

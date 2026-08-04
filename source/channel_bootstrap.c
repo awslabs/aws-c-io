@@ -452,6 +452,43 @@ static inline int s_setup_client_tls(struct client_connection_args *connection_a
     return AWS_OP_SUCCESS;
 }
 
+static void s_on_l4_proxy_setup_completed(struct aws_channel *channel, int error_code, void *user_data) {
+    struct client_connection_args *connection_args = user_data;
+    if (error_code == AWS_ERROR_SUCCESS) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_CHANNEL_BOOTSTRAP,
+            "id=%p: channel %p l4 proxy setup succeeded",
+            (void *)connection_args->bootstrap,
+            (void *)channel);
+
+        if (connection_args->channel_data.use_tls) {
+            // already checked this during config validation
+            AWS_FATAL_ASSERT(!aws_is_using_secitem());
+
+            /* we don't want to notify the user that the channel is ready yet, since tls is still negotiating, wait
+             * for the negotiation callback and handle it then.*/
+            if (s_setup_client_tls(connection_args, channel)) {
+                error_code = aws_last_error();
+                goto error;
+            }
+        } else {
+            s_connection_args_setup_callback(connection_args, AWS_OP_SUCCESS, channel);
+        }
+
+        return;
+    }
+
+error:
+
+    AWS_LOGF_ERROR(
+        AWS_LS_IO_CHANNEL_BOOTSTRAP,
+        "id=%p: l4 proxy setup failed with error %d.",
+        (void *)connection_args->bootstrap,
+        error_code);
+
+    aws_channel_shutdown(channel, error_code);
+}
+
 static int s_setup_client_l4_proxy_negotiation(struct client_connection_args *connection_args, struct aws_channel *channel) {
     AWS_FATAL_ASSERT(connection_args->l4_proxy_config);
 
@@ -468,7 +505,13 @@ static int s_setup_client_l4_proxy_negotiation(struct client_connection_args *co
     remote.host = aws_byte_cursor_from_string(connection_args->original_host);
     remote.port = connection_args->original_port;
 
-    struct aws_l4_proxy_channel_handler *proxy_channel_handler = aws_l4_proxy_config_new_channel_handler(connection_args->l4_proxy_config, &remote);
+    struct aws_l4_proxy_channel_handler_options l4_proxy_options = {
+        .remote = &remote,
+        .negotiation_complete_callback = s_on_l4_proxy_setup_completed,
+        .negotiation_complete_user_data = connection_args,
+    };
+
+    struct aws_l4_proxy_channel_handler *proxy_channel_handler = aws_l4_proxy_config_new_channel_handler(connection_args->l4_proxy_config, &l4_proxy_options);
     if (!proxy_channel_handler) {
         aws_mem_release(connection_args->bootstrap->allocator, proxy_slot);
         return AWS_OP_ERR;
@@ -489,9 +532,7 @@ static int s_setup_client_l4_proxy_negotiation(struct client_connection_args *co
         return AWS_OP_ERR;
     }
 
-    if (aws_l4_proxy_channel_handler_start_negotiation(proxy_channel_handler)) {
-        return AWS_OP_ERR;
-    }
+    aws_l4_proxy_channel_handler_start_negotiation(proxy_channel_handler);
 
     return AWS_OP_SUCCESS;
 }
