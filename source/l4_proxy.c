@@ -149,9 +149,57 @@ static void s_service_l4_proxy_negotiation(struct aws_l4_proxy_channel_handler *
     // TBI
 }
 
+static void s_aws_init_downstream_io_message(struct aws_io_message *downstream_message, struct aws_io_message *source_message, size_t downstream_window) {
+    AWS_ZERO_STRUCT(downstream_message);
+
+    downstream_message->message_type = source_message->message_type;
+    downstream_message->message_tag = source_message->message_tag;
+    downstream_message->owning_channel = source_message->owning_channel;
+
+    size_t remaining_bytes = aws_sub_size_saturating(source_message->message_data.len, source_message->copy_mark);
+    size_t fragment_size = aws_min_size(downstream_window, remaining_bytes);
+    struct aws_byte_cursor fragment_cursor = {
+        .ptr = source_message->message_data.buffer + source_message->copy_mark,
+        .len = fragment_size,
+    };
+
+    // no allocator on the message data
+    downstream_message->message_data.buffer = fragment_cursor.ptr;
+    downstream_message->message_data.len = fragment_cursor.len;
+    downstream_message->message_data.capacity = fragment_cursor.len;
+}
+
 static void s_service_downstream_handler(struct aws_l4_proxy_channel_handler *handler) {
-    (void)handler;
-    // TBI
+    AWS_FATAL_ASSERT(handler->status == AWS_L4PPS_SUCCESS);
+
+    struct aws_channel_slot *slot = handler->channel_handler.slot;
+    bool done = slot->adj_right == NULL || slot->adj_right->window_size == 0 || aws_linked_list_empty(&handler->pending_read_bytes);
+
+    while (!done) {
+        struct aws_channel_handler *downstream_handler = slot->adj_right->handler;
+        struct aws_linked_list_node *head_node = aws_linked_list_front(&handler->pending_read_bytes);
+        struct aws_io_message *head_message = AWS_CONTAINER_OF(head_node, struct aws_io_message, queueing_handle);
+
+        size_t downstream_window = slot->adj_right->window_size;
+        struct aws_io_message downstream_message;
+        s_aws_init_downstream_io_message(&downstream_message, head_message, downstream_window);
+
+        if (aws_channel_handler_process_read_message(downstream_handler, slot->adj_right, &downstream_message)) {
+            aws_channel_shutdown(handler->channel_handler.slot->channel, aws_last_error());
+            break;
+        }
+
+        size_t bytes_consumed = downstream_message.message_data.len;
+        head_message->copy_mark += bytes_consumed;
+        handler->num_pending_read_bytes -= bytes_consumed;
+
+        if (head_message->copy_mark >= head_message->message_data.len) {
+            aws_linked_list_pop_front(&handler->pending_read_bytes);
+            aws_mem_release(head_message->allocator, head_message);
+        }
+
+        done = slot->adj_right == NULL || slot->adj_right->window_size == 0 || aws_linked_list_empty(&handler->pending_read_bytes);
+    }
 }
 
 static size_t s_compute_l4_proxy_window_size(struct aws_l4_proxy_channel_handler *handler) {
@@ -262,12 +310,16 @@ error:
 }
 
 static int s_increment_read_window_l4_proxy(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
-    (void)handler;
     (void)slot;
     (void)size;
 
-    // TBI
-    return aws_raise_error(AWS_ERROR_UNIMPLEMENTED);
+    struct aws_l4_proxy_channel_handler *l4_proxy_handler = handler->impl;
+
+    if (l4_proxy_handler->num_pending_read_bytes > 0) {
+        s_schedule_l4_proxy_service(l4_proxy_handler);
+    }
+
+    return AWS_OP_SUCCESS;;
 }
 
 static int s_shutdown_l4_proxy(
