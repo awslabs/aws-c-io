@@ -1452,6 +1452,20 @@ static int s_socket_set_options(struct aws_socket *socket, const struct aws_sock
 #endif
     }
     if (options->type == AWS_SOCKET_STREAM && options->domain != AWS_SOCKET_LOCAL) {
+        if (socket->options.tcp_nodelay != AWS_SOCKET_TCP_NODELAY_DEFAULT) {
+            int nodelay = socket->options.tcp_nodelay == AWS_SOCKET_TCP_NODELAY_ON ? 1 : 0;
+            if (AWS_UNLIKELY(
+                    setsockopt(socket->io_handle.data.fd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay)))) {
+                int errno_value = errno; /* Always cache errno before potential side-effect */
+                AWS_LOGF_WARN(
+                    AWS_LS_IO_SOCKET,
+                    "id=%p fd=%d: setsockopt() for TCP_NODELAY failed with errno %d.",
+                    (void *)socket,
+                    socket->io_handle.data.fd,
+                    errno_value);
+            }
+        }
+
         if (socket->options.keepalive) {
             int keep_alive = 1;
             if (AWS_UNLIKELY(
