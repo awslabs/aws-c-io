@@ -1326,7 +1326,7 @@ static inline int s_dgram_connect(
 
     AWS_LOGF_DEBUG(
         AWS_LS_IO_SOCKET,
-        "id=%p handle=%p: connecting to to %s:%u",
+        "id=%p handle=%p: connecting to %s:%u",
         (void *)socket,
         (void *)socket->io_handle.data.handle,
         remote_endpoint->address,
@@ -3307,7 +3307,7 @@ static int s_socket_write(
     if (!(socket->state & CONNECTED_WRITE)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: cannot write to because it is not connected",
+            "id=%p handle=%p: cannot write because it is not connected",
             (void *)socket,
             (void *)socket->io_handle.data.handle);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);

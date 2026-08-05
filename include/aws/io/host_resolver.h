@@ -98,7 +98,7 @@ struct aws_host_resolver_vtable {
         const struct aws_host_resolution_config *config,
         void *user_data);
 
-    /** gives your implementation a hint that an address has some failed connections occuring. Do whatever you want (or
+    /** gives your implementation a hint that an address has some failed connections occurring. Do whatever you want (or
      * nothing) about it.
      */
     int (*record_connection_failure)(struct aws_host_resolver *resolver, const struct aws_host_address *address);
@@ -149,7 +149,7 @@ AWS_EXTERN_C_BEGIN
 AWS_IO_API int aws_host_address_copy(const struct aws_host_address *from, struct aws_host_address *to);
 
 /**
- * Moves `from` to `to`. After this call, from is no longer usable. Though, it could be resused for another
+ * Moves `from` to `to`. After this call, from is no longer usable. Though, it could be reused for another
  * move or copy operation.
  */
 AWS_IO_API void aws_host_address_move(struct aws_host_address *from, struct aws_host_address *to);

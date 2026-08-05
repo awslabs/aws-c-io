@@ -47,7 +47,7 @@ int aws_import_ecc_key_into_keychain(
     }
     AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
 
-    // A PEM file could contains multiple PEM data section. Try importing each PEM section until find the first
+    // A PEM file can contain multiple PEM data sections. Try importing each PEM section until find the first
     // succeed key.
     for (size_t index = 0; index < aws_array_list_length(&decoded_key_buffer_list); index++) {
         struct aws_pem_object *pem_object_ptr = NULL;
@@ -521,7 +521,7 @@ static int s_aws_secitem_add_private_key_to_keychain(
      * These can be added in the future if we require a more specified search query.
      * kSecAttrApplicationTag: (CFDataRef) value indicates the item's private tag.
      * kSecAttrKeySizeInBits: (CFNumberRef) value indicates the number of bits in a cryptographic key.
-     * kSecAttrEffectiveKeySize: (CFNumberRef) value indicates the effective number of bits in a crytographic key.
+     * kSecAttrEffectiveKeySize: (CFNumberRef) value indicates the effective number of bits in a cryptographic key.
      */
 
     if (status == errSecDuplicateItem) {
@@ -667,7 +667,7 @@ int aws_secitem_import_cert_and_key(
     AWS_ASSERT(aws_array_list_is_valid(&decoded_key_buffer_list));
 
     /*
-     * A PEM certificate file could contains multiple PEM data sections. We currently decode and
+     * A PEM certificate file can contain multiple PEM data sections. We currently decode and
      * use the first certificate data only. Certificate chaining support could be added in the future.
      */
     if (aws_array_list_length(&decoded_cert_buffer_list) > 1) {
@@ -931,7 +931,7 @@ int aws_import_trusted_certificates(
             CFRelease(certificate_ref);
             CFRelease(cert_blob);
         } else {
-            err = AWS_OP_SUCCESS;
+            err = aws_raise_error(AWS_ERROR_OOM);
         }
     }
     aws_mutex_unlock(&s_sec_mutex);

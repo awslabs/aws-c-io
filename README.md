@@ -141,7 +141,7 @@ Typical Server API Usage Pattern:
         aws_io_library_clean_up();
 
 If you are building a protocol on top of sockets without the use of TLS, you can still use this pattern as your starting point.
-Simply call the `aws_client_bootstrap_new_socket_channel` `aws_server_bootstrap_add_socket_listener` respectively: instead of the TLS variants.
+Simply call the `aws_client_bootstrap_new_socket_channel` and `aws_server_bootstrap_add_socket_listener` respectively, instead of the TLS variants.
 
 ## Concepts
 
@@ -320,7 +320,7 @@ This means that the API is driven by a virtual-table. This is simply a struct of
 a c extern style API, but ultimately those public functions simply invoke the corresponding function in the v-table.
 
 These are reserved for types that:
-a.) Need to be configurable, changable at runtime
+a.) Need to be configurable, changeable at runtime
 b.) Do not have immediate performance concerns caused by an indirect function call.
 
 ### Compile-time Polymorphic
@@ -428,7 +428,7 @@ appropriately.**
 
     int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
 
-A subscriber will call this function to remove its io handle from the monitored events. For example, it would may this immediately before calling
+A subscriber will call this function to remove its io handle from the monitored events. For example, it would call this immediately before calling
 close() on a socket or pipe. `on_event` will still be invoked with `AWS_IO_EVENT_HANDLE_REMOVED` when this occurs.
 
     BOOL (*is_on_callers_thread) (struct aws_event_loop *);
@@ -460,7 +460,7 @@ the caller must first schedule a task on the event-loop to enter the correct thr
     int aws_event_loop_put_local_object ( struct aws_event_loop *, void *key, void *item);
 
 All event-loops contain local storage for all users of the event-loop to store common data into. This function is for putting one of those objects by key. The key for this
-store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
+store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
 the caller must first schedule a task on the event-loop to enter the correct thread.
 
     int aws_event_loop_remove_local_object ( struct aws_event_loop *, void *key, void **item);
@@ -646,7 +646,7 @@ All exported functions, simply shim into the v-table and return.
 
 We include a cross-platform API for sockets. We support TCP and UDP using IPv4 and IPv6, and Unix Domain sockets. On Windows,
 we use Named Pipes to support the functionality of Unix Domain sockets. On Windows, this is implemented with winsock2, and on
-all unix platforms we use the posix API. We also provides options to use Apple Network Framework on Apple.
+all unix platforms we use the posix API. We also provide options to use Apple Network Framework on Apple.
 
 Upon a connection being established, the new socket (either as the result of a `connect()` or `start_accept()` call)
 will not be attached to any event loops. It is your responsibility to register it with an event loop to begin receiving
