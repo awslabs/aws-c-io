@@ -78,7 +78,6 @@ struct aws_channel {
         bool is_channel_shut_down;
     } cross_thread_tasks;
 
-    size_t window_update_batch_emit_threshold;
     struct aws_channel_task window_update_task;
     bool read_back_pressure_enabled;
     bool window_update_scheduled;
@@ -241,9 +240,6 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
 
     if (creation_args->enable_read_back_pressure) {
         channel->read_back_pressure_enabled = true;
-        /* we probably only need room for one fragment, but let's avoid potential deadlocks
-         * on things like tls that need extra head-room. */
-        channel->window_update_batch_emit_threshold = g_aws_channel_max_fragment_size * 2;
     }
 
     aws_task_init(
@@ -451,6 +447,8 @@ struct aws_channel_slot *aws_channel_slot_new(struct aws_channel *channel) {
     AWS_LOGF_TRACE(AWS_LS_IO_CHANNEL, "id=%p: creating new slot %p.", (void *)channel, (void *)new_slot);
     new_slot->alloc = channel->alloc;
     new_slot->channel = channel;
+    /* default to 2 * g_aws_channel_max_fragment_size for the threshold. */
+    new_slot->window_update_batch_emit_threshold = 2 * g_aws_channel_max_fragment_size;
 
     if (!channel->first) {
         channel->first = new_slot;
@@ -672,8 +670,11 @@ int aws_channel_slot_set_handler(struct aws_channel_slot *slot, struct aws_chann
     slot->handler = handler;
     slot->handler->slot = slot;
     s_update_channel_slot_message_overheads(slot->channel);
+    size_t initial_window_size = slot->handler->vtable->initial_window_size(handler);
+    /* set the threshold to half of the initial window size to avoid dead lock */
+    slot->window_update_batch_emit_threshold = initial_window_size / 2;
 
-    return aws_channel_slot_increment_read_window(slot, slot->handler->vtable->initial_window_size(handler));
+    return aws_channel_slot_increment_read_window(slot, initial_window_size);
 }
 
 int aws_channel_slot_remove(struct aws_channel_slot *slot) {
@@ -869,8 +870,7 @@ int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t
         slot->current_window_update_batch_size =
             aws_add_size_saturating(slot->current_window_update_batch_size, window);
 
-        if (!slot->channel->window_update_scheduled &&
-            slot->window_size <= slot->channel->window_update_batch_emit_threshold) {
+        if (!slot->channel->window_update_scheduled && slot->window_size <= slot->window_update_batch_emit_threshold) {
             slot->channel->window_update_scheduled = true;
             aws_channel_task_init(
                 &slot->channel->window_update_task, s_window_update_task, slot->channel, "window update task");
