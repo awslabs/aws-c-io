@@ -4,17 +4,19 @@
 <dict>
 	<key>trustList</key>
 	<dict>
-		<key>1F132B39ACC0E5114FDB9E31541E52FF48F49376</key>
+		<key>160EBCC8149D5161AB5475CE6D0DA5CA0E8244D3</key>
 		<dict>
 			<key>issuerName</key>
 			<data>
-			MIGcMQswCQYDVQQGEwJVUzETMBEGA1UECAwKV2FzaGluZ3RvbjEQMA4GA1UEBwwHU2VhdHRsZTEPMA0GA1UECgwGQW1hem9uMQ0wCwYDVQQLDARTREtzMRQwEgYDVQQDDAtsb2NhbGhvc3RDQTEwMC4GCSqGSIb3DQEJARYhYXdzLXNkay1jb21tb24tcnVudGltZUBhbWF6b24uY29t
+			MIGcMQswCQYDVQQGEwJVUzETMBEGA1UECAwKV2FzaGluZ3RvbjEQMA4GA1UEBwwHU2VhdHRsZTEP
+MA0GA1UECgwGQW1hem9uMQ0wCwYDVQQLDARTREtzMRQwEgYDVQQDDAtsb2NhbGhvc3RDQTEwMC4G
+CSqGSIb3DQEJARYhYXdzLXNkay1jb21tb24tcnVudGltZUBhbWF6b24uY29t
 			</data>
 			<key>modDate</key>
-			<date>2026-05-01T18:43:18Z</date>
+			<date>2026-08-06T22:08:24Z</date>
 			<key>serialNumber</key>
 			<data>
-			RYSCRIWQTJESQLvtiT91g8kVhoU=
+			DTW+McXVg99C4RQiAACkBaln5+g=
 			</data>
 			<key>trustSettings</key>
 			<array>
