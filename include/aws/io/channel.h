@@ -35,7 +35,6 @@ struct aws_channel_slot {
     struct aws_channel_slot *adj_right;
     struct aws_channel_handler *handler;
     size_t window_size;
-    size_t window_update_batch_emit_threshold;
     size_t upstream_message_overhead;
     size_t current_window_update_batch_size;
 };
