@@ -87,7 +87,7 @@ struct aws_channel {
      * by s_window_update_task and never decremented by aws_channel_slot_send_message.
      *
      * We gate the window-update task on the MINIMUM rather than on the window of whichever
-     * slot happens to be calling aws_channel_slot_slot_increment_read_window(). Slots drain at
+     * slot happens to be calling aws_channel_slot_increment_read_window(). Slots drain at
      * different rates (a TLS slot drains ciphertext, the handler above it drains plaintext),
      * so the calling slot's window says nothing about whether some other slot is about to
      * starve. Gating on the caller lets the scarcest slot reach 0 while the caller is still
