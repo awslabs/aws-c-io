@@ -1,5 +1,5 @@
 /**
-* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
 
@@ -27,11 +27,15 @@ struct aws_l4_proxy_config *aws_l4_proxy_config_acquire(struct aws_l4_proxy_conf
     return config;
 }
 
-struct aws_l4_proxy_channel_handler *aws_l4_proxy_config_new_channel_handler(struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options) {
+struct aws_l4_proxy_channel_handler *aws_l4_proxy_config_new_channel_handler(
+    struct aws_l4_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *options) {
     return config->vtable->new_channel_handler(config, options);
 }
 
-void aws_l4_proxy_config_get_proxy_address(struct aws_l4_proxy_config *config, struct aws_connection_remote *new_remote) {
+void aws_l4_proxy_config_get_proxy_address(
+    struct aws_l4_proxy_config *config,
+    struct aws_connection_remote *new_remote) {
     AWS_ZERO_STRUCT(*new_remote);
 
     new_remote->host = aws_byte_cursor_from_buf(&config->proxy_host);
@@ -72,40 +76,9 @@ static void s_aws_l4_proxy_on_socket_write_completion(
     s_schedule_l4_proxy_service(handler);
 }
 
-/*
-*    struct aws_io_message *io_message = aws_channel_acquire_message_from_pool(channel, AWS_IO_MESSAGE_APPLICATION_DATA, AWS_SOCKS5_IO_MESSAGE_DEFAULT_LENGTH);
-    if (io_message == NULL) {
-        return AWS_OP_ERR;
-    }
-
-handler->status = negotiation_context.status;
-
-if (io_message->message_data.len == 0 || negotiation_context.status == AWS_L4PPS_FAILURE) {
-aws_mem_release(io_message->allocator, io_message);
-if (negotiation_context.status == AWS_L4PPS_FAILURE) {
-AWS_FATAL_ASSERT(negotiation_context.error_code != AWS_ERROR_SUCCESS);
-return aws_raise_error(negotiation_context.error_code);
-}
-}
-
-io_message->on_completion = s_aws_socks5_on_socket_write_completion;
-io_message->user_data = handler;
-
-if (aws_channel_slot_send_message(slot, io_message, AWS_CHANNEL_DIR_WRITE)) {
-aws_mem_release(io_message->allocator, io_message);
-return AWS_OP_ERR;
-}
-
-if (handler->status == AWS_L4PPS_SUCCESS) {
-//
-??;
-}
-??;
-
-return AWS_OP_SUCCESS;
-*/
-
-static int s_drive_negotiation_l4_proxy(struct aws_l4_proxy_channel_handler *handler,  struct aws_l4_proxy_negotiation_context *context) {
+static int s_drive_negotiation_l4_proxy(
+    struct aws_l4_proxy_channel_handler *handler,
+    struct aws_l4_proxy_negotiation_context *context) {
     struct aws_channel_slot *slot = handler->channel_handler.slot;
     struct aws_channel *channel = slot->channel;
 
@@ -118,44 +91,9 @@ static int s_drive_negotiation_l4_proxy(struct aws_l4_proxy_channel_handler *han
     return (handler->vtable->drive_negotiation)(handler->impl, context);
 }
 
-static void s_aws_l4_proxy_negotiation_context_init(struct aws_l4_proxy_negotiation_context *context) {
-    if (??) {
-        ??
-    } else {
-        context->data = NULL;
-    }
-
-    context->status = ??;
-    context->error_code = AWS_ERROR_SUCCESS;
-    ??;
-}
-
-static void s_aws_l4_proxy_negotiation_context_clean_up(struct aws_l4_proxy_negotiation_context *context) {
-
-}
-
-/*
-
-struct aws_l4_proxy_negotiation_context {
-    struct aws_byte_cursor *data;
-    enum aws_l4_proxy_protocol_status status;
-    struct aws_byte_buf *to_write;
-    int error_code;
-};
- */
-
-static void s_service_l4_proxy_negotiation(struct aws_l4_proxy_channel_handler *handler) {
-    (void)handler;
-    // TBI
-}
-
-static void s_aws_init_downstream_io_message(struct aws_io_message *downstream_message, struct aws_io_message *source_message, size_t downstream_window) {
-    AWS_ZERO_STRUCT(downstream_message);
-
-    downstream_message->message_type = source_message->message_type;
-    downstream_message->message_tag = source_message->message_tag;
-    downstream_message->owning_channel = source_message->owning_channel;
-
+static struct aws_byte_cursor s_aws_byte_buf_get_downstream_data(
+    struct aws_io_message *source_message,
+    size_t downstream_window) {
     size_t remaining_bytes = aws_sub_size_saturating(source_message->message_data.len, source_message->copy_mark);
     size_t fragment_size = aws_min_size(downstream_window, remaining_bytes);
     struct aws_byte_cursor fragment_cursor = {
@@ -163,17 +101,101 @@ static void s_aws_init_downstream_io_message(struct aws_io_message *downstream_m
         .len = fragment_size,
     };
 
-    // no allocator on the message data
-    downstream_message->message_data.buffer = fragment_cursor.ptr;
-    downstream_message->message_data.len = fragment_cursor.len;
-    downstream_message->message_data.capacity = fragment_cursor.len;
+    return fragment_cursor;
+}
+
+static struct aws_io_message *s_aws_io_message_new_downstream(
+    struct aws_l4_proxy_channel_handler *handler,
+    struct aws_io_message *source_message,
+    size_t downstream_window) {
+    struct aws_byte_cursor fragment_cursor = s_aws_byte_buf_get_downstream_data(source_message, downstream_window);
+    if (fragment_cursor.len == 0) {
+        return NULL;
+    }
+
+    struct aws_io_message *downstream_message = aws_channel_acquire_message_from_pool(
+        handler->channel_handler.slot->channel, source_message->message_type, fragment_cursor.len);
+    if (downstream_message == NULL) {
+        return NULL;
+    }
+
+    if (aws_byte_buf_append(&downstream_message->message_data, &fragment_cursor)) {
+        aws_mem_release(downstream_message->allocator, downstream_message);
+        return NULL;
+    }
+
+    return downstream_message;
+}
+
+static void s_service_l4_proxy_negotiation(struct aws_l4_proxy_channel_handler *handler) {
+
+    struct aws_io_message *output_message = aws_channel_acquire_message_from_pool(
+        handler->channel_handler.slot->channel,
+        AWS_IO_MESSAGE_APPLICATION_DATA,
+        AWS_L4_PROXY_IO_MESSAGE_DEFAULT_LENGTH);
+    output_message->user_data = handler;
+    output_message->on_completion = s_aws_l4_proxy_on_socket_write_completion;
+
+    bool done = false;
+    while (!done) {
+        struct aws_l4_proxy_negotiation_context context;
+        AWS_ZERO_STRUCT(context);
+
+        size_t fragment_length = 0;
+        struct aws_byte_cursor fragment_cursor;
+        AWS_ZERO_STRUCT(fragment_cursor);
+
+        struct aws_io_message *head_message = NULL;
+        if (!aws_linked_list_empty(&handler->pending_read_bytes)) {
+            struct aws_linked_list_node *head_node = aws_linked_list_front(&handler->pending_read_bytes);
+            head_message = AWS_CONTAINER_OF(head_node, struct aws_io_message, queueing_handle);
+
+            fragment_cursor = s_aws_byte_buf_get_downstream_data(head_message, SIZE_T_MAX);
+            fragment_length = fragment_cursor.len;
+        }
+
+        context.status = handler->status;
+        if (fragment_cursor.len > 0) {
+            context.data = &fragment_cursor;
+        }
+        context.to_write = &output_message->message_data;
+
+        if (s_drive_negotiation_l4_proxy(handler, &context) || context.status == AWS_L4PPS_FAILURE) {
+            int error_code = context.error_code;
+            if (error_code == AWS_ERROR_SUCCESS) {
+                error_code = aws_last_error();
+            }
+            handler->status = AWS_L4PPS_FAILURE;
+            aws_mem_release(output_message->allocator, output_message);
+            aws_channel_shutdown(handler->channel_handler.slot->channel, error_code);
+            return;
+        }
+
+        handler->status = context.status;
+        if (context.data != NULL) {
+            head_message->copy_mark += fragment_length - context.data->len;
+        }
+
+        if (output_message->message_data.len > 0) {
+            if (aws_channel_slot_send_message(handler->channel_handler.slot, output_message, AWS_CHANNEL_DIR_WRITE)) {
+                aws_mem_release(output_message->allocator, output_message);
+                aws_channel_shutdown(handler->channel_handler.slot->channel, aws_last_error());
+            }
+            return;
+        }
+
+        done = aws_linked_list_empty(&handler->pending_read_bytes) || context.status != AWS_L4PPS_IN_PROGRESS;
+    }
+
+    aws_mem_release(output_message->allocator, output_message);
 }
 
 static void s_service_downstream_handler(struct aws_l4_proxy_channel_handler *handler) {
     AWS_FATAL_ASSERT(handler->status == AWS_L4PPS_SUCCESS);
 
     struct aws_channel_slot *slot = handler->channel_handler.slot;
-    bool done = slot->adj_right == NULL || slot->adj_right->window_size == 0 || aws_linked_list_empty(&handler->pending_read_bytes);
+    bool done = slot->adj_right == NULL || slot->adj_right->window_size == 0 ||
+                aws_linked_list_empty(&handler->pending_read_bytes);
 
     while (!done) {
         struct aws_channel_handler *downstream_handler = slot->adj_right->handler;
@@ -181,15 +203,19 @@ static void s_service_downstream_handler(struct aws_l4_proxy_channel_handler *ha
         struct aws_io_message *head_message = AWS_CONTAINER_OF(head_node, struct aws_io_message, queueing_handle);
 
         size_t downstream_window = slot->adj_right->window_size;
-        struct aws_io_message downstream_message;
-        s_aws_init_downstream_io_message(&downstream_message, head_message, downstream_window);
+        struct aws_io_message *downstream_message =
+            s_aws_io_message_new_downstream(handler, head_message, downstream_window);
+        if (downstream_message == NULL) {
+            return;
+        }
 
-        if (aws_channel_handler_process_read_message(downstream_handler, slot->adj_right, &downstream_message)) {
+        if (aws_channel_handler_process_read_message(downstream_handler, slot->adj_right, downstream_message)) {
+            aws_mem_release(downstream_message->allocator, downstream_message);
             aws_channel_shutdown(handler->channel_handler.slot->channel, aws_last_error());
             break;
         }
 
-        size_t bytes_consumed = downstream_message.message_data.len;
+        size_t bytes_consumed = downstream_message->message_data.len;
         head_message->copy_mark += bytes_consumed;
         handler->num_pending_read_bytes -= bytes_consumed;
 
@@ -198,7 +224,8 @@ static void s_service_downstream_handler(struct aws_l4_proxy_channel_handler *ha
             aws_mem_release(head_message->allocator, head_message);
         }
 
-        done = slot->adj_right == NULL || slot->adj_right->window_size == 0 || aws_linked_list_empty(&handler->pending_read_bytes);
+        done = slot->adj_right == NULL || slot->adj_right->window_size == 0 ||
+               aws_linked_list_empty(&handler->pending_read_bytes);
     }
 }
 
@@ -208,7 +235,7 @@ static size_t s_compute_l4_proxy_window_size(struct aws_l4_proxy_channel_handler
             return SIZE_MAX;
 
         case AWS_L4PPS_SUCCESS: {
-            struct aws_channel_slot *slot= handler->channel_handler.slot;
+            struct aws_channel_slot *slot = handler->channel_handler.slot;
             if (slot->adj_right) {
                 return slot->adj_right->window_size;
             }
@@ -233,10 +260,10 @@ static void s_service_l4_proxy(struct aws_channel_task *channel_task, void *arg,
     // to be deleted before the cancelled task is run, invalidating the memory access.  Given that cancellation
     // only happens on channel destruction, it doesn't matter if this flag doesn't get cleared in that case.
     handler->is_service_scheduled = false;
-    handler->in_service = true;
 
     size_t downstream_window = s_compute_l4_proxy_window_size(handler);
-    bool should_iterate = (handler->status == AWS_L4PPS_IN_PROGRESS) ||
+    bool should_iterate =
+        (handler->status == AWS_L4PPS_IN_PROGRESS) ||
         (handler->status == AWS_L4PPS_SUCCESS && downstream_window > 0 && handler->num_pending_read_bytes > 0);
 
     while (should_iterate) {
@@ -247,10 +274,9 @@ static void s_service_l4_proxy(struct aws_channel_task *channel_task, void *arg,
         }
 
         downstream_window = s_compute_l4_proxy_window_size(handler);
-        should_iterate = handler->status == AWS_L4PPS_SUCCESS && downstream_window > 0 && handler->num_pending_read_bytes > 0;
+        should_iterate =
+            handler->status == AWS_L4PPS_SUCCESS && downstream_window > 0 && handler->num_pending_read_bytes > 0;
     }
-
-    handler->in_service = false;
 }
 
 static int s_process_read_message_l4_proxy(
@@ -258,14 +284,20 @@ static int s_process_read_message_l4_proxy(
     struct aws_channel_slot *slot,
     struct aws_io_message *message) {
 
-    (void)slot;
-
     struct aws_channel *channel = handler->slot->channel;
     AWS_FATAL_ASSERT(aws_channel_thread_is_callers_thread(channel));
 
     struct aws_l4_proxy_channel_handler *l4_proxy_handler = handler->impl;
 
-    size_t message_size = message->message_data.len; // TBD copy mark?
+    size_t message_size = message->message_data.len - message->copy_mark;
+
+    // if we're in pass-through mode and the message respects the down stream handle's window then just pass it on
+    if (l4_proxy_handler->status == AWS_L4PPS_SUCCESS &&
+        message_size <= s_compute_l4_proxy_window_size(l4_proxy_handler) &&
+        l4_proxy_handler->num_pending_read_bytes == 0) {
+        return aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_READ);
+    }
+
     l4_proxy_handler->num_pending_read_bytes += message_size;
     aws_linked_list_push_back(&l4_proxy_handler->pending_read_bytes, &message->queueing_handle);
     s_schedule_l4_proxy_service(l4_proxy_handler);
@@ -292,24 +324,29 @@ static int s_process_write_message_l4_proxy(
 
 error:
 
+    ;
+    int error_code = aws_last_error();
     AWS_LOGF_ERROR(
         AWS_LS_IO_SOCKS5,
         "id=%p: Destroying write message without passing it along, error %d (%s)",
         (void *)l4_proxy_handler,
-        aws_last_error(),
-        aws_error_name(aws_last_error()));
+        error_code,
+        aws_error_name(error_code));
 
     if (message->on_completion) {
-        message->on_completion(handler->slot->channel, message, aws_last_error(), message->user_data);
+        message->on_completion(handler->slot->channel, message, error_code, message->user_data);
     }
     aws_mem_release(message->allocator, message);
-    // TBI
-    //s_shutdown_due_to_error(connection, aws_last_error());
+    aws_channel_shutdown(slot->channel, error_code);
 
+    // we cleaned up the message, so return success despite failing to send
     return AWS_OP_SUCCESS;
 }
 
-static int s_increment_read_window_l4_proxy(struct aws_channel_handler *handler, struct aws_channel_slot *slot, size_t size) {
+static int s_increment_read_window_l4_proxy(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
     (void)slot;
     (void)size;
 
@@ -319,7 +356,8 @@ static int s_increment_read_window_l4_proxy(struct aws_channel_handler *handler,
         s_schedule_l4_proxy_service(l4_proxy_handler);
     }
 
-    return AWS_OP_SUCCESS;;
+    return AWS_OP_SUCCESS;
+    ;
 }
 
 static int s_shutdown_l4_proxy(
@@ -371,13 +409,19 @@ void aws_l4_proxy_channel_handler_clean_up(struct aws_l4_proxy_channel_handler *
     handler->config = aws_l4_proxy_config_release(handler->config);
     aws_byte_buf_clean_up(&handler->remote_host);
 
-    // purge all pending read (which should be empty)
-    // TBI
+    while (!aws_linked_list_empty(&handler->pending_read_bytes)) {
+        struct aws_linked_list_node *head_node = aws_linked_list_pop_front(&handler->pending_read_bytes);
+        struct aws_io_message *head_message = AWS_CONTAINER_OF(head_node, struct aws_io_message, queueing_handle);
+        aws_mem_release(head_message->allocator, head_message);
+    }
 }
 
-void aws_l4_proxy_channel_handler_init(struct aws_l4_proxy_channel_handler *handler, struct aws_allocator *allocator, struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options) {
+void aws_l4_proxy_channel_handler_init(
+    struct aws_l4_proxy_channel_handler *handler,
+    struct aws_allocator *allocator,
+    struct aws_l4_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *options) {
     handler->status = AWS_L4PPS_IN_PROGRESS;
-    handler->in_service = false;
     handler->is_service_scheduled = false;
     handler->num_pending_read_bytes = 0;
 

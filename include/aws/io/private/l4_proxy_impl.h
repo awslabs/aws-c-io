@@ -1,5 +1,5 @@
 /**
-* Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
+ * Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
  * SPDX-License-Identifier: Apache-2.0.
  */
 
@@ -24,7 +24,8 @@ struct aws_connection_remote {
 };
 
 struct aws_l4_proxy_config_vtable {
-    struct aws_l4_proxy_channel_handler *(*new_channel_handler)(struct aws_l4_proxy_config *, struct aws_l4_proxy_channel_handler_options *);
+    struct aws_l4_proxy_channel_handler *(
+        *new_channel_handler)(struct aws_l4_proxy_config *, struct aws_l4_proxy_channel_handler_options *);
 };
 
 struct aws_l4_proxy_config {
@@ -88,15 +89,12 @@ struct aws_l4_proxy_channel_handler {
     enum aws_l4_proxy_protocol_status status;
 
     // channel handler data processing
-    bool in_service;
     bool is_service_scheduled;
     struct aws_channel_task service_task;
 
     // read backpressure
     size_t num_pending_read_bytes;
     struct aws_linked_list pending_read_bytes;
-
-
 };
 
 struct aws_l4_proxy_channel_handler_options {
@@ -113,7 +111,11 @@ AWS_IO_API void aws_l4_proxy_config_clean_up(struct aws_l4_proxy_config *config)
 
 AWS_IO_API void aws_l4_proxy_channel_handler_start_negotiation(struct aws_l4_proxy_channel_handler *handler);
 
-AWS_IO_API void aws_l4_proxy_channel_handler_init(struct aws_l4_proxy_channel_handler *handler, struct aws_allocator *allocator, struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options);
+AWS_IO_API void aws_l4_proxy_channel_handler_init(
+    struct aws_l4_proxy_channel_handler *handler,
+    struct aws_allocator *allocator,
+    struct aws_l4_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *options);
 
 AWS_IO_API void aws_l4_proxy_channel_handler_clean_up(struct aws_l4_proxy_channel_handler *handler);
 

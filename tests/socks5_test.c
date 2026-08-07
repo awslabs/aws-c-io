@@ -6,7 +6,7 @@
 #include <aws/io/l4_proxy.h>
 
 #include <aws/io/private/socks5_impl.h>
-#include <aws/io/socks5.h>
+#include <aws/io/socks5_test.h>
 #include <aws/testing/aws_test_harness.h>
 
 static struct aws_byte_cursor s_aws_byte_cursor_advance_clipped(struct aws_byte_cursor *cursor, size_t len) {

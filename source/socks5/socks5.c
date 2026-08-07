@@ -15,7 +15,6 @@
 
 #include "aws/io/event_loop.h"
 
-
 static void s_aws_socks5_proxy_config_destroy(void *value) {
     struct aws_l4_proxy_config *l4_config = value;
     if (!l4_config) {
@@ -30,7 +29,9 @@ static void s_aws_socks5_proxy_config_destroy(void *value) {
     aws_mem_release(config->base.allocator, config);
 }
 
-static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options);
+static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(
+    struct aws_l4_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *options);
 
 static struct aws_l4_proxy_config_vtable s_aws_socks5_proxy_config_vtable = {
     .new_channel_handler = s_aws_l4_proxy_channel_handler_new_socks5,
@@ -306,14 +307,14 @@ static void s_build_connect_request(struct aws_socks5_proxy_impl *impl) {
     size_t requiredBytes = 7 + impl->config->base.proxy_host.len;
     aws_byte_buf_reserve(&impl->write_buffer, requiredBytes);
 
-    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_VERSION);                         // version byte
-    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_TYPE_CONNECT);            // command byte
-    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_RESERVED_VALUE);          // reserved byte
-    aws_byte_buf_write_u8(&impl->write_buffer, AWS_SOCKS5_ADDRESS_TYPE_DOMAIN_NAME);   // address type byte
+    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_VERSION);                              // version byte
+    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_TYPE_CONNECT);                 // command byte
+    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_RESERVED_VALUE);               // reserved byte
+    aws_byte_buf_write_u8(&impl->write_buffer, AWS_SOCKS5_ADDRESS_TYPE_DOMAIN_NAME);        // address type byte
     aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)impl->config->base.proxy_host.len); // address length byte
 
     struct aws_byte_cursor connect_cursor = aws_byte_cursor_from_buf(&impl->config->base.proxy_host);
-    aws_byte_buf_append(&impl->write_buffer, &connect_cursor);              // address
+    aws_byte_buf_append(&impl->write_buffer, &connect_cursor);                   // address
     aws_byte_buf_write_be16(&impl->write_buffer, impl->config->base.proxy_port); // port
 
     impl->pending_write_data = aws_byte_cursor_from_buf(&impl->write_buffer);
@@ -519,7 +520,9 @@ struct aws_socks5_channel_handler {
     struct aws_socks5_proxy_impl *negotiation_impl;
 };
 
-static int s_drive_negotiation_socks5(struct aws_l4_proxy_channel_handler *handler, struct aws_l4_proxy_negotiation_context *context) {
+static int s_drive_negotiation_socks5(
+    struct aws_l4_proxy_channel_handler *handler,
+    struct aws_l4_proxy_negotiation_context *context) {
     struct aws_socks5_channel_handler *sockss5_handler = handler->impl;
 
     aws_socks5_proxy_impl_drive_negotiation(sockss5_handler->negotiation_impl, context);
@@ -537,12 +540,14 @@ static void s_destroy_channel_handler_socks5(struct aws_l4_proxy_channel_handler
 
 static struct aws_l4_proxy_channel_handler_vtable s_l4_proxy_channel_handler_vtable = {
     .drive_negotiation = &s_drive_negotiation_socks5,
-    .destroy = &s_destroy_channel_handler_socks5
-};
+    .destroy = &s_destroy_channel_handler_socks5};
 
-static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(struct aws_l4_proxy_config *config, struct aws_l4_proxy_channel_handler_options *options) {
+static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(
+    struct aws_l4_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *options) {
     struct aws_allocator *allocator = config->allocator;
-    struct aws_socks5_channel_handler *socks5_handler = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_channel_handler));
+    struct aws_socks5_channel_handler *socks5_handler =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_channel_handler));
     struct aws_socks5_proxy_config *socks5_config = config->impl;
 
     socks5_handler->allocator = allocator;
@@ -554,4 +559,3 @@ static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_s
 
     return &socks5_handler->base;
 }
-

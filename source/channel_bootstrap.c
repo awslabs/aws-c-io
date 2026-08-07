@@ -489,7 +489,9 @@ error:
     aws_channel_shutdown(channel, error_code);
 }
 
-static int s_setup_client_l4_proxy_negotiation(struct client_connection_args *connection_args, struct aws_channel *channel) {
+static int s_setup_client_l4_proxy_negotiation(
+    struct client_connection_args *connection_args,
+    struct aws_channel *channel) {
     AWS_FATAL_ASSERT(connection_args->l4_proxy_config);
 
     struct aws_channel_slot *proxy_slot = aws_channel_slot_new(channel);
@@ -511,7 +513,8 @@ static int s_setup_client_l4_proxy_negotiation(struct client_connection_args *co
         .negotiation_complete_user_data = connection_args,
     };
 
-    struct aws_l4_proxy_channel_handler *proxy_channel_handler = aws_l4_proxy_config_new_channel_handler(connection_args->l4_proxy_config, &l4_proxy_options);
+    struct aws_l4_proxy_channel_handler *proxy_channel_handler =
+        aws_l4_proxy_config_new_channel_handler(connection_args->l4_proxy_config, &l4_proxy_options);
     if (!proxy_channel_handler) {
         aws_mem_release(connection_args->bootstrap->allocator, proxy_slot);
         return AWS_OP_ERR;
