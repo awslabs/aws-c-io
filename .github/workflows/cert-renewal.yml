@@ -1,0 +1,132 @@
+name: Certificate Renewal
+
+on:
+  schedule:
+    # Monthly at 11:37 UTC (03:37 PST) — quiet off-peak time for the US west coast.
+    # We check monthly and only regenerate when a certificate is close to expiring.
+    - cron: '37 11 1 * *'
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check-and-renew-certificates:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check certificate expiration
+        id: check-cert
+        working-directory: tests/resources
+        run: |
+          # generateCerts.sh regenerates every certificate in one run with the same
+          # 824-day lifetime, so they all expire together. Checking one is a reliable
+          # proxy for the whole set.
+          CERT_FILE="unittests.crt"
+
+          if [ ! -f "$CERT_FILE" ]; then
+            echo "Certificate file $CERT_FILE not found!"
+            echo "needs_renewal=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          CURRENT_EPOCH=$(date +%s)
+          EXPIRY_DATE=$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)
+          EXPIRY_EPOCH=$(date -d "$EXPIRY_DATE" +%s)
+          DAYS_UNTIL_EXPIRY=$(( (EXPIRY_EPOCH - CURRENT_EPOCH) / 86400 ))
+          echo "$CERT_FILE expires in $DAYS_UNTIL_EXPIRY days ($EXPIRY_DATE)"
+
+          # Renew if less than 30 days until expiration. This gives buffer time before
+          # the 824-day lifetime (kept under Apple platforms' 825-day cap on TLS server
+          # certificate lifetimes) runs out.
+          if [ "$DAYS_UNTIL_EXPIRY" -lt 30 ]; then
+            echo "Certificates need renewal (less than 30 days until expiration)"
+            echo "needs_renewal=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Certificates are still valid"
+            echo "needs_renewal=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install OpenSSL
+        if: steps.check-cert.outputs.needs_renewal == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openssl
+
+      - name: Regenerate certificates
+        if: steps.check-cert.outputs.needs_renewal == 'true'
+        working-directory: tests/resources
+        run: |
+          bash generateCerts.sh
+
+          echo "New certificate details:"
+          openssl x509 -in unittests.crt -noout -dates -subject
+
+      - name: Check for changes
+        if: steps.check-cert.outputs.needs_renewal == 'true'
+        id: check-changes
+        run: |
+          if git diff --quiet tests/resources; then
+            echo "No changes detected"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changes detected"
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create Pull Request
+        if: steps.check-cert.outputs.needs_renewal == 'true' && steps.check-changes.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create branch
+          BRANCH_NAME="cert-renewal-${{ github.run_number }}"
+          git checkout -b "$BRANCH_NAME"
+
+          # Stage and commit all regenerated test resources
+          git add tests/resources
+          git commit -m "chore: renew test certificates for 824 days
+
+          Automatically regenerated test certificates via
+          tests/resources/generateCerts.sh. They use an 824-day lifetime to stay
+          under the 825-day cap Apple platforms enforce on TLS server certificates.
+
+          Assisted by GenAI"
+
+          # Push branch
+          git push origin "$BRANCH_NAME"
+
+          # Create pull request using GitHub CLI
+          gh pr create \
+            --title "chore: renew test certificates" \
+            --body "## Certificate Renewal
+
+          This PR automatically renews the test certificates in \`tests/resources/\`.
+
+          ### Changes
+          Regenerated the full set of test certificates (RSA/EC self-signed certs,
+          the CA-signed server chain, mTLS root CAs with server/device certs, the
+          untrusted server CA, and the macOS trust settings plist) using
+          \`tests/resources/generateCerts.sh\`.
+
+          ### Background
+          Apple platforms reject TLS server certificates with lifetimes over 825 days. These
+          certificates are used in unit tests that create TLS connections between a
+          localhost server and client. The PKCS#12 bundles are generated with
+          SHA1/3DES encryption so that macOS's Security Framework can parse them.
+
+          ### Testing
+          Please verify that the unit tests pass with the new certificates before
+          merging.
+
+          ---
+          This PR was automatically generated by the certificate renewal workflow." \
+            --base main \
+            --head "$BRANCH_NAME"
