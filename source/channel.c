@@ -696,6 +696,20 @@ static void s_update_channel_slot_message_overheads(struct aws_channel *channel)
     }
 }
 
+/* Recalculate `min_slot_window_size` from scratch. See the comment at that variable's
+ * declaration site for why the left-most slot is excluded. */
+static void s_recalculate_min_slot_window_size(struct aws_channel *channel) {
+    size_t min_window_size = SIZE_MAX;
+    struct aws_channel_slot *slot_iter = channel->first;
+    while (slot_iter) {
+        if (slot_iter->adj_left) {
+            min_window_size = aws_min_size(min_window_size, slot_iter->window_size);
+        }
+        slot_iter = slot_iter->adj_right;
+    }
+    channel->min_slot_window_size = min_window_size;
+}
+
 int aws_channel_slot_set_handler(struct aws_channel_slot *slot, struct aws_channel_handler *handler) {
     slot->handler = handler;
     slot->handler->slot = slot;
@@ -722,9 +736,12 @@ int aws_channel_slot_remove(struct aws_channel_slot *slot) {
     }
 
     s_update_channel_slot_message_overheads(slot->channel);
-    /* The removed slot may have been holding the minimum. Reset to SIZE_MAX; the next
-     * s_window_update_task run recomputes it from the surviving slots. */
-    slot->channel->min_slot_window_size = SIZE_MAX;
+    /* Removing a slot can change which slots are counted: the removed slot may have been
+     * holding the minimum, and removing the left-most slot promotes its neighbor to
+     * left-most, which excludes it. Recompute rather than reset -- a value that is too
+     * HIGH suppresses the window update task, which is the stall this cache exists to
+     * prevent. */
+    s_recalculate_min_slot_window_size(slot->channel);
     s_cleanup_slot(slot);
     return AWS_OP_SUCCESS;
 }
@@ -875,17 +892,12 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
             slot = slot->adj_right;
         }
 
-        /* Recompute the minimum as we walk. This loop visits exactly the slots that have an
-         * adj_left, which are the same slots that can receive read messages. */
-        size_t min_window_size = SIZE_MAX;
-
         while (slot->adj_left) {
             struct aws_channel_slot *upstream_slot = slot->adj_left;
             if (upstream_slot->handler) {
                 slot->window_size = aws_add_size_saturating(slot->window_size, slot->current_window_update_batch_size);
                 size_t update_size = slot->current_window_update_batch_size;
                 slot->current_window_update_batch_size = 0;
-                min_window_size = aws_min_size(min_window_size, slot->window_size);
                 if (aws_channel_handler_increment_read_window(upstream_slot->handler, upstream_slot, update_size)) {
                     AWS_LOGF_ERROR(
                         AWS_LS_IO_CHANNEL,
@@ -899,7 +911,7 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
             slot = slot->adj_left;
         }
 
-        channel->min_slot_window_size = min_window_size;
+        s_recalculate_min_slot_window_size(channel);
     }
 }
 
