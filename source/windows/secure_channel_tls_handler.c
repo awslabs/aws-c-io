@@ -1739,7 +1739,7 @@ static int s_increment_read_window(struct aws_channel_handler *handler, struct a
 
     size_t total_desired_size = size;
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-    size_t current_window_size = slot->window_size;
+    size_t current_window_size = aws_add_size_saturating(slot->window_size, slot->current_window_update_batch_size);
 
     /* the only time this branch isn't taken is when a window update is propagated during tls negotiation.
      * in that case just pass it through. */
