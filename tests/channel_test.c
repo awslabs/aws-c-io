@@ -1085,9 +1085,7 @@ AWS_TEST_CASE(
  * stops the upstream slot from reading. If nothing re-examines the threshold when a window is
  * DEBITED, the channel is wedged: full batch pending, scarcest window at 0, no further calls
  * coming. */
-static int s_test_channel_window_update_emitted_when_debit_starves_slot(
-    struct aws_allocator *allocator,
-    void *ctx) {
+static int s_test_channel_window_update_emitted_when_debit_starves_slot(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     const size_t threshold = g_aws_channel_max_fragment_size * 4;
