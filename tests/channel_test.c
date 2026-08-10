@@ -14,6 +14,7 @@
 #include <aws/io/private/event_loop_impl.h>
 #include <aws/io/socket.h>
 #include <aws/testing/aws_test_harness.h>
+#include <aws/testing/io_testing_channel.h>
 
 #include "mock_dns_resolver.h"
 #include "read_write_test_handler.h"
@@ -930,3 +931,207 @@ static int s_test_channel_keeps_event_loop_group_alive(struct aws_allocator *all
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(channel_keeps_event_loop_group_alive, s_test_channel_keeps_event_loop_group_alive)
+
+/* Builds a 3-slot read-back-pressure channel: left -> mid -> right.
+ *
+ * Three slots is the minimum that can tell the two gating rules apart. Only slots with an
+ * `adj_left` carry a live `window_size`, so in a 2-slot channel the sole live window belongs
+ * to the slot that asks for more -- the scarcest window and the caller's window are the same
+ * number, and either rule behaves identically. */
+static int s_window_gate_channel_init(
+    struct aws_allocator *allocator,
+    struct testing_channel *testing,
+    size_t mid_window,
+    size_t right_window,
+    struct aws_channel_slot **out_mid_slot,
+    struct aws_channel_slot **out_right_slot,
+    struct testing_channel_handler **out_mid_impl) {
+
+    struct aws_testing_channel_options options = {.clock_fn = aws_high_res_clock_get_ticks};
+    ASSERT_SUCCESS(testing_channel_init(testing, allocator, &options));
+
+    struct aws_channel_slot *mid_slot = aws_channel_slot_new(testing->channel);
+    ASSERT_NOT_NULL(mid_slot);
+    ASSERT_SUCCESS(aws_channel_slot_insert_right(testing->left_handler_slot, mid_slot));
+    struct aws_channel_handler *mid_handler = s_new_testing_channel_handler(allocator, mid_window);
+    ASSERT_NOT_NULL(mid_handler);
+    struct testing_channel_handler *mid_impl = mid_handler->impl;
+    ASSERT_SUCCESS(aws_channel_slot_set_handler(mid_slot, mid_handler));
+
+    struct aws_channel_slot *right_slot = aws_channel_slot_new(testing->channel);
+    ASSERT_NOT_NULL(right_slot);
+    ASSERT_SUCCESS(aws_channel_slot_insert_right(mid_slot, right_slot));
+    struct aws_channel_handler *right_handler = s_new_testing_channel_handler(allocator, right_window);
+    ASSERT_NOT_NULL(right_handler);
+    ASSERT_SUCCESS(aws_channel_slot_set_handler(right_slot, right_handler));
+
+    /* Let the initial grants from set_handler settle into window_size. */
+    testing_channel_drain_queued_tasks(testing);
+    ASSERT_UINT_EQUALS(mid_window, mid_slot->window_size);
+    ASSERT_UINT_EQUALS(right_window, right_slot->window_size);
+
+    /* Zero the observable so later assertions only see what this test provoked. */
+    mid_impl->latest_window_update = 0;
+
+    *out_mid_slot = mid_slot;
+    *out_right_slot = right_slot;
+    *out_mid_impl = mid_impl;
+    return AWS_OP_SUCCESS;
+}
+
+/* The batched window update must be gated on the SCARCEST slot window, not on the window of
+ * whichever slot happens to be asking.
+ *
+ * `mid` sits below the emit threshold while `right` sits far above it -- the shape a tls slot
+ * draining ciphertext makes underneath an http slot draining plaintext, since tls sizes its own
+ * window by estimating record overhead and that estimate assumes the peer packs plaintext into
+ * full-size records. `right` is the only slot asking for window in steady state, so a gate that
+ * reads the caller's window never fires: the accumulated batch is never emitted, `mid` is never
+ * replenished, the upstream slot stops reading, no data reaches `right`, and nothing ever asks
+ * for window again. The channel wedges with a full batch pending. */
+static int s_test_channel_window_update_gates_on_scarcest_slot(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const size_t threshold = g_aws_channel_max_fragment_size * 4;
+    const size_t scarce_window = g_aws_channel_max_fragment_size;
+    const size_t roomy_window = threshold * 4;
+    ASSERT_TRUE(scarce_window <= threshold);
+    ASSERT_TRUE(roomy_window > threshold);
+
+    struct testing_channel testing;
+    struct aws_channel_slot *mid_slot = NULL;
+    struct aws_channel_slot *right_slot = NULL;
+    struct testing_channel_handler *mid_impl = NULL;
+    ASSERT_SUCCESS(s_window_gate_channel_init(
+        allocator, &testing, scarce_window, roomy_window, &mid_slot, &right_slot, &mid_impl));
+
+    /* `right` asks for more window. Gating on the caller declines to schedule the task because
+     * `right` is roomy; gating on the minimum must schedule it because `mid` is scarce. */
+    const size_t grant = 1024;
+    ASSERT_SUCCESS(aws_channel_slot_increment_read_window(right_slot, grant));
+    testing_channel_drain_queued_tasks(&testing);
+
+    /* The batch was emitted: applied to the asking slot's window, drained, and propagated to
+     * the handler upstream of it. */
+    ASSERT_UINT_EQUALS(roomy_window + grant, right_slot->window_size);
+    ASSERT_UINT_EQUALS(0, right_slot->current_window_update_batch_size);
+    ASSERT_UINT_EQUALS(grant, mid_impl->latest_window_update);
+
+    ASSERT_SUCCESS(testing_channel_clean_up(&testing));
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(channel_window_update_gates_on_scarcest_slot, s_test_channel_window_update_gates_on_scarcest_slot)
+
+/* The other direction: gating on the minimum must not degenerate into "always emit". While every
+ * slot is roomy the update stays batched, so a fix that simply drops the gate fails here. */
+static int s_test_channel_window_update_batches_while_all_slots_roomy(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    const size_t threshold = g_aws_channel_max_fragment_size * 4;
+    /* Roomy by exactly one fragment, so the debit below fits in a single pooled message. */
+    const size_t roomy_window = threshold + g_aws_channel_max_fragment_size;
+    ASSERT_TRUE(roomy_window > threshold);
+
+    struct testing_channel testing;
+    struct aws_channel_slot *mid_slot = NULL;
+    struct aws_channel_slot *right_slot = NULL;
+    struct testing_channel_handler *mid_impl = NULL;
+    ASSERT_SUCCESS(
+        s_window_gate_channel_init(allocator, &testing, roomy_window, roomy_window, &mid_slot, &right_slot, &mid_impl));
+
+    const size_t grant = 1024;
+    ASSERT_SUCCESS(aws_channel_slot_increment_read_window(right_slot, grant));
+    testing_channel_drain_queued_tasks(&testing);
+
+    /* Held, not emitted. */
+    ASSERT_UINT_EQUALS(roomy_window, right_slot->window_size);
+    ASSERT_UINT_EQUALS(grant, right_slot->current_window_update_batch_size);
+    ASSERT_UINT_EQUALS(0, mid_impl->latest_window_update);
+
+    /* Once the scarcest window falls to the threshold the held batch is emitted. Debiting `mid`
+     * with a read message is what a real upstream handler does when it forwards data. */
+    const size_t debit = roomy_window - threshold;
+    struct aws_io_message *msg =
+        aws_channel_acquire_message_from_pool(testing.channel, AWS_IO_MESSAGE_APPLICATION_DATA, debit);
+    ASSERT_NOT_NULL(msg);
+    ASSERT_TRUE(msg->message_data.capacity >= debit);
+    msg->message_data.len = debit;
+    ASSERT_SUCCESS(aws_channel_slot_send_message(testing.left_handler_slot, msg, AWS_CHANNEL_DIR_READ));
+    ASSERT_UINT_EQUALS(threshold, mid_slot->window_size);
+
+    ASSERT_SUCCESS(aws_channel_slot_increment_read_window(right_slot, grant));
+    testing_channel_drain_queued_tasks(&testing);
+
+    ASSERT_UINT_EQUALS(roomy_window + (grant * 2), right_slot->window_size);
+    ASSERT_UINT_EQUALS(grant * 2, mid_impl->latest_window_update);
+
+    ASSERT_SUCCESS(testing_channel_clean_up(&testing));
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(
+    channel_window_update_batches_while_all_slots_roomy,
+    s_test_channel_window_update_batches_while_all_slots_roomy)
+
+/* The wedge as it actually occurs, in order.
+ *
+ * 1. Every slot is roomy, so `right`'s grant is accepted into its batch and correctly held back
+ *    by the threshold.
+ * 2. `mid` then drains to 0. The harness handler queues read messages without forwarding them,
+ *    which is what a tls handler does while it holds an incomplete record: it consumes a whole
+ *    socket read and emits nothing downstream.
+ * 3. Because nothing reached `right`, `right` has no reason to ask for window again.
+ *
+ * The batch from step 1 is now the only thing that can replenish `mid`, and `mid` at 0 is what
+ * stops the upstream slot from reading. If nothing re-examines the threshold when a window is
+ * DEBITED, the channel is wedged: full batch pending, scarcest window at 0, no further calls
+ * coming. */
+static int s_test_channel_window_update_emitted_when_debit_starves_slot(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+
+    const size_t threshold = g_aws_channel_max_fragment_size * 4;
+    /* Roomy, and an exact multiple of the fragment size so it drains to precisely 0. */
+    const size_t roomy_window = g_aws_channel_max_fragment_size * 5;
+    ASSERT_TRUE(roomy_window > threshold);
+
+    struct testing_channel testing;
+    struct aws_channel_slot *mid_slot = NULL;
+    struct aws_channel_slot *right_slot = NULL;
+    struct testing_channel_handler *mid_impl = NULL;
+    ASSERT_SUCCESS(
+        s_window_gate_channel_init(allocator, &testing, roomy_window, roomy_window, &mid_slot, &right_slot, &mid_impl));
+
+    /* Step 1: grant while everything is roomy. Must be held, not emitted. */
+    const size_t grant = 1024;
+    ASSERT_SUCCESS(aws_channel_slot_increment_read_window(right_slot, grant));
+    testing_channel_drain_queued_tasks(&testing);
+    ASSERT_UINT_EQUALS(grant, right_slot->current_window_update_batch_size);
+    ASSERT_UINT_EQUALS(roomy_window, right_slot->window_size);
+
+    /* Step 2: drain `mid` to 0 one fragment at a time, forwarding nothing downstream. */
+    const size_t fragment = g_aws_channel_max_fragment_size;
+    for (size_t remaining = roomy_window; remaining > 0; remaining -= fragment) {
+        struct aws_io_message *msg =
+            aws_channel_acquire_message_from_pool(testing.channel, AWS_IO_MESSAGE_APPLICATION_DATA, fragment);
+        ASSERT_NOT_NULL(msg);
+        ASSERT_TRUE(msg->message_data.capacity >= fragment);
+        msg->message_data.len = fragment;
+        ASSERT_SUCCESS(aws_channel_slot_send_message(testing.left_handler_slot, msg, AWS_CHANNEL_DIR_READ));
+    }
+    ASSERT_UINT_EQUALS(0, mid_slot->window_size);
+
+    /* Step 3: no further increment_read_window call. Draining tasks is all the channel gets. */
+    testing_channel_drain_queued_tasks(&testing);
+
+    /* The held batch must have been emitted, and `mid` replenished, or the channel is stuck. */
+    ASSERT_UINT_EQUALS(grant, mid_impl->latest_window_update);
+    ASSERT_UINT_EQUALS(roomy_window + grant, right_slot->window_size);
+    ASSERT_UINT_EQUALS(0, right_slot->current_window_update_batch_size);
+
+    ASSERT_SUCCESS(testing_channel_clean_up(&testing));
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(
+    channel_window_update_emitted_when_debit_starves_slot,
+    s_test_channel_window_update_emitted_when_debit_starves_slot)
