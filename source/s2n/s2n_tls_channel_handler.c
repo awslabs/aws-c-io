@@ -1217,7 +1217,7 @@ static int s_s2n_handler_increment_read_window(
     }
 
     size_t downstream_size = aws_channel_slot_downstream_read_window(slot);
-    size_t current_window_size = slot->window_size;
+    size_t current_window_size = aws_add_size_saturating(slot->window_size, slot->current_window_update_batch_size);
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS, "id=%p: Increment read window message received %llu", (void *)handler, (unsigned long long)size);
