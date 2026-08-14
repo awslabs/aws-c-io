@@ -469,6 +469,9 @@ add_test_case(socks5_impl_too_many_methods_failure)
 add_test_case(socks5_impl_auth_subnegotiation_failure)
 add_test_case(socks5_impl_connect_refused_failure)
 
+add_test_case(aws_socks5_server_create_destroy)
+add_test_case(aws_echo_server_create_destroy)
+
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
 
