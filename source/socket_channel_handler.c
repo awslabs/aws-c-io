@@ -177,7 +177,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
             (void *)socket_handler->slot->handler,
             (unsigned long long)read);
 
-        if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
+        if (socket_handler->slot->adj_right != NULL && aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
             last_error = aws_last_error();
             aws_mem_release(message->allocator, message);
             break;
