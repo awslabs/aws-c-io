@@ -78,6 +78,9 @@ struct aws_channel {
         bool is_channel_shut_down;
     } cross_thread_tasks;
 
+    /* Threshold at which a batched window update is emitted. Compared against the scarcest
+     * slot window, see s_window_update_needed(). Derivation of the value is at its assignment
+     * site. */
     size_t window_update_batch_emit_threshold;
     struct aws_channel_task window_update_task;
     bool read_back_pressure_enabled;
@@ -241,9 +244,11 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
 
     if (creation_args->enable_read_back_pressure) {
         channel->read_back_pressure_enabled = true;
-        /* we probably only need room for one fragment, but let's avoid potential deadlocks
-         * on things like tls that need extra head-room. */
-        channel->window_update_batch_emit_threshold = g_aws_channel_max_fragment_size * 2;
+        /* TODO: the threshold is for the channel, ideally after the channel knows it's initial window size, the
+         * threshold should be half of that to be aligned with out http implementation. But, the channel can keep adding
+         * and changing slot. 4 * g_aws_channel_max_fragment_size is a reasonable numebr to avoid any blocking on the
+         * read. But, still fairly random. */
+        channel->window_update_batch_emit_threshold = g_aws_channel_max_fragment_size * 4;
     }
 
     aws_task_init(
@@ -767,6 +772,8 @@ int aws_channel_slot_insert_left(struct aws_channel_slot *slot, struct aws_chann
     return AWS_OP_SUCCESS;
 }
 
+static void s_schedule_window_update_task_if_scarce(struct aws_channel_slot *slot);
+
 int aws_channel_slot_send_message(
     struct aws_channel_slot *slot,
     struct aws_io_message *message,
@@ -787,6 +794,10 @@ int aws_channel_slot_send_message(
                 (void *)slot->adj_right,
                 (void *)slot->adj_right->handler);
             slot->adj_right->window_size -= message->message_data.len;
+            /* This debit may have just made `adj_right` the scarcest slot. Nothing else on this
+             * path will re-examine the threshold: the slot was starved by data arriving, not by
+             * anyone asking for window, so there is no grant coming to trigger the check. */
+            s_schedule_window_update_task_if_scarce(slot->adj_right);
             return aws_channel_handler_process_read_message(slot->adj_right->handler, slot->adj_right, message);
         }
         AWS_LOGF_ERROR(
@@ -863,19 +874,70 @@ static void s_window_update_task(struct aws_channel_task *channel_task, void *ar
     }
 }
 
+/* Whether the batched window update needs to be emitted: some slot is holding a pending grant, and
+ * the scarcest slot window has fallen to the emit threshold.
+ *
+ * Both are channel-wide questions. The pending grant and the scarce window normally sit on
+ * DIFFERENT slots -- an http slot accumulates the grant while the tls slot below it runs dry -- so
+ * asking either question of one slot alone misses the case this exists to catch.
+ *
+ * Slots with no `adj_left` are excluded from both. The left-most slot's `window_size` is dead state
+ * (nothing upstream sends it read messages, so s_window_update_task never increments it and
+ * aws_channel_slot_send_message never debits it), and its batch is never drained, since the task
+ * stops at `adj_left == NULL`. Counting its window would pin the minimum at 0; counting its batch
+ * would leave the pending check permanently true. The slot passed in is folded into both, which
+ * covers a freshly created slot the walk would otherwise see before any data has moved through
+ * it. */
+static bool s_window_update_needed(const struct aws_channel_slot *slot) {
+    size_t min_window_size = slot->window_size;
+    bool update_pending = slot->current_window_update_batch_size > 0;
+
+    for (const struct aws_channel_slot *slot_iter = slot->channel->first; slot_iter; slot_iter = slot_iter->adj_right) {
+        if (slot_iter->adj_left) {
+            min_window_size = aws_min_size(min_window_size, slot_iter->window_size);
+            update_pending = update_pending || slot_iter->current_window_update_batch_size > 0;
+        }
+    }
+
+    return update_pending && min_window_size <= slot->channel->window_update_batch_emit_threshold;
+}
+
+/* Schedule the batched window update if the scarcest slot has fallen to the emit threshold and
+ * there are batched pending updates.
+ *
+ * Gate on the scarcest slot, never the caller's. Slots drain at different rates -- a TLS slot
+ * drains ciphertext, the handler above it plaintext -- so gating on the caller lets the scarcest
+ * slot reach 0 while the caller sits far above the threshold, halting data flow and with it any
+ * further window requests.
+ *
+ * Call from both edges that lower the minimum: a grant, and a read-message debit. The debit edge
+ * is the one that carries liveness -- a slot starved by arriving data gets no follow-up grant.
+ *
+ * TODO: the window is really for the whole channel, but we manage it per slot. Consider
+ * refactoring flow control so slots cannot disagree and stall the channel. */
+static void s_schedule_window_update_task_if_scarce(struct aws_channel_slot *slot) {
+    struct aws_channel *channel = slot->channel;
+
+    if (!channel->read_back_pressure_enabled || channel->channel_state >= AWS_CHANNEL_SHUT_DOWN) {
+        return;
+    }
+
+    if (channel->window_update_scheduled || !s_window_update_needed(slot)) {
+        return;
+    }
+
+    channel->window_update_scheduled = true;
+    aws_channel_task_init(&channel->window_update_task, s_window_update_task, channel, "window update task");
+    aws_channel_schedule_task_now(channel, &channel->window_update_task);
+}
+
 int aws_channel_slot_increment_read_window(struct aws_channel_slot *slot, size_t window) {
 
     if (slot->channel->read_back_pressure_enabled && slot->channel->channel_state < AWS_CHANNEL_SHUT_DOWN) {
         slot->current_window_update_batch_size =
             aws_add_size_saturating(slot->current_window_update_batch_size, window);
 
-        if (!slot->channel->window_update_scheduled &&
-            slot->window_size <= slot->channel->window_update_batch_emit_threshold) {
-            slot->channel->window_update_scheduled = true;
-            aws_channel_task_init(
-                &slot->channel->window_update_task, s_window_update_task, slot->channel, "window update task");
-            aws_channel_schedule_task_now(slot->channel, &slot->channel->window_update_task);
-        }
+        s_schedule_window_update_task_if_scarce(slot);
     }
 
     return AWS_OP_SUCCESS;

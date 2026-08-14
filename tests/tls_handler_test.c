@@ -37,10 +37,9 @@
 
 bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
     if (strstr(aws_string_c_str(host_name), "badssl.com") != NULL) {
-        if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
-            fprintf(
-                AWS_TESTING_REPORT_FD,
-                "Warning: badssl.com is timing out right now. Maybe run the test again later?\n");
+        if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT ||
+            error_code == AWS_IO_SOCKET_CLOSED) {
+            fprintf(AWS_TESTING_REPORT_FD, "Warning: badssl.com is flaky. Allow the transiet error to happen\n");
             return true;
         }
     }
@@ -49,14 +48,17 @@ bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code)
 
 bool s_is_apple_with_secure_transport(struct aws_allocator *allocator) {
     (void)allocator;
-#    ifdef __APPLE__
+#    if defined(__APPLE__) && defined(USE_S2N)
+    /* When s2n is compiled in, AWS_CRT_USE_NON_FIPS_TLS_13 selects s2n over Secure Transport. */
     struct aws_string *use_non_fips_13 = aws_get_env_nonempty(allocator, "AWS_CRT_USE_NON_FIPS_TLS_13");
     if (use_non_fips_13) {
         aws_string_destroy(use_non_fips_13);
         return false;
-    } else {
-        return true;
     }
+    return true;
+#    elif defined(__APPLE__)
+    /* Without s2n compiled in, Secure Transport is always used and the env var has no effect. */
+    return true;
 #    else
     return false;
 #    endif
