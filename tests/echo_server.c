@@ -407,7 +407,7 @@ static void s_aws_echo_connection_shutdown(struct aws_echo_connection *connectio
     struct aws_echo_connection_shutdown_task *task =
         s_aws_echo_connection_shutdown_task_new(connection->allocator, connection, error_code);
 
-    aws_event_loop_schedule_task_now(connection->event_loop, &task->task);
+    aws_event_loop_schedule_task_now_serialized(connection->event_loop, &task->task);
 }
 
 static int s_echo_connection_handler_process_read_message(

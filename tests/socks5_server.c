@@ -517,7 +517,7 @@ static void s_aws_socks5_tunnel_shutdown(struct aws_socks5_tunnel *tunnel, int e
     struct aws_socks5_tunnel_shutdown_task *task =
         s_aws_socks5_tunnel_shutdown_task_new(tunnel->allocator, tunnel, error_code);
 
-    aws_event_loop_schedule_task_now(tunnel->event_loop, &task->task);
+    aws_event_loop_schedule_task_now_serialized(tunnel->event_loop, &task->task);
 }
 
 static bool s_methods_contains(struct aws_byte_cursor methods, uint8_t method) {

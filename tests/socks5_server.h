@@ -6,9 +6,10 @@
 #ifndef SOCKS5_SERVER_H
 #define SOCKS5_SERVER_H
 
+#include <aws/io/io.h>
+
 #include <aws/common/condition_variable.h>
 #include <aws/common/mutex.h>
-#include <aws/io/io.h>
 #include <aws/io/socket.h>
 
 struct aws_byte_cursor;
