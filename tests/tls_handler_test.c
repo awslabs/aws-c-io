@@ -37,10 +37,9 @@
 
 bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code) {
     if (strstr(aws_string_c_str(host_name), "badssl.com") != NULL) {
-        if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT) {
-            fprintf(
-                AWS_TESTING_REPORT_FD,
-                "Warning: badssl.com is timing out right now. Maybe run the test again later?\n");
+        if (error_code == AWS_IO_SOCKET_TIMEOUT || error_code == AWS_IO_TLS_NEGOTIATION_TIMEOUT ||
+            error_code == AWS_IO_SOCKET_CLOSED) {
+            fprintf(AWS_TESTING_REPORT_FD, "Warning: badssl.com is flaky. Allow the transiet error to happen\n");
             return true;
         }
     }
@@ -49,14 +48,17 @@ bool s_is_badssl_being_flaky(const struct aws_string *host_name, int error_code)
 
 bool s_is_apple_with_secure_transport(struct aws_allocator *allocator) {
     (void)allocator;
-#    ifdef __APPLE__
+#    if defined(__APPLE__) && defined(USE_S2N)
+    /* When s2n is compiled in, AWS_CRT_USE_NON_FIPS_TLS_13 selects s2n over Secure Transport. */
     struct aws_string *use_non_fips_13 = aws_get_env_nonempty(allocator, "AWS_CRT_USE_NON_FIPS_TLS_13");
     if (use_non_fips_13) {
         aws_string_destroy(use_non_fips_13);
         return false;
-    } else {
-        return true;
     }
+    return true;
+#    elif defined(__APPLE__)
+    /* Without s2n compiled in, Secure Transport is always used and the env var has no effect. */
+    return true;
 #    else
     return false;
 #    endif
@@ -1780,6 +1782,30 @@ static int s_tls_client_channel_negotiation_no_verify_untrusted_root_fn(struct a
 AWS_TEST_CASE(
     tls_client_channel_negotiation_no_verify_untrusted_root,
     s_tls_client_channel_negotiation_no_verify_untrusted_root_fn)
+
+AWS_STATIC_STRING_FROM_LITERAL(s_revoked_host_name, "revoked.badssl.com");
+
+#    ifdef _WIN32
+/* On Windows, connecting to a revoked cert should fail with default options (revocation check enabled) */
+static int s_tls_client_channel_negotiation_error_revoked_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_negotiation_fails(allocator, s_revoked_host_name, 443, NULL);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_error_revoked, s_tls_client_channel_negotiation_error_revoked_fn)
+#    endif /* _WIN32 */
+
+static void s_disable_revocation_check(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_no_certificate_revocation(options, true);
+}
+
+/* On Windows, connecting to a revoked cert should succeed when revocation checking is disabled */
+static int s_tls_client_channel_negotiation_revoked_no_check_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    return s_verify_good_host(allocator, s_revoked_host_name, 443, &s_disable_revocation_check);
+}
+
+AWS_TEST_CASE(tls_client_channel_negotiation_revoked_no_check, s_tls_client_channel_negotiation_revoked_no_check_fn)
 
 static void s_lower_tls_version_to_tls10(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_minimum_tls_version(options, AWS_IO_TLSv1);
