@@ -368,6 +368,7 @@ void aws_cf_release(CFTypeRef obj) {
     }
 }
 
+#ifndef AWS_DONOT_USE_KEYCHAIN
 static int s_aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
     SecCertificateRef cert_ref,
@@ -620,6 +621,7 @@ done:
 
     return result;
 }
+#endif /* !AWS_DONOT_USE_KEYCHAIN */
 
 int aws_secitem_import_cert_and_key(
     struct aws_allocator *alloc,
