@@ -189,6 +189,10 @@ if (AWS_USE_SECITEM)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
 endif()
 
+if (AWS_DONOT_USE_KEYCHAIN)
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_DONOT_USE_KEYCHAIN")
+endif()
+
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
 endif()
