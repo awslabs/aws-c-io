@@ -14,6 +14,11 @@
 #include <Security/SecKey.h>
 #include <Security/Security.h>
 
+#ifdef AWS_DONOT_USE_KEYCHAIN
+/* SecIdentityCreate is a private (SPI) function not exposed in the public Security.framework headers. */
+extern SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);
+#endif
+
 /* SecureTransport is not thread-safe during identity import */
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
@@ -799,13 +804,14 @@ int aws_secitem_import_cert_and_key(
     }
 
 #ifdef AWS_DONOT_USE_KEYCHAIN
-    SecIdentityRef  identity_ref    = NULL;
-    sec_identity_t  identity        = NULL;
+    SecIdentityRef identity_ref = NULL;
+    sec_identity_t identity = NULL;
 
-    if((identity_ref = SecIdentityCreate(cf_alloc, cert_ref, key_ref)) == NULL) {
+    if ((identity_ref = SecIdentityCreate(cf_alloc, cert_ref, key_ref)) == NULL) {
         AWS_LOGF_ERROR(
-            AWS_LS_IO_PKI, "SecIdentityCreate failed to create a SecIdentityRef from provided certificate and private key.");
-    } else if((identity = sec_identity_create(identity_ref)) == NULL) {
+            AWS_LS_IO_PKI,
+            "SecIdentityCreate failed to create a SecIdentityRef from provided certificate and private key.");
+    } else if ((identity = sec_identity_create(identity_ref)) == NULL) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKI, "sec_identity_create failed to create a sec_identity_t from provided SecIdentityRef.");
     } else {
