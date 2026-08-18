@@ -14,10 +14,6 @@
 #include <Security/SecKey.h>
 #include <Security/Security.h>
 
-#ifdef AWS_DONOT_USE_KEYCHAIN
-/* SecIdentityCreate is a private (SPI) function not exposed in the public Security.framework headers. */
-extern SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);
-#endif
 
 /* SecureTransport is not thread-safe during identity import */
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
@@ -368,7 +364,10 @@ void aws_cf_release(CFTypeRef obj) {
     }
 }
 
-#ifndef AWS_DONOT_USE_KEYCHAIN
+#ifdef AWS_DONOT_USE_KEYCHAIN
+/* SecIdentityCreate is a private (SPI) function not exposed in the public Security.framework headers. */
+extern SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);
+#else
 static int s_aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
     SecCertificateRef cert_ref,
