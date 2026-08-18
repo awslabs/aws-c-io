@@ -14,7 +14,6 @@
 #include <Security/SecKey.h>
 #include <Security/Security.h>
 
-
 /* SecureTransport is not thread-safe during identity import */
 /* https://developer.apple.com/documentation/security/certificate_key_and_trust_services/working_with_concurrency */
 static struct aws_mutex s_sec_mutex = AWS_MUTEX_INIT;
