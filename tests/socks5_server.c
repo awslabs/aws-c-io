@@ -1135,13 +1135,17 @@ static void s_aws_socks5_server_test_context_on_server_destroy(struct aws_socks5
 void aws_socks5_server_test_context_init(
     struct aws_socks5_server_test_context *context,
     struct aws_allocator *allocator,
-    struct aws_socks5_server_auth_options *override_auth_options) {
+    struct aws_socks5_server_test_context_options *options) {
     AWS_ZERO_STRUCT(*context);
 
     context->allocator = allocator;
 
-    struct aws_event_loop_group_options elg_options = {};
-    context->elg = aws_event_loop_group_new(allocator, &elg_options);
+    if (options && options->elg != NULL) {
+        context->elg = aws_event_loop_group_acquire(options->elg);
+    } else {
+        struct aws_event_loop_group_options elg_options = {};
+        context->elg = aws_event_loop_group_new(allocator, &elg_options);
+    }
 
     struct aws_host_resolver_default_options hr_options = {
         .el_group = context->elg,
@@ -1183,8 +1187,8 @@ void aws_socks5_server_test_context_init(
         .on_destroy_user_data = context,
     };
 
-    if (override_auth_options) {
-        server_options.auth_options = *override_auth_options;
+    if (options && options->override_auth_options) {
+        server_options.auth_options = *options->override_auth_options;
     }
 
     context->server = aws_socks5_server_new(allocator, &server_options);

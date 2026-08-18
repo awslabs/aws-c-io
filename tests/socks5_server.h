@@ -47,6 +47,12 @@ struct aws_socks5_server_options {
     void *on_destroy_user_data;
 };
 
+struct aws_socks5_server_test_context_options {
+    struct aws_event_loop_group *elg;
+
+    struct aws_socks5_server_auth_options *override_auth_options;
+};
+
 struct aws_socks5_server_test_context {
     struct aws_allocator *allocator;
 
@@ -81,7 +87,7 @@ AWS_IO_API uint16_t aws_socks5_server_get_listener_port(struct aws_socks5_server
 AWS_IO_API void aws_socks5_server_test_context_init(
     struct aws_socks5_server_test_context *context,
     struct aws_allocator *allocator,
-    struct aws_socks5_server_auth_options *override_auth_options);
+    struct aws_socks5_server_test_context_options *options);
 AWS_IO_API void aws_socks5_server_test_context_clean_up(struct aws_socks5_server_test_context *context);
 
 AWS_IO_API void aws_socks5_server_test_context_wait_on_server_setup(struct aws_socks5_server_test_context *context);

@@ -150,7 +150,7 @@ static void s_service_l4_proxy_negotiation(struct aws_l4_proxy_channel_handler *
             struct aws_linked_list_node *head_node = aws_linked_list_front(&handler->pending_read_bytes);
             head_message = AWS_CONTAINER_OF(head_node, struct aws_io_message, queueing_handle);
 
-            fragment_cursor = s_aws_byte_buf_get_downstream_data(head_message, SIZE_T_MAX);
+            fragment_cursor = s_aws_byte_buf_get_downstream_data(head_message, SIZE_MAX);
             fragment_length = fragment_cursor.len;
         }
 

@@ -453,3 +453,163 @@ void aws_tcp_client_send(struct aws_tcp_client *client, struct aws_byte_cursor d
 
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
 }
+
+static void s_aws_tcp_client_test_context_on_connection_result_callback(int error_code, void *user_data) {
+    struct aws_tcp_client_test_context *context = user_data;
+
+    aws_mutex_lock(&context->lock);
+
+    context->sync.connection_attempt_completed = true;
+    context->sync.connection_error_code = error_code;
+
+    aws_mutex_unlock(&context->lock);
+
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+static void s_aws_tcp_client_test_context_on_disconnection_callback(int error_code, void *user_data) {
+    struct aws_tcp_client_test_context *context = user_data;
+
+    aws_mutex_lock(&context->lock);
+
+    context->sync.disconnection_completed = true;
+    context->sync.disconnection_error_code = error_code;
+
+    aws_mutex_unlock(&context->lock);
+
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+static void s_aws_tcp_client_test_context_on_data_callback(struct aws_byte_cursor data, void *user_data) {
+    struct aws_tcp_client_test_context *context = user_data;
+
+    aws_mutex_lock(&context->lock);
+
+    aws_byte_buf_append_dynamic(&context->sync.received_data, &data);
+
+    aws_mutex_unlock(&context->lock);
+
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+static void s_aws_tcp_client_test_context_on_destroyed_callback(void *user_data) {
+    struct aws_tcp_client_test_context *context = user_data;
+
+    aws_mutex_lock(&context->lock);
+
+    context->sync.destruction_completed = true;
+
+    aws_mutex_unlock(&context->lock);
+
+    aws_condition_variable_notify_all(&context->signal);
+}
+
+void aws_tcp_client_test_context_init(
+    struct aws_tcp_client_test_context *context,
+    struct aws_allocator *allocator,
+    struct aws_tcp_client_test_context_options *options) {
+
+    AWS_ZERO_STRUCT(*context);
+
+    context->allocator = allocator;
+
+    aws_mutex_init(&context->lock);
+    aws_condition_variable_init(&context->signal);
+
+    aws_byte_buf_init(&context->sync.sent_data, allocator, 128 * 1024);
+    aws_byte_buf_init(&context->sync.received_data, allocator, 128 * 1024);
+
+    if (options->elg != NULL) {
+        context->elg = aws_event_loop_group_acquire(options->elg);
+    } else {
+        struct aws_event_loop_group_options elg_options = {};
+        context->elg = aws_event_loop_group_new(allocator, &elg_options);
+    }
+
+    struct aws_host_resolver_default_options hr_options = {
+        .el_group = context->elg,
+        .max_entries = 32,
+
+    };
+    context->resolver = aws_host_resolver_new_default(allocator, &hr_options);
+
+    struct aws_client_bootstrap_options client_bootstrap_options = {
+        .event_loop_group = context->elg,
+        .host_resolver = context->resolver,
+    };
+    context->bootstrap = aws_client_bootstrap_new(context->allocator, &client_bootstrap_options);
+
+    struct aws_tcp_client_options client_options = {
+        .remote_host_name = options->remote_host_name,
+        .remote_port = options->remote_port,
+        .proxy_config = options->proxy_config,
+        .bootstrap = context->bootstrap,
+        .socket_options = {
+            .type = AWS_SOCKET_STREAM,
+            .domain = AWS_SOCKET_IPV4,
+        },
+        .on_connection_result_callback = s_aws_tcp_client_test_context_on_connection_result_callback,
+        .on_disconnection_callback = s_aws_tcp_client_test_context_on_disconnection_callback,
+        .on_data_callback = s_aws_tcp_client_test_context_on_data_callback,
+        .on_destroyed_callback = s_aws_tcp_client_test_context_on_destroyed_callback,
+        .user_data= context,
+    };
+
+    context->client = aws_tcp_client_new(allocator, &client_options);
+}
+
+static bool s_aws_tcp_client_test_context_is_destroyed(void *user_data) {
+    struct aws_tcp_client_test_context *context = user_data;
+
+    return context->sync.destruction_completed;
+}
+
+static void s_aws_tcp_client_test_context_wait_on_destroyed(struct aws_tcp_client_test_context *context) {
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_is_destroyed, context);
+    aws_mutex_unlock(&context->lock);
+}
+
+void aws_tcp_client_test_context_clean_up(struct aws_tcp_client_test_context *context) {
+
+    aws_tcp_client_release(context->client);
+
+    s_aws_tcp_client_test_context_wait_on_destroyed(context);
+
+    aws_host_resolver_release(context->resolver);
+    aws_client_bootstrap_release(context->bootstrap);
+    aws_event_loop_group_release(context->elg);
+
+    aws_mutex_clean_up(&context->lock);
+    aws_condition_variable_clean_up(&context->signal);
+}
+
+static bool s_aws_tcp_client_test_context_has_connection_result(void *user_data) {
+    struct aws_tcp_client_test_context *context = user_data;
+
+    return context->sync.connection_attempt_completed;
+}
+
+int aws_tcp_client_test_context_wait_on_connection_result(struct aws_tcp_client_test_context *context) {
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_has_connection_result, context);
+    int error_code = context->sync.connection_error_code;
+    aws_mutex_unlock(&context->lock);
+
+    return error_code;
+}
+
+static bool s_aws_tcp_client_test_context_has_disconnection_result(void *user_data) {
+    struct aws_tcp_client_test_context *context = user_data;
+
+    return context->sync.disconnection_completed;
+}
+
+int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_client_test_context *context) {
+    aws_mutex_lock(&context->lock);
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_has_disconnection_result, context);
+    int error_code = context->sync.disconnection_error_code;
+    aws_mutex_unlock(&context->lock);
+
+    return error_code;
+}

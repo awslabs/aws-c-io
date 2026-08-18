@@ -664,13 +664,18 @@ static void s_aws_echo_server_test_context_on_server_destroy(struct aws_echo_ser
     aws_condition_variable_notify_all(&context->signal);
 }
 
-void aws_echo_server_test_context_init(struct aws_echo_server_test_context *context, struct aws_allocator *allocator) {
+void aws_echo_server_test_context_init(struct aws_echo_server_test_context *context, struct aws_allocator *allocator, struct aws_event_loop_group *elg) {
     AWS_ZERO_STRUCT(*context);
 
     context->allocator = allocator;
 
-    struct aws_event_loop_group_options elg_options = {};
-    context->elg = aws_event_loop_group_new(allocator, &elg_options);
+    if (elg != NULL) {
+        context->elg = aws_event_loop_group_acquire(elg);
+    } else {
+        struct aws_event_loop_group_options elg_options = {};
+        context->elg = aws_event_loop_group_new(allocator, &elg_options);
+    }
+
     context->server_bootstrap = aws_server_bootstrap_new(context->allocator, context->elg);
 
     aws_mutex_init(&context->lock);

@@ -64,7 +64,8 @@ AWS_IO_API uint16_t aws_echo_server_get_listener_port(struct aws_echo_server *se
 
 AWS_IO_API void aws_echo_server_test_context_init(
     struct aws_echo_server_test_context *context,
-    struct aws_allocator *allocator);
+    struct aws_allocator *allocator,
+    struct aws_event_loop_group *elg);
 AWS_IO_API void aws_echo_server_test_context_clean_up(struct aws_echo_server_test_context *context);
 
 AWS_IO_API void aws_echo_server_test_context_wait_on_server_setup(struct aws_echo_server_test_context *context);
