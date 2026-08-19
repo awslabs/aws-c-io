@@ -66,6 +66,7 @@ add_test_case(io_testing_channel)
 add_test_case(socket_posix_creation)
 add_test_case(socket_winsock_creation)
 add_test_case(local_socket_communication)
+add_test_case(socket_tcp_nodelay)
 add_net_test_case(tcp_socket_communication)
 add_net_test_case(udp_socket_communication)
 add_net_test_case(test_socket_with_bind_to_interface)
@@ -116,15 +117,17 @@ if(WIN32)
 
     if(${BUILD_V} GREATER_EQUAL 20348)
         message("Building for version 20348 or higher: supporting TLS1.3")
-        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls1_3)
+        add_net_test_case(tls_client_channel_negotiation_success_mtls_tls13)
     endif()
     add_test_case(local_socket_pipe_connected_race)
     add_test_case(tls_client_channel_negotiation_success_ecc384_deprecated)
 endif()
 
-# macOS must fail on trying to establish TLS 1.3 connection.
 if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    add_net_test_case(tls_client_channel_negotiation_failure_tls1_3)
+    add_net_test_case(tls_client_channel_negotiation_success_mtls_tls13)
+    add_net_test_case(tls_client_channel_negotiation_success_mtls_from_keychain)
+    add_net_test_case(tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain)
+    add_net_test_case(tls_client_channel_negotiation_failure_tls13_to_tls12_server)
 endif()
 
 add_test_case(channel_setup)
@@ -136,6 +139,9 @@ add_test_case(channel_tasks_serialized_run)
 add_test_case(channel_rejects_post_shutdown_tasks)
 add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
+add_test_case(channel_window_update_gates_on_scarcest_slot)
+add_test_case(channel_window_update_batches_while_all_slots_roomy)
+add_test_case(channel_window_update_emitted_when_debit_starves_slot)
 add_test_case(channel_keeps_event_loop_group_alive)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
@@ -170,6 +176,11 @@ add_test_case(pem_sanitize_comments_around_pem_object_removed)
 add_test_case(pem_sanitize_empty_file_rejected)
 add_test_case(pem_sanitize_wrong_format_rejected)
 add_test_case(pem_sanitize_bad_format_rejected)
+
+add_test_case(test_der_cert_to_pem_typical)
+add_test_case(test_der_cert_to_pem_small)
+add_test_case(test_der_cert_to_pem_output_format)
+add_test_case(test_der_cert_to_pem_empty_input_fails)
 
 add_test_case(socket_handler_echo_and_backpressure)
 add_test_case(socket_handler_close)
@@ -229,6 +240,19 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(tls_client_channel_negotiation_no_verify_wrong_host)
     add_net_test_case(tls_client_channel_negotiation_no_verify_self_signed)
     add_net_test_case(tls_client_channel_negotiation_no_verify_untrusted_root)
+
+    # Badssl - Certificate Revocation (Windows only)
+    # On Windows, SChannel performs CRL/OCSP revocation checks by default.
+    if(WIN32)
+        add_net_test_case(tls_client_channel_negotiation_error_revoked)
+    endif()
+
+    # This test verifies that our no_certificate_revocation option works.
+    # Runs on Windows (proves revocation is skipped) and Linux (proves option doesn't break s2n).
+    # Skipped on Apple where revocation is never checked and cert validity issues cause false failures.
+    if(NOT APPLE)
+        add_net_test_case(tls_client_channel_negotiation_revoked_no_check)
+    endif()
 
     # Badssl - Broken Crypto endpoint suite
     # We don't include dh1024 as it succeeds on the windows baseline configuration and there does not seem

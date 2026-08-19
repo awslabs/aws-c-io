@@ -38,8 +38,6 @@ file(GLOB AWS_IO_SRC
         "source/*.c"
         )
 
-set(USE_S2N OFF)
-
 if (WIN32)
     option(USE_IO_COMPLETION_PORTS
             "Use I/O Completion Ports to drive event-loops. \
@@ -104,7 +102,7 @@ elseif (APPLE)
     find_library(SECURITY_LIB Security)
     find_library(NETWORK_LIB Network)
 
-    # Enable dispatch queue if the libraries are avaliable
+    # Enable dispatch queue if the libraries are available
     if (NETWORK_LIB AND SECURITY_LIB)
         list(APPEND PLATFORM_LIBS "-framework Security -framework Network")
         list(APPEND EVENT_LOOP_DEFINES "DISPATCH_QUEUE")
@@ -113,6 +111,20 @@ elseif (APPLE)
     # Enable KQUEUE on MacOS only if AWS_USE_SECITEM is not declared. SecItem requires Dispatch Queue.
     if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
         list(APPEND EVENT_LOOP_DEFINES "KQUEUE")
+    endif()
+
+    # On MacOS s2n-tls is optional (the Apple SecItem/Security framework provides a TLS implementation).
+    # Default to using s2n-tls only when SecItem is not requested. Users can override with -DUSE_S2N=ON/OFF.
+    if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin" AND NOT DEFINED AWS_USE_SECITEM)
+        option(USE_S2N "Use s2n-tls as the TLS implementation." ON)
+    else()
+        option(USE_S2N "Use s2n-tls as the TLS implementation." OFF)
+    endif()
+
+    # Force USE_S2N OFF to avoid pulling in an unused s2n dependency.
+    if (DEFINED AWS_USE_SECITEM AND USE_S2N)
+        message(WARNING "AWS_USE_SECITEM takes precedence over s2n-tls; forcing USE_S2N=OFF to avoid linking unused s2n.")
+        set(USE_S2N OFF CACHE BOOL "Use s2n-tls as the TLS implementation." FORCE)
     endif()
 
 elseif (CMAKE_SYSTEM_NAME STREQUAL "FreeBSD" OR CMAKE_SYSTEM_NAME STREQUAL "NetBSD" OR CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
@@ -175,6 +187,7 @@ aws_check_headers(${PROJECT_NAME} ${AWS_IO_HEADERS})
 aws_add_sanitizers(${PROJECT_NAME})
 
 # We are not ABI stable yet
+# TODO: switch to VERSION derived from the VERSION file (via aws_get_version) once SOVERSION is set explicitly, to avoid changing the SONAME.
 set_target_properties(${PROJECT_NAME} PROPERTIES VERSION 1.0.0)
 
 if (NOT EVENT_LOOP_DEFINES)

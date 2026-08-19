@@ -773,3 +773,38 @@ Reads from the socket. This call is non-blocking and will return `AWS_IO_SOCKET_
 
 Writes to the socket. This call is non-blocking and will return `AWS_IO_SOCKET_WRITE_WOULD_BLOCK` if no data could be written.
 `written` is the amount of data read from `buffer` and successfully written to `socket`.
+
+## Configuration
+
+### Build-Time Options
+
+The following CMake options control how aws-c-io is built:
+
+Option | Platform | Description                                                                                                                                                                                                                                                                                                        | Default
+--- | --- |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ---
+`USE_S2N` | macOS | Compiles s2n-tls in as an available TLS implementation. User-overridable via `-DUSE_S2N=ON/OFF`.<br>Note that Apple Secure Transport remains the default backend even when `ON` (s2n-tls is only selected when `AWS_CRT_USE_NON_FIPS_TLS_13` is set); setting `OFF` removes s2n-tls from the macOS build entirely.<br>If `AWS_USE_SECITEM` is defined, s2n-tls is never used at runtime, so `USE_S2N` is forced to `OFF` (with a warning) even if explicitly set to `ON`, to avoid linking an unused s2n dependency. | ON when `AWS_USE_SECITEM` is not defined, otherwise OFF
+`AWS_USE_SECITEM` | Apple | Uses Apple's SecItem/Secure Transport API instead of s2n-tls. When defined (regardless of value), the Apple Dispatch Queue event loop is used instead of kqueue.                                                                                                                                                   | Not defined
+`USE_VSOCK` | Linux | Enables VSOCK socket domain support. Requires an appropriate VSOCK kernel driver.                                                                                                                                                                                                                                  | OFF
+`BYO_CRYPTO` | Linux/Non-Apple Unix | Disables the built-in TLS implementation and crypto linkage. Your application must provide its own `aws_tls_ctx` and `aws_channel_handler` implementations.                                                                                                                                                        | OFF
+
+### Runtime Environment Variables
+
+The following environment variables influence runtime behavior:
+
+Variable | Platform | Description
+--- | --- | ---
+`AWS_CRT_USE_NON_FIPS_TLS_13` | macOS | Requires `USE_S2N=ON` at build time.<br>When set to any non-empty value, the TLS implementation uses s2n-tls instead of Apple Secure Transport. This enables TLS 1.3 support but uses a non-FIPS-validated TLS implementation. If unset or empty, Apple Secure Transport is used by default (which provides FIPS-validated TLS but lacks TLS 1.3 support).
+
+### TLS Backend Selection
+
+The TLS backend is selected at initialization time (`aws_tls_init_vtable`) based on the platform and configuration:
+
+Platform | Condition | TLS Backend
+--- | --- | ---
+Linux | Default | s2n-tls
+Windows | Default | Secure Channel (SChannel)
+macOS | `AWS_USE_SECITEM` defined at build time | Apple Secure Transport (SecItem API)
+macOS | `USE_S2N` defined, `AWS_CRT_USE_NON_FIPS_TLS_13` env var set | s2n-tls
+macOS | `USE_S2N` defined, `AWS_CRT_USE_NON_FIPS_TLS_13` env var unset | Apple Secure Transport
+macOS | Neither `AWS_USE_SECITEM` nor `USE_S2N` | Apple Secure Transport
+Any | `BYO_CRYPTO` enabled | Application-provided implementation
