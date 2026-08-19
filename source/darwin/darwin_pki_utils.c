@@ -932,6 +932,7 @@ int aws_import_trusted_certificates(
             CFRelease(cert_blob);
         } else {
             err = aws_raise_error(AWS_ERROR_OOM);
+            break;
         }
     }
     aws_mutex_unlock(&s_sec_mutex);
