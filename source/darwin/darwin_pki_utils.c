@@ -927,11 +927,18 @@ int aws_import_trusted_certificates(
 
         if (cert_blob) {
             SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
-            CFArrayAppendValue(temp_cert_array, certificate_ref);
-            CFRelease(certificate_ref);
+            if (certificate_ref) {
+                CFArrayAppendValue(temp_cert_array, certificate_ref);
+                CFRelease(certificate_ref);
+            } else {
+                err = aws_raise_error(AWS_ERROR_PEM_MALFORMED);
+            }
             CFRelease(cert_blob);
         } else {
             err = aws_raise_error(AWS_ERROR_OOM);
+        }
+
+        if (err != AWS_OP_SUCCESS) {
             break;
         }
     }
