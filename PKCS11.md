@@ -8,7 +8,7 @@ and set the following environment variables:
 TEST_PKCS11_LIB = <path-to-shared-lib>
 TEST_PKCS11_TOKEN_DIR = <path-to-softhsm-token-dir>
 ```
-TEST_PKCS11_LIB is used by the tests to peform pkcs11 operations.
+TEST_PKCS11_LIB is used by the tests to perform pkcs11 operations.
 
 TEST_PKCS11_TOKEN_DIR is used by the tests to clear the softhsm tokens before a test begins. This is achieved by cleaning the token directory <b>NOTE: Any tokens created outside the tests will be cleaned up along with all the objects/keys on it as part of the tests.</b> 
 

@@ -533,7 +533,7 @@ static struct aws_byte_buf s_tls_test_handle_write(
 static uint8_t s_server_received_message[128] = {0};
 static uint8_t s_client_received_message[128] = {0};
 
-/* common structure for test with self-initaizlied server and client */
+/* common structure for test with self-initialized server and client */
 struct tls_channel_server_client_tester {
     struct tls_test_rw_args client_rw_args;
     struct tls_test_rw_args server_rw_args;
@@ -800,7 +800,7 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
 
     /**
      * Client received the data from server, and it happens from the channel thread.
-     * Because of the limited window size, we also have more data cached in the TLS hanlder.
+     * Because of the limited window size, we also have more data cached in the TLS handler.
      *
      * Now:
      * - Shutdown the server channel, and wait for it to finish, which will close the socket, and the socket will
@@ -845,12 +845,12 @@ static struct aws_byte_buf s_on_client_recive_shutdown_with_cache_data(
 }
 
 /**
- * Test that when the socket initailize the shutdown process becasue of socket closed, we have a pending window update
+ * Test that when the socket initiates the shutdown process because of socket closed, we have a pending window update
  * task to start the reading of the cached data in TLS handler. So, the channel will run the window update task and
  * followed by a shutdown task immediately.
  *
  * Previously, the window update task will schedule read task if it opens the window back from close, but since the
- * shutdown task already been scheluded, the read will happen after shutdown. So, it result in lost of data.
+ * shutdown task has already been scheduled, the read will happen after shutdown. So, it results in loss of data.
  */
 static int s_tls_channel_shutdown_with_cache_test_helper(struct aws_allocator *allocator, bool after_shutdown) {
     ASSERT_SUCCESS(s_tls_channel_server_client_tester_init(allocator));

@@ -568,7 +568,7 @@ struct epoll_event_data {
     aws_event_loop_on_event_fn_ptr on_event; /*< VCC change: fnptr */
     void *user_data;
     struct aws_task cleanup_task;
-    bool is_subscribed; /* false when handle is unsubscribed, but this struct hasn't beeen cleaned up yet */
+    bool is_subscribed; /* false when handle is unsubscribed, but this struct hasn't been cleaned up yet */
     _(invariant \mine(handle))
     _(invariant ((struct epoll_event_data *)handle->additional_data) == \this)
     _(invariant on_event->\valid)

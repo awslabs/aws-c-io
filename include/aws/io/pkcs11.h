@@ -36,14 +36,14 @@ enum aws_pkcs11_lib_behavior {
 
     /**
      * C_Initialize() is called on creation and C_Finalize() is called on cleanup.
-     * If C_Initialize() reports that's it's already initialized, this is treated as an error.
+     * If C_Initialize() reports that it's already initialized, this is treated as an error.
      * Use this if you need perfect cleanup (ex: running valgrind with --leak-check).
      */
     AWS_PKCS11_LIB_STRICT_INITIALIZE_FINALIZE,
 };
 
 /* The enum above was misspelled, and later got fixed (pcks11 -> pkcs11).
- * This macro maintain backwards compatibility with the old spelling */
+ * This macro maintains backwards compatibility with the old spelling */
 #define aws_pcks11_lib_behavior aws_pkcs11_lib_behavior
 
 /**
