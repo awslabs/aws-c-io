@@ -174,6 +174,7 @@ add_test_case(test_pem_invalid_in_chain_parse)
 
 add_test_case(pem_sanitize_comments_around_pem_object_removed)
 add_test_case(pem_sanitize_empty_file_rejected)
+add_test_case(pem_sanitize_empty_cert_rejected)
 add_test_case(pem_sanitize_wrong_format_rejected)
 add_test_case(pem_sanitize_bad_format_rejected)
 
@@ -322,6 +323,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(alpn_no_protocol_message)
     add_net_test_case(test_ecc_cert_import)
     add_net_test_case(test_tls_cipher_preference)
+    add_test_case(tls_ctx_new_empty_ca_cert_rejected)
 
 if(NOT AWS_USE_SECITEM)
     # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.

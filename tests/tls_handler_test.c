@@ -2874,4 +2874,40 @@ static int s_test_tls_cipher_preference_fn(struct aws_allocator *allocator, void
 
 AWS_TEST_CASE(test_tls_cipher_preference, s_test_tls_cipher_preference_fn)
 
+static int s_tls_ctx_new_empty_ca_cert_rejected_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    static const char *s_empty_body_ca = "-----BEGIN CERTIFICATE-----\n"
+                                         "-----END CERTIFICATE-----";
+
+    struct aws_tls_ctx_options tls_options;
+    AWS_ZERO_STRUCT(tls_options);
+    aws_tls_ctx_options_init_default_client(&tls_options, allocator);
+
+    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_c_str(s_empty_body_ca);
+    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur));
+
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+
+    /*
+     * The empty CA must be rejected rather than crashing or being accepted. The exact error depends on which
+     * TLS backend is active at runtime:
+     *   - SecureTransport/SecItem (Apple) and SChannel (Windows) decode the PEM through
+     *     aws_pem_objects_init_from_file_contents, which now rejects the empty object as AWS_ERROR_PEM_MALFORMED.
+     *   - s2n hands the raw PEM to s2n_config_add_pem_to_trust_store, which fails inside the library and is
+     *     surfaced as AWS_IO_TLS_CTX_ERROR.
+     */
+    ASSERT_NULL(tls_context);
+    int error = aws_last_error();
+    ASSERT_TRUE(error == AWS_ERROR_PEM_MALFORMED || error == AWS_IO_TLS_CTX_ERROR);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(tls_ctx_new_empty_ca_cert_rejected, s_tls_ctx_new_empty_ca_cert_rejected_fn)
+
 #endif /* BYO_CRYPTO */
