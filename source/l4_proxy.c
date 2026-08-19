@@ -88,7 +88,7 @@ static int s_drive_negotiation_l4_proxy(
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
-    return (handler->vtable->drive_negotiation)(handler->impl, context);
+    return (handler->vtable->drive_negotiation)(handler, context);
 }
 
 static struct aws_byte_cursor s_aws_byte_buf_get_downstream_data(
@@ -129,8 +129,10 @@ static struct aws_io_message *s_aws_io_message_new_downstream(
 
 static void s_service_l4_proxy_negotiation(struct aws_l4_proxy_channel_handler *handler) {
 
+    struct aws_channel *channel = handler->channel_handler.slot->channel;
+
     struct aws_io_message *output_message = aws_channel_acquire_message_from_pool(
-        handler->channel_handler.slot->channel,
+        channel,
         AWS_IO_MESSAGE_APPLICATION_DATA,
         AWS_L4_PROXY_IO_MESSAGE_DEFAULT_LENGTH);
     output_message->user_data = handler;
@@ -160,34 +162,51 @@ static void s_service_l4_proxy_negotiation(struct aws_l4_proxy_channel_handler *
         }
         context.to_write = &output_message->message_data;
 
-        if (s_drive_negotiation_l4_proxy(handler, &context) || context.status == AWS_L4PPS_FAILURE) {
+        int negotiation_result = s_drive_negotiation_l4_proxy(handler, &context);
+
+        if (negotiation_result == AWS_OP_SUCCESS) {
+            handler->status = context.status;
+            if (context.data != NULL) {
+                head_message->copy_mark += fragment_length - context.data->len;
+                if (head_message->copy_mark >= head_message->message_data.len) {
+                    aws_linked_list_pop_front(&handler->pending_read_bytes);
+                    aws_mem_release(head_message->allocator, head_message);
+                }
+            }
+
+            if (output_message->message_data.len > 0) {
+                if (aws_channel_slot_send_message(handler->channel_handler.slot, output_message, AWS_CHANNEL_DIR_WRITE)) {
+                    negotiation_result = AWS_OP_ERR;
+                } else {
+                    output_message = NULL;
+                }
+            }
+        }
+
+        if (negotiation_result == AWS_OP_ERR || context.status == AWS_L4PPS_FAILURE) {
             int error_code = context.error_code;
             if (error_code == AWS_ERROR_SUCCESS) {
                 error_code = aws_last_error();
             }
             handler->status = AWS_L4PPS_FAILURE;
-            aws_mem_release(output_message->allocator, output_message);
-            aws_channel_shutdown(handler->channel_handler.slot->channel, error_code);
-            return;
-        }
 
-        handler->status = context.status;
-        if (context.data != NULL) {
-            head_message->copy_mark += fragment_length - context.data->len;
-        }
-
-        if (output_message->message_data.len > 0) {
-            if (aws_channel_slot_send_message(handler->channel_handler.slot, output_message, AWS_CHANNEL_DIR_WRITE)) {
-                aws_mem_release(output_message->allocator, output_message);
-                aws_channel_shutdown(handler->channel_handler.slot->channel, aws_last_error());
+            if (handler->negotiation_complete_callback) {
+                (*handler->negotiation_complete_callback)(channel, error_code, handler->negotiation_complete_user_data);
             }
-            return;
         }
 
-        done = aws_linked_list_empty(&handler->pending_read_bytes) || context.status != AWS_L4PPS_IN_PROGRESS;
+        if (handler->status == AWS_L4PPS_SUCCESS) {
+            if (handler->negotiation_complete_callback) {
+                (*handler->negotiation_complete_callback)(channel, AWS_ERROR_SUCCESS, handler->negotiation_complete_user_data);
+            }
+        }
+
+        done = aws_linked_list_empty(&handler->pending_read_bytes) || handler->status != AWS_L4PPS_IN_PROGRESS || output_message == NULL;
     }
 
-    aws_mem_release(output_message->allocator, output_message);
+    if (output_message != NULL) {
+        aws_mem_release(output_message->allocator, output_message);
+    }
 }
 
 static void s_service_downstream_handler(struct aws_l4_proxy_channel_handler *handler) {
@@ -383,7 +402,7 @@ static void s_destroy_l4_proxy(struct aws_channel_handler *handler) {
     struct aws_l4_proxy_channel_handler *l4_proxy_handler = handler->impl;
     aws_l4_proxy_channel_handler_clean_up(l4_proxy_handler);
 
-    (l4_proxy_handler->vtable->destroy)(l4_proxy_handler->impl);
+    (l4_proxy_handler->vtable->destroy)(l4_proxy_handler);
 }
 
 static size_t s_message_overhead_l4_proxy(struct aws_channel_handler *handler) {

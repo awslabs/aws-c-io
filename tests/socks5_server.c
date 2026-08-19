@@ -105,6 +105,11 @@ enum aws_socks5_address_type {
     AWS_SOCKS5_AT_IPV6 = 0x04,
 };
 
+enum aws_socks5_connect_response_code {
+    AWS_SOCKS5_CRC_SUCCEEDED = 0x00,
+    AWS_SOCKS5_CRC_HOST_UNREACHABLE = 0x04,
+};
+
 struct aws_socks5_tunnel {
     struct aws_allocator *allocator;
 
@@ -574,7 +579,7 @@ static int s_handle_pending_method_list(struct aws_socks5_tunnel *tunnel, struct
     }
 
     struct aws_byte_cursor methods = aws_byte_cursor_from_buf(&tunnel->handshake_data);
-    methods = aws_byte_cursor_advance(&methods, 2);
+    aws_byte_cursor_advance(&methods, 2);
 
     enum aws_socks5_auth_method_ids selected_method = AWS_SOCSK5_AMI_NO_ACCEPTABLE;
     struct aws_socks5_server_auth_config *auth_config = tunnel->server->config->auth_config;
@@ -728,6 +733,21 @@ static struct aws_channel_handler_vtable s_socks5_tunnel_to_remote_handler_vtabl
     .trigger_read = NULL,
 };
 
+static void s_send_connect_response(struct aws_socks5_tunnel *tunnel, enum aws_socks5_connect_response_code code) {
+    struct aws_io_message *message =
+        aws_channel_acquire_message_from_pool(tunnel->to_client, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
+
+    uint8_t response_data[] = {0x05, code, 0x00, AWS_SOCKS5_AT_IPV4, 0x7F, 0x00, 0x00, 0x01, 0x00, 0x00};
+
+    struct aws_byte_cursor response_cursor =
+        aws_byte_cursor_from_array(response_data, AWS_ARRAY_SIZE(response_data));
+    aws_byte_buf_append(&message->message_data, &response_cursor);
+
+    if (aws_channel_slot_send_message(tunnel->to_client_handler.slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+    }
+}
+
 static void s_aws_socks5_tunnel_on_remote_channel_setup_fn(
     struct aws_client_bootstrap *bootstrap,
     int error_code,
@@ -760,6 +780,12 @@ static void s_aws_socks5_tunnel_on_remote_channel_setup_fn(
         aws_channel_shutdown(channel, AWS_IO_SOCKS5_INTERNAL_FAILURE);
     } else {
         s_aws_socks5_tunnel_change_state(tunnel, AWS_SOCKS5_TS_PASS_THROUGH);
+    }
+
+    if (tunnel->state == AWS_SOCKS5_TS_PASS_THROUGH) {
+        s_send_connect_response(tunnel, AWS_SOCKS5_CRC_SUCCEEDED);
+    } else {
+        s_send_connect_response(tunnel, AWS_SOCKS5_CRC_HOST_UNREACHABLE);
     }
 }
 

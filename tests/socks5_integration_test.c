@@ -117,3 +117,65 @@ static void s_aws_socks5_tcp_test_context_clean_up(struct aws_socks5_tcp_test_co
     aws_event_loop_group_release(context->elg);
 
 }
+
+static struct aws_socks5_proxy_negotiation_strategy *s_build_no_auth_strategy(struct aws_allocator *allocator) {
+    return aws_socks5_proxy_negotiation_strategy_new_no_auth(allocator);
+}
+
+static const char s_good_username[] = "hello";
+static const char s_good_password[] = "world";
+
+static struct aws_socks5_proxy_negotiation_strategy *s_build_basic_auth_strategy_good(struct aws_allocator *allocator) {
+    struct aws_socks5_proxy_negotiation_basic_auth_options good_options = {
+        .username = aws_byte_cursor_from_array(s_good_username, AWS_ARRAY_SIZE(s_good_username)),
+        .password = aws_byte_cursor_from_array(s_good_password, AWS_ARRAY_SIZE(s_good_password)),
+    };
+
+    return aws_socks5_proxy_negotiation_strategy_new_basic_auth(allocator, &good_options);
+}
+
+static struct aws_socks5_proxy_negotiation_strategy *s_build_basic_auth_strategy_bad(struct aws_allocator *allocator) {
+    struct aws_socks5_proxy_negotiation_basic_auth_options bad_options = {
+        .username = aws_byte_cursor_from_c_str("not"),
+        .password = aws_byte_cursor_from_c_str("correct"),
+    };
+
+    return aws_socks5_proxy_negotiation_strategy_new_basic_auth(allocator, &bad_options);
+}
+
+static struct aws_byte_cursor s_good_username_cursor = {
+    .ptr = (uint8_t *)s_good_username,
+    .len = AWS_ARRAY_SIZE(s_good_username),
+};
+
+static struct aws_byte_cursor s_good_password_cursor = {
+    .ptr = (uint8_t *)s_good_password,
+    .len = AWS_ARRAY_SIZE(s_good_password),
+};
+
+static struct aws_socks5_server_auth_options s_good_basic_auth_options = {
+    .allow_no_auth = false,
+    .allow_basic_auth = true,
+    .basic_username = &s_good_username_cursor,
+    .basic_password = &s_good_password_cursor,
+};
+
+static int s_aws_socks5_full_test_context_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, NULL, NULL);
+
+    aws_tcp_client_connect(context.tcp_client_context.client);
+    aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
+
+    s_aws_socks5_tcp_test_context_clean_up(&context);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_full_test_context_create_destroy, s_aws_socks5_full_test_context_create_destroy_fn)

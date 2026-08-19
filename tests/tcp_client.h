@@ -92,6 +92,8 @@ AWS_IO_API void aws_tcp_client_test_context_clean_up(struct aws_tcp_client_test_
 AWS_IO_API int aws_tcp_client_test_context_wait_on_connection_result(struct aws_tcp_client_test_context *context);
 AWS_IO_API int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_client_test_context *context);
 
+AWS_IO_API void aws_tcp_client_test_context_send_data(struct aws_tcp_client_test_context *context, struct aws_byte_cursor data);
+
 AWS_EXTERN_C_END
 
 #endif /* TCP_CLIENT_H */

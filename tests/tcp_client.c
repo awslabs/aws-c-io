@@ -66,7 +66,6 @@ static void s_aws_tcp_client_config_destroy(struct aws_tcp_client_config *config
 }
 
 enum aws_tcp_client_state {
-    AWS_TCS_INITIAL,
     AWS_TCS_CONNECTING,
     AWS_TCS_CONNECTED,
     AWS_TCS_DISCONNECTING,
@@ -76,7 +75,8 @@ enum aws_tcp_client_state {
 struct aws_tcp_client {
     struct aws_allocator *allocator;
 
-    struct aws_ref_count ref_count;
+    struct aws_ref_count internal_ref_count;
+    struct aws_ref_count external_ref_count;
 
     struct aws_tcp_client_config *config;
 
@@ -95,8 +95,10 @@ static void s_aws_tcp_client_update_error_code(struct aws_tcp_client *client, in
     }
 }
 
-static void s_aws_tcp_client_on_ref_count_zero(void *data) {
+static void s_aws_tcp_client_on_internal_ref_count_zero(void *data) {
     struct aws_tcp_client *client = data;
+
+    AWS_FATAL_ASSERT(client->state == AWS_TCS_DISCONNECTED);
 
     aws_tcp_client_on_destroyed_callback on_destroyed_callback = client->config->on_destroyed_callback;
     void *user_data = client->config->user_data;
@@ -110,22 +112,87 @@ static void s_aws_tcp_client_on_ref_count_zero(void *data) {
     }
 }
 
+struct aws_tcp_client_task {
+    struct aws_allocator *allocator;
+
+    struct aws_tcp_client *client;
+
+    struct aws_task task;
+};
+
+static void s_aws_tcp_client_task_destroy(struct aws_tcp_client_task *task) {
+    aws_ref_count_release(&task->client->internal_ref_count);
+
+    aws_mem_release(task->allocator, task);
+}
+
+static struct aws_tcp_client_task *s_aws_tcp_client_task_new(
+    struct aws_allocator *allocator,
+    struct aws_tcp_client *client,
+    aws_task_fn *task_fn) {
+    struct aws_tcp_client_task *task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client_task));
+
+    task->allocator = allocator;
+    task->client = client;
+    aws_ref_count_acquire(&client->internal_ref_count);
+    aws_task_init(&task->task, task_fn, task, "tcpclient");
+
+    return task;
+}
+
+
+static void s_on_external_ref_count_zero_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_tcp_client_task *client_task = arg;
+    struct aws_tcp_client *client = client_task->client;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        switch (client->state) {
+            case AWS_TCS_CONNECTING:
+                client->state = AWS_TCS_DISCONNECTING;
+                break;
+
+            case AWS_TCS_CONNECTED:
+                aws_channel_shutdown(client->channel, AWS_ERROR_EXTERNAL_REQUEST_SHUTDOWN);
+                client->state = AWS_TCS_DISCONNECTING;
+                break;
+
+            default:
+                break;
+        }
+
+        aws_ref_count_release(&client->internal_ref_count);
+    }
+
+    s_aws_tcp_client_task_destroy(client_task);
+}
+
+static void s_aws_tcp_client_on_external_ref_count_zero(void *data) {
+    struct aws_tcp_client *client = data;
+
+    struct aws_tcp_client_task *task = s_aws_tcp_client_task_new(client->allocator, client, s_on_external_ref_count_zero_task_fn);
+    aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
+}
+
 struct aws_tcp_client *aws_tcp_client_new(struct aws_allocator *allocator, struct aws_tcp_client_options *options) {
     struct aws_tcp_client *client = aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client));
 
     client->allocator = allocator;
-    aws_ref_count_init(&client->ref_count, client, s_aws_tcp_client_on_ref_count_zero);
+    aws_ref_count_init(&client->internal_ref_count, client, s_aws_tcp_client_on_internal_ref_count_zero);
+    aws_ref_count_init(&client->external_ref_count, client, s_aws_tcp_client_on_external_ref_count_zero);
     client->config = s_aws_tcp_client_config_new(allocator, options);
 
     client->loop = aws_event_loop_group_get_next_loop(client->config->bootstrap->event_loop_group);
-    client->state = AWS_TCS_INITIAL;
+    client->state = AWS_TCS_DISCONNECTED;
 
     return client;
 }
 
 struct aws_tcp_client *aws_tcp_client_acquire(struct aws_tcp_client *client) {
     if (client != NULL) {
-        aws_ref_count_acquire(&client->ref_count);
+        aws_ref_count_acquire(&client->external_ref_count);
     }
 
     return client;
@@ -133,7 +200,7 @@ struct aws_tcp_client *aws_tcp_client_acquire(struct aws_tcp_client *client) {
 
 struct aws_tcp_client *aws_tcp_client_release(struct aws_tcp_client *client) {
     if (client != NULL) {
-        aws_ref_count_release(&client->ref_count);
+        aws_ref_count_release(&client->external_ref_count);
     }
 
     return NULL;
@@ -159,7 +226,7 @@ static int s_tcp_client_channel_handler_process_read_message(
 
     if (client->config->on_data_callback) {
         struct aws_byte_cursor data = aws_byte_cursor_from_buf(&message->message_data);
-        data = aws_byte_cursor_advance(&data, message->copy_mark);
+        aws_byte_cursor_advance(&data, message->copy_mark);
 
         (*client->config->on_data_callback)(data, client->config->user_data);
     }
@@ -228,7 +295,8 @@ static void s_aws_tcp_client_on_channel_setup_fn(
 
     if (error_code != AWS_ERROR_SUCCESS) {
         s_aws_tcp_client_do_connection_result_callback(client, error_code);
-        client->state = AWS_TCS_INITIAL;
+        client->state = AWS_TCS_DISCONNECTED;
+        aws_ref_count_release(&client->internal_ref_count);
         return;
     }
 
@@ -246,7 +314,11 @@ static void s_aws_tcp_client_on_channel_setup_fn(
 
     if (client->state == AWS_TCS_CONNECTING) {
         client->state = AWS_TCS_CONNECTED;
-    } else {
+    }
+
+    s_aws_tcp_client_do_connection_result_callback(client, AWS_ERROR_SUCCESS);
+
+    if (client->state != AWS_TCS_CONNECTED) {
         aws_channel_shutdown(channel, AWS_ERROR_EXTERNAL_REQUEST_SHUTDOWN);
     }
 }
@@ -269,12 +341,14 @@ static void s_aws_tcp_client_on_channel_shutdown_fn(
     if (client->config->on_disconnection_callback) {
         (*client->config->on_disconnection_callback)(client->shutdown_error_code, client->config->user_data);
     }
+
+    aws_ref_count_release(&client->internal_ref_count);
 }
 
 static void s_aws_tcp_client_connect(struct aws_tcp_client *client) {
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
-    if (client->state != AWS_TCS_INITIAL) {
+    if (client->state != AWS_TCS_DISCONNECTED) {
         s_aws_tcp_client_do_connection_result_callback(client, AWS_ERROR_INVALID_STATE);
         return;
     }
@@ -295,54 +369,32 @@ static void s_aws_tcp_client_connect(struct aws_tcp_client *client) {
         .l4_proxy_config = client->config->proxy_config,
     };
 
+    aws_ref_count_acquire(&client->internal_ref_count);
+
     if (aws_client_bootstrap_new_socket_channel(&channel_options)) {
         s_aws_tcp_client_do_connection_result_callback(client, aws_last_error());
+        aws_ref_count_release(&client->internal_ref_count);
         return;
     }
 
     client->state = AWS_TCS_CONNECTING;
 }
 
-struct aws_tcp_client_connection_task {
-    struct aws_allocator *allocator;
-
-    struct aws_tcp_client *client;
-
-    struct aws_task task;
-};
-
-static void s_aws_tcp_client_connection_task_destroy(struct aws_tcp_client_connection_task *task) {
-    aws_tcp_client_release(task->client);
-
-    aws_mem_release(task->allocator, task);
-}
-
 static void s_aws_tcp_client_connect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
-    struct aws_tcp_client_connection_task *connect_task = arg;
+    struct aws_tcp_client_task *client_task = arg;
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        s_aws_tcp_client_connect(connect_task->client);
+        s_aws_tcp_client_connect(client_task->client);
     }
 
-    s_aws_tcp_client_connection_task_destroy(connect_task);
+    s_aws_tcp_client_task_destroy(client_task);
 }
 
-static struct aws_tcp_client_connection_task *s_aws_tcp_client_connect_task_new(
-    struct aws_allocator *allocator,
-    struct aws_tcp_client *client) {
-    struct aws_tcp_client_connection_task *task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client_connection_task));
 
-    task->allocator = allocator;
-    task->client = aws_tcp_client_acquire(client);
-    aws_task_init(&task->task, s_aws_tcp_client_connect_task_fn, task, "tcpclientconnect");
-
-    return task;
-}
 
 void aws_tcp_client_connect(struct aws_tcp_client *client) {
-    struct aws_tcp_client_connection_task *task = s_aws_tcp_client_connect_task_new(client->allocator, client);
+    struct aws_tcp_client_task *task = s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_connect_task_fn);
 
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
 }
@@ -366,29 +418,16 @@ static void s_aws_tcp_client_disconnect(struct aws_tcp_client *client) {
 static void s_aws_tcp_client_disconnect_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
-    struct aws_tcp_client_connection_task *connection_task = arg;
+    struct aws_tcp_client_task *client_task = arg;
     if (status == AWS_TASK_STATUS_RUN_READY) {
-        s_aws_tcp_client_disconnect(connection_task->client);
+        s_aws_tcp_client_disconnect(client_task->client);
     }
 
-    s_aws_tcp_client_connection_task_destroy(connection_task);
-}
-
-static struct aws_tcp_client_connection_task *s_aws_tcp_client_disconnect_task_new(
-    struct aws_allocator *allocator,
-    struct aws_tcp_client *client) {
-    struct aws_tcp_client_connection_task *task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client_connection_task));
-
-    task->allocator = allocator;
-    task->client = aws_tcp_client_acquire(client);
-    aws_task_init(&task->task, s_aws_tcp_client_disconnect_task_fn, task, "tcpclientdisconnect");
-
-    return task;
+    s_aws_tcp_client_task_destroy(client_task);
 }
 
 void aws_tcp_client_disconnect(struct aws_tcp_client *client) {
-    struct aws_tcp_client_connection_task *task = s_aws_tcp_client_disconnect_task_new(client->allocator, client);
+    struct aws_tcp_client_task *task = s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_disconnect_task_fn);
 
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
 }
@@ -582,6 +621,9 @@ void aws_tcp_client_test_context_clean_up(struct aws_tcp_client_test_context *co
 
     aws_mutex_clean_up(&context->lock);
     aws_condition_variable_clean_up(&context->signal);
+
+    aws_byte_buf_clean_up(&context->sync.sent_data);
+    aws_byte_buf_clean_up(&context->sync.received_data);
 }
 
 static bool s_aws_tcp_client_test_context_has_connection_result(void *user_data) {
@@ -612,4 +654,12 @@ int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_clie
     aws_mutex_unlock(&context->lock);
 
     return error_code;
+}
+
+void aws_tcp_client_test_context_send_data(struct aws_tcp_client_test_context *context, struct aws_byte_cursor data) {
+    aws_mutex_lock(&context->lock);
+    aws_byte_buf_append_dynamic(&context->sync.sent_data, &data);
+    aws_mutex_unlock(&context->lock);
+
+   aws_tcp_client_send(context->client, data);
 }
