@@ -775,6 +775,11 @@ int aws_secitem_import_cert_and_key(
     CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
     key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
+    if (key_ref == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating SecKey from private key data.");
+        aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        goto done;
+    }
 
     // Get the hash of the public key stored within the private key by extracting it from the key_ref's attributes
     key_copied_attributes = SecKeyCopyAttributes(key_ref);
