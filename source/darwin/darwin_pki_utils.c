@@ -775,6 +775,11 @@ int aws_secitem_import_cert_and_key(
     CFDictionaryAddValue(key_attributes, kSecAttrKeyClass, kSecAttrKeyClassPrivate);
     CFDictionaryAddValue(key_attributes, kSecAttrKeyType, key_type);
     key_ref = SecKeyCreateWithData(key_data, key_attributes, &error);
+    if (key_ref == NULL) {
+        AWS_LOGF_ERROR(AWS_LS_IO_PKI, "Failed creating SecKey from private key data.");
+        aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
+        goto done;
+    }
 
     // Get the hash of the public key stored within the private key by extracting it from the key_ref's attributes
     key_copied_attributes = SecKeyCopyAttributes(key_ref);
@@ -925,15 +930,20 @@ int aws_import_trusted_certificates(
 
         CFDataRef cert_blob = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
 
-        if (cert_blob) {
-            SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
-            CFArrayAppendValue(temp_cert_array, certificate_ref);
-            CFRelease(certificate_ref);
-            CFRelease(cert_blob);
-        } else {
+        if (cert_blob == NULL) {
             err = aws_raise_error(AWS_ERROR_OOM);
             break;
         }
+
+        SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
+        CFRelease(cert_blob);
+        if (certificate_ref == NULL) {
+            err = aws_raise_error(AWS_ERROR_PEM_MALFORMED);
+            break;
+        }
+
+        CFArrayAppendValue(temp_cert_array, certificate_ref);
+        CFRelease(certificate_ref);
     }
     aws_mutex_unlock(&s_sec_mutex);
 
