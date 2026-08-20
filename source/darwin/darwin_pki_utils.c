@@ -930,22 +930,20 @@ int aws_import_trusted_certificates(
 
         CFDataRef cert_blob = CFDataCreate(cf_alloc, pem_object_ptr->data.buffer, pem_object_ptr->data.len);
 
-        if (cert_blob) {
-            SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
-            if (certificate_ref) {
-                CFArrayAppendValue(temp_cert_array, certificate_ref);
-                CFRelease(certificate_ref);
-            } else {
-                err = aws_raise_error(AWS_ERROR_PEM_MALFORMED);
-            }
-            CFRelease(cert_blob);
-        } else {
+        if (cert_blob == NULL) {
             err = aws_raise_error(AWS_ERROR_OOM);
-        }
-
-        if (err != AWS_OP_SUCCESS) {
             break;
         }
+
+        SecCertificateRef certificate_ref = SecCertificateCreateWithData(cf_alloc, cert_blob);
+        CFRelease(cert_blob);
+        if (certificate_ref == NULL) {
+            err = aws_raise_error(AWS_ERROR_PEM_MALFORMED);
+            break;
+        }
+
+        CFArrayAppendValue(temp_cert_array, certificate_ref);
+        CFRelease(certificate_ref);
     }
     aws_mutex_unlock(&s_sec_mutex);
 
