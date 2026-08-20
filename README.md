@@ -22,9 +22,9 @@ CMake 3.9+ is required to build.
 
 `<install-path>` must be an absolute path in the following instructions.
 
-#### Linux-Only Dependencies
+#### Linux and macOS Dependencies
 
-If you are building on Linux, you will need to build aws-lc and s2n-tls first.
+If you are building on Linux or macOS, you will need to build aws-lc and s2n-tls first.
 
 ```
 git clone git@github.com:awslabs/aws-lc.git
