@@ -471,7 +471,11 @@ add_test_case(socks5_impl_connect_refused_failure)
 
 add_test_case(aws_socks5_server_create_destroy)
 add_test_case(aws_echo_server_create_destroy)
-add_test_case(aws_socks5_full_test_context_create_destroy)
+add_test_case(aws_socks5_connect_success)
+add_test_case(aws_socks5_echo_success_256_256)
+add_test_case(aws_socks5_echo_success_1024_256)
+add_test_case(aws_socks5_echo_success_5000_256)
+add_test_case(aws_socks5_echo_success_65536_16384)
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})

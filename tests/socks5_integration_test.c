@@ -9,10 +9,10 @@
 
 #include <aws/testing/aws_test_harness.h>
 
+#include "aws/io/l4_proxy.h"
+#include <aws/common/clock.h>
 #include <aws/io/event_loop.h>
 #include <aws/io/socks5.h>
-
-#include "aws/io/l4_proxy.h"
 
 static int s_aws_socks5_server_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
@@ -121,6 +121,136 @@ static void s_aws_socks5_tcp_test_context_clean_up(struct aws_socks5_tcp_test_co
     aws_event_loop_group_release(context->elg);
 }
 
+static int s_aws_socks5_connect_success_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, NULL, NULL);
+
+    aws_tcp_client_connect(context.tcp_client_context.client);
+    aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
+
+    s_aws_socks5_tcp_test_context_clean_up(&context);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_connect_success, s_aws_socks5_connect_success_fn)
+
+static int s_aws_socks5_do_send_success_test(
+    struct aws_tcp_client_test_context *client_context,
+    size_t total_bytes,
+    size_t chunk_size,
+    uint64_t chunk_delay_millis) {
+    struct aws_allocator *allocator = client_context->allocator;
+
+    struct aws_byte_buf to_send;
+    aws_byte_buf_init(&to_send, allocator, total_bytes);
+    for (size_t i = 0; i < total_bytes; ++i) {
+        to_send.buffer[i] = i % 256;
+    }
+    to_send.len = total_bytes;
+
+    struct aws_byte_cursor to_send_cursor = aws_byte_cursor_from_buf(&to_send);
+
+    while (to_send_cursor.len > 0) {
+        struct aws_byte_cursor chunk_cursor = aws_byte_cursor_advance(&to_send_cursor, chunk_size);
+        if (chunk_cursor.len > 0) {
+            aws_tcp_client_test_context_send_data(client_context, chunk_cursor);
+        }
+
+        if (chunk_delay_millis > 0) {
+            aws_thread_current_sleep(
+                aws_timestamp_convert(chunk_delay_millis, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL));
+        }
+    }
+
+    aws_tcp_client_test_context_wait_on_received_bytes(client_context, total_bytes);
+
+    struct aws_byte_buf sent_data;
+    aws_byte_buf_init(&sent_data, allocator, total_bytes);
+    aws_tcp_client_test_context_get_sent_bytes(client_context, &sent_data);
+
+    struct aws_byte_buf received_data;
+    aws_byte_buf_init(&received_data, allocator, total_bytes);
+    aws_tcp_client_test_context_get_received_bytes(client_context, &received_data);
+
+    ASSERT_BIN_ARRAYS_EQUALS(sent_data.buffer, sent_data.len, received_data.buffer, received_data.len);
+
+    aws_byte_buf_clean_up(&to_send);
+    aws_byte_buf_clean_up(&sent_data);
+    aws_byte_buf_clean_up(&received_data);
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_socks5_do_echo_success_test(
+    struct aws_allocator *allocator,
+    size_t total_bytes,
+    size_t chunk_size,
+    uint64_t chunk_delay_millis) {
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, NULL, NULL);
+
+    aws_tcp_client_connect(context.tcp_client_context.client);
+    aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
+
+    ASSERT_SUCCESS(
+        s_aws_socks5_do_send_success_test(&context.tcp_client_context, total_bytes, chunk_size, chunk_delay_millis));
+
+    s_aws_socks5_tcp_test_context_clean_up(&context);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static int s_aws_socks5_echo_success_256_256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_256_256, s_aws_socks5_echo_success_256_256_fn)
+
+static int s_aws_socks5_echo_success_1024_256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_1024_256, s_aws_socks5_echo_success_1024_256_fn)
+
+static int s_aws_socks5_echo_success_5000_256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_5000_256, s_aws_socks5_echo_success_5000_256_fn)
+
+static int s_aws_socks5_echo_success_65536_16384_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_65536_16384, s_aws_socks5_echo_success_65536_16384_fn)
+
 static struct aws_socks5_proxy_negotiation_strategy *s_build_no_auth_strategy(struct aws_allocator *allocator) {
     return aws_socks5_proxy_negotiation_strategy_new_no_auth(allocator);
 }
@@ -162,50 +292,3 @@ static struct aws_socks5_server_auth_options s_good_basic_auth_options = {
     .basic_username = &s_good_username_cursor,
     .basic_password = &s_good_password_cursor,
 };
-
-static int s_aws_socks5_full_test_context_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
-    (void)ctx;
-
-    aws_io_library_init(allocator);
-
-    struct aws_socks5_tcp_test_context context;
-    s_aws_socks5_tcp_test_context_init(&context, allocator, NULL, NULL);
-
-    aws_tcp_client_connect(context.tcp_client_context.client);
-    aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
-
-    struct aws_byte_buf to_send;
-    aws_byte_buf_init(&to_send, allocator, 256);
-    for (size_t i = 0; i < 256; ++i) {
-        to_send.buffer[i] = i;
-    }
-    to_send.len = 256;
-
-    struct aws_byte_cursor to_send_cursor = aws_byte_cursor_from_buf(&to_send);
-
-    aws_tcp_client_test_context_send_data(&context.tcp_client_context, to_send_cursor);
-
-    aws_tcp_client_test_context_wait_on_received_bytes(&context.tcp_client_context, 256);
-
-    struct aws_byte_buf sent_data;
-    aws_byte_buf_init(&sent_data, allocator, 256);
-    aws_tcp_client_test_context_get_sent_bytes(&context.tcp_client_context, &sent_data);
-
-    struct aws_byte_buf received_data;
-    aws_byte_buf_init(&received_data, allocator, 256);
-    aws_tcp_client_test_context_get_received_bytes(&context.tcp_client_context, &received_data);
-
-    ASSERT_BIN_ARRAYS_EQUALS(sent_data.buffer, sent_data.len, received_data.buffer, received_data.len);
-
-    s_aws_socks5_tcp_test_context_clean_up(&context);
-
-    aws_byte_buf_clean_up(&to_send);
-    aws_byte_buf_clean_up(&sent_data);
-    aws_byte_buf_clean_up(&received_data);
-
-    aws_io_library_clean_up();
-
-    return AWS_OP_SUCCESS;
-}
-
-AWS_TEST_CASE(aws_socks5_full_test_context_create_destroy, s_aws_socks5_full_test_context_create_destroy_fn)
