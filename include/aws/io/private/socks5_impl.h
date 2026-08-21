@@ -89,7 +89,8 @@ AWS_IO_API struct aws_socks5_proxy_negotiation_strategy_instance *aws_socks5_pro
 
 AWS_IO_API struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
     struct aws_allocator *allocator,
-    struct aws_socks5_proxy_config *config);
+    struct aws_socks5_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *options);
 
 AWS_IO_API void aws_socks5_proxy_impl_destroy(struct aws_socks5_proxy_impl *impl);
 

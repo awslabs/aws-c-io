@@ -589,6 +589,17 @@ static int s_socks5_negotiation_basic_auth_negotiate_success_fn(struct aws_alloc
 
 AWS_TEST_CASE(socks5_negotiation_basic_auth_negotiate_success, s_socks5_negotiation_basic_auth_negotiate_success_fn)
 
+static struct aws_l4_proxy_channel_handler_options s_create_dummy_l4_options(void) {
+    struct aws_l4_proxy_channel_handler_options l4_options = {
+        .remote = {
+            .host = aws_byte_cursor_from_c_str("localhost"),
+            .port = 333,
+        },
+    };
+
+    return l4_options;
+}
+
 static int s_socks5_impl_no_auth_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -602,7 +613,9 @@ static int s_socks5_impl_no_auth_create_destroy_fn(struct aws_allocator *allocat
     };
 
     struct aws_l4_proxy_config *config = aws_l4_proxy_config_new_socks5(allocator, &options);
-    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl);
+
+    struct aws_l4_proxy_channel_handler_options l4_options = s_create_dummy_l4_options();
+    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl, &l4_options);
 
     aws_socks5_proxy_impl_destroy(impl);
     aws_l4_proxy_config_release(config);
@@ -635,7 +648,8 @@ static int s_socks5_impl_basic_auth_create_destroy_fn(struct aws_allocator *allo
     };
 
     struct aws_l4_proxy_config *config = aws_l4_proxy_config_new_socks5(allocator, &options);
-    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl);
+    struct aws_l4_proxy_channel_handler_options l4_options = s_create_dummy_l4_options();
+    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl, &l4_options);
 
     aws_socks5_proxy_impl_destroy(impl);
     aws_l4_proxy_config_release(config);
@@ -763,8 +777,8 @@ static int s_run_test_matrix(
             };
 
             struct aws_l4_proxy_config *config = aws_l4_proxy_config_new_socks5(allocator, &proxy_options);
-
-            struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl);
+            struct aws_l4_proxy_channel_handler_options l4_options = s_create_dummy_l4_options();
+            struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, config->impl, &l4_options);
 
             struct socks5_protocol_testing_step_options test_options = {
                 .allocator = allocator,

@@ -508,7 +508,7 @@ static int s_setup_client_l4_proxy_negotiation(
     remote.port = connection_args->original_port;
 
     struct aws_l4_proxy_channel_handler_options l4_proxy_options = {
-        .remote = &remote,
+        .remote = remote,
         .negotiation_complete_callback = s_on_l4_proxy_setup_completed,
         .negotiation_complete_user_data = connection_args,
     };

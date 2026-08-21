@@ -135,6 +135,9 @@ struct aws_socks5_proxy_impl {
     struct aws_socks5_proxy_config *config;
     struct aws_socks5_proxy_negotiation_strategy_instance *auth_instance;
 
+    struct aws_byte_buf remote_host;
+    uint32_t remote_port;
+
     enum aws_socks5_proxy_impl_state state;
 
     struct aws_byte_buf write_buffer;
@@ -154,6 +157,7 @@ void aws_socks5_proxy_impl_destroy(struct aws_socks5_proxy_impl *impl) {
 
     aws_byte_buf_clean_up(&impl->write_buffer);
     aws_byte_buf_clean_up(&impl->read_buffer);
+    aws_byte_buf_clean_up(&impl->remote_host);
 
     aws_l4_proxy_config_release(&impl->config->base);
 
@@ -164,7 +168,8 @@ static const size_t DEFAULT_SOCKS5_PROTOCOL_BUFFER_SIZE = 512;
 
 struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
     struct aws_allocator *allocator,
-    struct aws_socks5_proxy_config *config) {
+    struct aws_socks5_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *l4_options) {
 
     if (allocator == NULL || config == NULL) {
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
@@ -181,6 +186,11 @@ struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
         aws_byte_buf_init(&impl->read_buffer, allocator, DEFAULT_SOCKS5_PROTOCOL_BUFFER_SIZE)) {
         goto failure;
     }
+
+    if (aws_byte_buf_init_copy_from_cursor(&impl->remote_host, allocator, l4_options->remote.host)) {
+        goto failure;
+    }
+    impl->remote_port = l4_options->remote.port;
 
     return impl;
 
@@ -304,18 +314,18 @@ static void s_build_connect_request(struct aws_socks5_proxy_impl *impl) {
 
     // version (1 byte) + command (1 byte) + reserved (1 byte) + address type (1 byte) +
     //   address length (1 byte) + address (variable length) + port (2 bytes)
-    size_t requiredBytes = 7 + impl->config->base.proxy_host.len;
+    size_t requiredBytes = 7 + impl->remote_host.len;
     aws_byte_buf_reserve(&impl->write_buffer, requiredBytes);
 
     aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_VERSION);                              // version byte
     aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_TYPE_CONNECT);                 // command byte
     aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_RESERVED_VALUE);               // reserved byte
     aws_byte_buf_write_u8(&impl->write_buffer, AWS_SOCKS5_ADDRESS_TYPE_DOMAIN_NAME);        // address type byte
-    aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)impl->config->base.proxy_host.len); // address length byte
+    aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)impl->remote_host.len); // address length byte
 
-    struct aws_byte_cursor connect_cursor = aws_byte_cursor_from_buf(&impl->config->base.proxy_host);
+    struct aws_byte_cursor connect_cursor = aws_byte_cursor_from_buf(&impl->remote_host);
     aws_byte_buf_append(&impl->write_buffer, &connect_cursor);                   // address
-    aws_byte_buf_write_be16(&impl->write_buffer, impl->config->base.proxy_port); // port
+    aws_byte_buf_write_be16(&impl->write_buffer, impl->remote_port); // port
 
     impl->pending_write_data = aws_byte_cursor_from_buf(&impl->write_buffer);
 }
@@ -551,7 +561,7 @@ static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_s
     struct aws_socks5_proxy_config *socks5_config = config->impl;
 
     socks5_handler->allocator = allocator;
-    socks5_handler->negotiation_impl = aws_socks5_proxy_impl_new(allocator, socks5_config);
+    socks5_handler->negotiation_impl = aws_socks5_proxy_impl_new(allocator, socks5_config, options);
 
     aws_l4_proxy_channel_handler_init(&socks5_handler->base, allocator, config, options);
     socks5_handler->base.vtable = &s_l4_proxy_channel_handler_vtable;

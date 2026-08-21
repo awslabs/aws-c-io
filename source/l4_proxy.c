@@ -236,7 +236,6 @@ static void s_service_downstream_handler(struct aws_l4_proxy_channel_handler *ha
 
         size_t bytes_consumed = downstream_message->message_data.len;
         head_message->copy_mark += bytes_consumed;
-        handler->num_pending_read_bytes -= bytes_consumed;
 
         if (head_message->copy_mark >= head_message->message_data.len) {
             aws_linked_list_pop_front(&handler->pending_read_bytes);
@@ -283,7 +282,7 @@ static void s_service_l4_proxy(struct aws_channel_task *channel_task, void *arg,
     size_t downstream_window = s_compute_l4_proxy_window_size(handler);
     bool should_iterate =
         (handler->status == AWS_L4PPS_IN_PROGRESS) ||
-        (handler->status == AWS_L4PPS_SUCCESS && downstream_window > 0 && handler->num_pending_read_bytes > 0);
+        (handler->status == AWS_L4PPS_SUCCESS && downstream_window > 0 && !aws_linked_list_empty(&handler->pending_read_bytes));
 
     while (should_iterate) {
         if (handler->status == AWS_L4PPS_IN_PROGRESS) {
@@ -294,7 +293,7 @@ static void s_service_l4_proxy(struct aws_channel_task *channel_task, void *arg,
 
         downstream_window = s_compute_l4_proxy_window_size(handler);
         should_iterate =
-            handler->status == AWS_L4PPS_SUCCESS && downstream_window > 0 && handler->num_pending_read_bytes > 0;
+            handler->status == AWS_L4PPS_SUCCESS && downstream_window > 0 && !aws_linked_list_empty(&handler->pending_read_bytes);
     }
 }
 
@@ -311,13 +310,13 @@ static int s_process_read_message_l4_proxy(
     size_t message_size = message->message_data.len - message->copy_mark;
 
     // if we're in pass-through mode and the message respects the down stream handle's window then just pass it on
-    if (l4_proxy_handler->status == AWS_L4PPS_SUCCESS &&
-        message_size <= s_compute_l4_proxy_window_size(l4_proxy_handler) &&
-        l4_proxy_handler->num_pending_read_bytes == 0) {
-        return aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_READ);
+    if (l4_proxy_handler->status == AWS_L4PPS_SUCCESS) {
+        if (message_size <= s_compute_l4_proxy_window_size(l4_proxy_handler) && aws_linked_list_empty(&l4_proxy_handler->pending_read_bytes)) {
+            return aws_channel_slot_send_message(slot, message, AWS_CHANNEL_DIR_READ);
+        }
     }
 
-    l4_proxy_handler->num_pending_read_bytes += message_size;
+
     aws_linked_list_push_back(&l4_proxy_handler->pending_read_bytes, &message->queueing_handle);
     s_schedule_l4_proxy_service(l4_proxy_handler);
 
@@ -371,12 +370,11 @@ static int s_increment_read_window_l4_proxy(
 
     struct aws_l4_proxy_channel_handler *l4_proxy_handler = handler->impl;
 
-    if (l4_proxy_handler->num_pending_read_bytes > 0) {
+    if (!aws_linked_list_empty(&l4_proxy_handler->pending_read_bytes)) {
         s_schedule_l4_proxy_service(l4_proxy_handler);
     }
 
     return AWS_OP_SUCCESS;
-    ;
 }
 
 static int s_shutdown_l4_proxy(
@@ -426,7 +424,6 @@ static struct aws_channel_handler_vtable s_l4_proxy_channel_handle_vtable = {
 
 void aws_l4_proxy_channel_handler_clean_up(struct aws_l4_proxy_channel_handler *handler) {
     handler->config = aws_l4_proxy_config_release(handler->config);
-    aws_byte_buf_clean_up(&handler->remote_host);
 
     while (!aws_linked_list_empty(&handler->pending_read_bytes)) {
         struct aws_linked_list_node *head_node = aws_linked_list_pop_front(&handler->pending_read_bytes);
@@ -442,16 +439,12 @@ void aws_l4_proxy_channel_handler_init(
     struct aws_l4_proxy_channel_handler_options *options) {
     handler->status = AWS_L4PPS_IN_PROGRESS;
     handler->is_service_scheduled = false;
-    handler->num_pending_read_bytes = 0;
 
     aws_linked_list_init(&handler->pending_read_bytes);
     aws_channel_task_init(&handler->service_task, s_service_l4_proxy, handler, "l4_proxy_service");
 
     handler->allocator = allocator;
     handler->config = aws_l4_proxy_config_acquire(config);
-
-    aws_byte_buf_init_copy_from_cursor(&handler->remote_host, allocator, options->remote->host);
-    handler->remote_port = options->remote->port;
 
     handler->negotiation_complete_callback = options->negotiation_complete_callback;
     handler->negotiation_complete_user_data = options->negotiation_complete_user_data;

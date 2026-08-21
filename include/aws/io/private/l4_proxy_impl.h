@@ -79,9 +79,6 @@ struct aws_l4_proxy_channel_handler {
 
     struct aws_l4_proxy_config *config;
 
-    struct aws_byte_buf remote_host;
-    uint32_t remote_port;
-
     void (*negotiation_complete_callback)(struct aws_channel *, int, void *);
     void *negotiation_complete_user_data;
 
@@ -93,13 +90,12 @@ struct aws_l4_proxy_channel_handler {
     struct aws_channel_task service_task;
 
     // read backpressure
-    size_t num_pending_read_bytes;
     struct aws_linked_list pending_read_bytes;
 };
 
 struct aws_l4_proxy_channel_handler_options {
 
-    struct aws_connection_remote *remote;
+    struct aws_connection_remote remote;
 
     void (*negotiation_complete_callback)(struct aws_channel *, int, void *);
     void *negotiation_complete_user_data;

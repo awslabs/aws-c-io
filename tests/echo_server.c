@@ -125,6 +125,90 @@ static void s_aws_echo_server_config_destroy(struct aws_echo_server_config *conf
     aws_mem_release(config->allocator, config);
 }
 
+
+static void s_aws_echo_connection_update_error_code(struct aws_echo_connection *connection, int error_code) {
+    if (connection->shutdown_error_code == AWS_ERROR_SUCCESS) {
+        connection->shutdown_error_code = error_code;
+    }
+}
+
+static void s_aws_echo_connection_on_channel_destroyed(struct aws_echo_connection *connection) {
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection->event_loop));
+
+    connection->channel = NULL;
+    connection->state = AWS_ECHO_CS_SHUTDOWN;
+    (*connection->on_shutdown)(connection, connection->shutdown_error_code, connection->on_shutdown_user_data);
+}
+
+struct aws_echo_connection_shutdown_task {
+    struct aws_allocator *allocator;
+
+    struct aws_task task;
+
+    struct aws_echo_connection *connection;
+    int error_code;
+};
+
+static void s_aws_echo_connection_shutdown_task_destroy(struct aws_echo_connection_shutdown_task *task) {
+    aws_ref_count_release(&task->connection->ref_count);
+    aws_mem_release(task->allocator, task);
+}
+
+static void s_aws_echo_connection_shutdown_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    (void)task;
+
+    struct aws_echo_connection_shutdown_task *shutdown_task = arg;
+
+    if (status == AWS_TASK_STATUS_CANCELED) {
+        goto done;
+    }
+
+    struct aws_echo_connection *connection = shutdown_task->connection;
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection->event_loop));
+
+    if (connection->state == AWS_ECHO_CS_SHUTTING_DOWN || connection->state == AWS_ECHO_CS_SHUTDOWN) {
+        goto done;
+    }
+
+    connection->state = AWS_ECHO_CS_SHUTTING_DOWN;
+
+    s_aws_echo_connection_update_error_code(connection, shutdown_task->error_code);
+
+    if (connection->channel) {
+        aws_channel_shutdown(connection->channel, connection->shutdown_error_code);
+    } else {
+        s_aws_echo_connection_on_channel_destroyed(connection);
+    }
+
+done:
+
+    s_aws_echo_connection_shutdown_task_destroy(shutdown_task);
+}
+
+static struct aws_echo_connection_shutdown_task *s_aws_echo_connection_shutdown_task_new(
+    struct aws_allocator *allocator,
+    struct aws_echo_connection *connection,
+    int error_code) {
+
+    struct aws_echo_connection_shutdown_task *task =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_echo_connection_shutdown_task));
+    task->allocator = allocator;
+    task->connection = connection;
+    aws_ref_count_acquire(&connection->ref_count);
+    task->error_code = error_code;
+
+    aws_task_init(&task->task, s_aws_echo_connection_shutdown_task_fn, task, "echoconnectionshutdown");
+
+    return task;
+}
+
+static void s_aws_echo_connection_shutdown(struct aws_echo_connection *connection, int error_code) {
+    struct aws_echo_connection_shutdown_task *task =
+        s_aws_echo_connection_shutdown_task_new(connection->allocator, connection, error_code);
+
+    aws_event_loop_schedule_task_now_serialized(connection->event_loop, &task->task);
+}
+
 // Server Reference Semantics
 //
 // External ref count - starts at 1 (the caller of _new(...)), external holders only
@@ -163,7 +247,32 @@ static void s_shut_down_echo_server(struct aws_echo_server *server) {
             break;
     }
 
+    struct aws_array_list connections;
+    aws_array_list_init_dynamic(
+        &connections,
+        server->allocator,
+        aws_hash_table_get_entry_count(&server->sync.connections_by_id),
+        sizeof(struct aws_echo_connection *));
+
+    for (struct aws_hash_iter iter = aws_hash_iter_begin(&server->sync.connections_by_id); !aws_hash_iter_done(&iter);
+         aws_hash_iter_next(&iter)) {
+        struct aws_echo_connection *connection = iter.element.value;
+
+        aws_array_list_push_back(&connections, &connection);
+        aws_ref_count_acquire(&connection->ref_count);
+    }
+
     aws_mutex_unlock(&server->lock);
+
+    for (size_t i = 0; i < aws_array_list_length(&connections); i++) {
+        struct aws_echo_connection *connection = NULL;
+        aws_array_list_get_at(&connections, &connection, i);
+
+        s_aws_echo_connection_shutdown(connection, AWS_ERROR_EXTERNAL_REQUEST_SHUTDOWN);
+        aws_ref_count_release(&connection->ref_count);
+    }
+
+    aws_array_list_clean_up(&connections);
 
     if (listener) {
         aws_server_bootstrap_destroy_socket_listener(server->config->listener_bootstrap, listener);
@@ -327,89 +436,6 @@ static struct aws_echo_connection *s_aws_echo_connection_new(
     return connection;
 }
 
-static void s_aws_echo_connection_update_error_code(struct aws_echo_connection *connection, int error_code) {
-    if (connection->shutdown_error_code == AWS_ERROR_SUCCESS) {
-        connection->shutdown_error_code = error_code;
-    }
-}
-
-static void s_aws_echo_connection_on_channel_destroyed(struct aws_echo_connection *connection) {
-    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection->event_loop));
-
-    connection->channel = NULL;
-    connection->state = AWS_ECHO_CS_SHUTDOWN;
-    (*connection->on_shutdown)(connection, connection->shutdown_error_code, connection->on_shutdown_user_data);
-}
-
-struct aws_echo_connection_shutdown_task {
-    struct aws_allocator *allocator;
-
-    struct aws_task task;
-
-    struct aws_echo_connection *connection;
-    int error_code;
-};
-
-static void s_aws_echo_connection_shutdown_task_destroy(struct aws_echo_connection_shutdown_task *task) {
-    aws_ref_count_release(&task->connection->ref_count);
-    aws_mem_release(task->allocator, task);
-}
-
-static void s_aws_echo_connection_shutdown_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
-    (void)task;
-
-    struct aws_echo_connection_shutdown_task *shutdown_task = arg;
-
-    if (status == AWS_TASK_STATUS_CANCELED) {
-        goto done;
-    }
-
-    struct aws_echo_connection *connection = shutdown_task->connection;
-    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(connection->event_loop));
-
-    if (connection->state == AWS_ECHO_CS_SHUTTING_DOWN || connection->state == AWS_ECHO_CS_SHUTDOWN) {
-        goto done;
-    }
-
-    connection->state = AWS_ECHO_CS_SHUTTING_DOWN;
-
-    s_aws_echo_connection_update_error_code(connection, shutdown_task->error_code);
-
-    if (connection->channel) {
-        aws_channel_shutdown(connection->channel, connection->shutdown_error_code);
-    } else {
-        s_aws_echo_connection_on_channel_destroyed(connection);
-    }
-
-done:
-
-    s_aws_echo_connection_shutdown_task_destroy(shutdown_task);
-}
-
-static struct aws_echo_connection_shutdown_task *s_aws_echo_connection_shutdown_task_new(
-    struct aws_allocator *allocator,
-    struct aws_echo_connection *connection,
-    int error_code) {
-
-    struct aws_echo_connection_shutdown_task *task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_echo_connection_shutdown_task));
-    task->allocator = allocator;
-    task->connection = connection;
-    aws_ref_count_acquire(&connection->ref_count);
-    task->error_code = error_code;
-
-    aws_task_init(&task->task, s_aws_echo_connection_shutdown_task_fn, task, "echoconnectionshutdown");
-
-    return task;
-}
-
-static void s_aws_echo_connection_shutdown(struct aws_echo_connection *connection, int error_code) {
-    struct aws_echo_connection_shutdown_task *task =
-        s_aws_echo_connection_shutdown_task_new(connection->allocator, connection, error_code);
-
-    aws_event_loop_schedule_task_now_serialized(connection->event_loop, &task->task);
-}
-
 static int s_echo_connection_handler_process_read_message(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
@@ -533,40 +559,6 @@ static void s_aws_echo_server_bootstrap_on_server_listener_destroy_fn(
     (void)bootstrap;
 
     struct aws_echo_server *server = user_data;
-
-    // with the listener destroyed, there should be no further connections
-    // go through them all and shut them down
-    // when all have been fully destroyed, our internal ref count will drop to zero, allowing the server to
-    // self-destruct
-
-    aws_mutex_lock(&server->lock);
-
-    struct aws_array_list connections;
-    aws_array_list_init_dynamic(
-        &connections,
-        server->allocator,
-        aws_hash_table_get_entry_count(&server->sync.connections_by_id),
-        sizeof(struct aws_echo_connection *));
-
-    for (struct aws_hash_iter iter = aws_hash_iter_begin(&server->sync.connections_by_id); !aws_hash_iter_done(&iter);
-         aws_hash_iter_next(&iter)) {
-        struct aws_echo_connection *connection = iter.element.value;
-
-        aws_array_list_push_back(&connections, &connection);
-        aws_ref_count_acquire(&connection->ref_count);
-    }
-
-    aws_mutex_unlock(&server->lock);
-
-    for (size_t i = 0; i < aws_array_list_length(&connections); i++) {
-        struct aws_echo_connection *connection = NULL;
-        aws_array_list_get_at(&connections, &connection, i);
-
-        s_aws_echo_connection_shutdown(connection, AWS_ERROR_EXTERNAL_REQUEST_SHUTDOWN);
-        aws_ref_count_release(&connection->ref_count);
-    }
-
-    aws_array_list_clean_up(&connections);
 
     aws_ref_count_release(&server->internal_ref_count); // Internal Ref Case 2
 }

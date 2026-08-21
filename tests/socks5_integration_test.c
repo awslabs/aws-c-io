@@ -171,7 +171,32 @@ static int s_aws_socks5_full_test_context_create_destroy_fn(struct aws_allocator
     aws_tcp_client_connect(context.tcp_client_context.client);
     aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
 
+    struct aws_byte_buf to_send;
+    aws_byte_buf_init(&to_send, allocator, 256);
+    for (size_t i = 0; i < 256; ++i) {
+        to_send.buffer[i] = i;
+    }
+    to_send.len = 256;
+
+    struct aws_byte_cursor to_send_cursor = aws_byte_cursor_from_buf(&to_send);
+
+    aws_tcp_client_test_context_send_data(&context.tcp_client_context, to_send_cursor);
+
+    aws_tcp_client_test_context_wait_on_received_bytes(&context.tcp_client_context, 256);
+
+    struct aws_byte_buf sent_data;
+    aws_byte_buf_init(&to_send, allocator, 256);
+    aws_tcp_client_test_context_get_sent_bytes(&context.tcp_client_context, &sent_data);
+
+    struct aws_byte_buf received_data;
+    aws_byte_buf_init(&to_send, allocator, 256);
+    aws_tcp_client_test_context_get_received_bytes(&context.tcp_client_context, &received_data);
+
+    ASSERT_BIN_ARRAYS_EQUALS(sent_data.buffer, sent_data.len, received_data.buffer, received_data.len);
+
     s_aws_socks5_tcp_test_context_clean_up(&context);
+
+    aws_byte_buf_clean_up(&to_send);
 
     aws_io_library_clean_up();
 

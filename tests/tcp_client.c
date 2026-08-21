@@ -591,7 +591,7 @@ void aws_tcp_client_test_context_init(
         .on_disconnection_callback = s_aws_tcp_client_test_context_on_disconnection_callback,
         .on_data_callback = s_aws_tcp_client_test_context_on_data_callback,
         .on_destroyed_callback = s_aws_tcp_client_test_context_on_destroyed_callback,
-        .user_data= context,
+        .user_data = context,
     };
 
     context->client = aws_tcp_client_new(allocator, &client_options);
@@ -662,4 +662,41 @@ void aws_tcp_client_test_context_send_data(struct aws_tcp_client_test_context *c
     aws_mutex_unlock(&context->lock);
 
    aws_tcp_client_send(context->client, data);
+}
+
+struct aws_tcp_client_test_received_bytes_context {
+    struct aws_tcp_client_test_context *context;
+    size_t received_bytes;
+};
+
+static bool s_aws_tcp_client_test_context_has_received_bytes(void *user_data) {
+    struct aws_tcp_client_test_received_bytes_context *context = user_data;
+
+    return context->context->sync.received_data.len == context->received_bytes;
+}
+
+void aws_tcp_client_test_context_wait_on_received_bytes(struct aws_tcp_client_test_context *context, size_t received_bytes) {
+    aws_mutex_lock(&context->lock);
+
+    struct aws_tcp_client_test_received_bytes_context received_bytes_context = {
+        .context = context,
+        .received_bytes = received_bytes,
+    };
+
+    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_has_received_bytes, &received_bytes_context);
+    aws_mutex_unlock(&context->lock);
+}
+
+void aws_tcp_client_test_context_get_sent_bytes(struct aws_tcp_client_test_context *context, struct aws_byte_buf *bytes) {
+    aws_mutex_lock(&context->lock);
+    struct aws_byte_cursor sent_data = aws_byte_cursor_from_buf(&context->sync.sent_data);
+    aws_byte_buf_append_dynamic(bytes, &sent_data);
+    aws_mutex_unlock(&context->lock);
+}
+
+void aws_tcp_client_test_context_get_received_bytes(struct aws_tcp_client_test_context *context, struct aws_byte_buf *bytes) {
+    aws_mutex_lock(&context->lock);
+    struct aws_byte_cursor received_data = aws_byte_cursor_from_buf(&context->sync.received_data);
+    aws_byte_buf_append_dynamic(bytes, &received_data);
+    aws_mutex_unlock(&context->lock);
 }
