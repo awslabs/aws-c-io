@@ -125,7 +125,6 @@ static void s_aws_echo_server_config_destroy(struct aws_echo_server_config *conf
     aws_mem_release(config->allocator, config);
 }
 
-
 static void s_aws_echo_connection_update_error_code(struct aws_echo_connection *connection, int error_code) {
     if (connection->shutdown_error_code == AWS_ERROR_SUCCESS) {
         connection->shutdown_error_code = error_code;
@@ -656,7 +655,10 @@ static void s_aws_echo_server_test_context_on_server_destroy(struct aws_echo_ser
     aws_condition_variable_notify_all(&context->signal);
 }
 
-void aws_echo_server_test_context_init(struct aws_echo_server_test_context *context, struct aws_allocator *allocator, struct aws_event_loop_group *elg) {
+void aws_echo_server_test_context_init(
+    struct aws_echo_server_test_context *context,
+    struct aws_allocator *allocator,
+    struct aws_event_loop_group *elg) {
     AWS_ZERO_STRUCT(*context);
 
     context->allocator = allocator;

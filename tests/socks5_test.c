@@ -591,10 +591,11 @@ AWS_TEST_CASE(socks5_negotiation_basic_auth_negotiate_success, s_socks5_negotiat
 
 static struct aws_l4_proxy_channel_handler_options s_create_dummy_l4_options(void) {
     struct aws_l4_proxy_channel_handler_options l4_options = {
-        .remote = {
-            .host = aws_byte_cursor_from_c_str("localhost"),
-            .port = 333,
-        },
+        .remote =
+            {
+                .host = aws_byte_cursor_from_c_str("localhost"),
+                .port = 333,
+            },
     };
 
     return l4_options;

@@ -763,8 +763,7 @@ static void s_send_connect_response(struct aws_socks5_tunnel *tunnel, enum aws_s
 
     uint8_t response_data[] = {0x05, code, 0x00, AWS_SOCKS5_AT_IPV4, 0x7F, 0x00, 0x00, 0x01, 0x00, 0x00};
 
-    struct aws_byte_cursor response_cursor =
-        aws_byte_cursor_from_array(response_data, AWS_ARRAY_SIZE(response_data));
+    struct aws_byte_cursor response_cursor = aws_byte_cursor_from_array(response_data, AWS_ARRAY_SIZE(response_data));
     aws_byte_buf_append(&message->message_data, &response_cursor);
 
     if (aws_channel_slot_send_message(tunnel->to_client_handler.slot, message, AWS_CHANNEL_DIR_WRITE)) {

@@ -82,15 +82,9 @@ struct aws_l4_proxy_channel_handler {
     void (*negotiation_complete_callback)(struct aws_channel *, int, void *);
     void *negotiation_complete_user_data;
 
-    // new
     enum aws_l4_proxy_protocol_status status;
 
-    // channel handler data processing
-    bool is_service_scheduled;
-    struct aws_channel_task service_task;
-
-    // read backpressure
-    struct aws_linked_list pending_read_bytes;
+    struct aws_channel_slot *last_seen_right_slot;
 };
 
 struct aws_l4_proxy_channel_handler_options {

@@ -66,7 +66,11 @@ struct aws_socks5_tcp_test_context {
 typedef void (*socks5_server_options_override_fn)(struct aws_socks5_server_test_context_options *socks5_server_options);
 typedef void (*tcp_client_options_override_fn)(struct aws_tcp_client_test_context_options *tcp_client_options);
 
-static void s_aws_socks5_tcp_test_context_init(struct aws_socks5_tcp_test_context *context, struct aws_allocator *allocator, socks5_server_options_override_fn *socks5_override_fn, struct aws_socks5_proxy_negotiation_strategy *strategy) {
+static void s_aws_socks5_tcp_test_context_init(
+    struct aws_socks5_tcp_test_context *context,
+    struct aws_allocator *allocator,
+    socks5_server_options_override_fn *socks5_override_fn,
+    struct aws_socks5_proxy_negotiation_strategy *strategy) {
     AWS_ZERO_STRUCT(*context);
 
     context->allocator = allocator;
@@ -79,7 +83,7 @@ static void s_aws_socks5_tcp_test_context_init(struct aws_socks5_tcp_test_contex
 
     uint16_t echo_server_port = aws_echo_server_get_listener_port(context->echo_server_context.server);
 
-    struct aws_socks5_server_test_context_options socks5_test_context_options ={
+    struct aws_socks5_server_test_context_options socks5_test_context_options = {
         .elg = context->elg,
     };
 
@@ -115,7 +119,6 @@ static void s_aws_socks5_tcp_test_context_clean_up(struct aws_socks5_tcp_test_co
     aws_socks5_server_test_context_clean_up(&context->socks5_server_context);
     aws_l4_proxy_config_release(context->proxy_config);
     aws_event_loop_group_release(context->elg);
-
 }
 
 static struct aws_socks5_proxy_negotiation_strategy *s_build_no_auth_strategy(struct aws_allocator *allocator) {
@@ -185,11 +188,11 @@ static int s_aws_socks5_full_test_context_create_destroy_fn(struct aws_allocator
     aws_tcp_client_test_context_wait_on_received_bytes(&context.tcp_client_context, 256);
 
     struct aws_byte_buf sent_data;
-    aws_byte_buf_init(&to_send, allocator, 256);
+    aws_byte_buf_init(&sent_data, allocator, 256);
     aws_tcp_client_test_context_get_sent_bytes(&context.tcp_client_context, &sent_data);
 
     struct aws_byte_buf received_data;
-    aws_byte_buf_init(&to_send, allocator, 256);
+    aws_byte_buf_init(&received_data, allocator, 256);
     aws_tcp_client_test_context_get_received_bytes(&context.tcp_client_context, &received_data);
 
     ASSERT_BIN_ARRAYS_EQUALS(sent_data.buffer, sent_data.len, received_data.buffer, received_data.len);
@@ -197,6 +200,8 @@ static int s_aws_socks5_full_test_context_create_destroy_fn(struct aws_allocator
     s_aws_socks5_tcp_test_context_clean_up(&context);
 
     aws_byte_buf_clean_up(&to_send);
+    aws_byte_buf_clean_up(&sent_data);
+    aws_byte_buf_clean_up(&received_data);
 
     aws_io_library_clean_up();
 

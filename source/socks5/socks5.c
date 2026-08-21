@@ -317,14 +317,14 @@ static void s_build_connect_request(struct aws_socks5_proxy_impl *impl) {
     size_t requiredBytes = 7 + impl->remote_host.len;
     aws_byte_buf_reserve(&impl->write_buffer, requiredBytes);
 
-    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_VERSION);                              // version byte
-    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_TYPE_CONNECT);                 // command byte
-    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_RESERVED_VALUE);               // reserved byte
-    aws_byte_buf_write_u8(&impl->write_buffer, AWS_SOCKS5_ADDRESS_TYPE_DOMAIN_NAME);        // address type byte
-    aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)impl->remote_host.len); // address length byte
+    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_VERSION);                       // version byte
+    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_TYPE_CONNECT);          // command byte
+    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS_COMMAND_RESERVED_VALUE);        // reserved byte
+    aws_byte_buf_write_u8(&impl->write_buffer, AWS_SOCKS5_ADDRESS_TYPE_DOMAIN_NAME); // address type byte
+    aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)impl->remote_host.len);      // address length byte
 
     struct aws_byte_cursor connect_cursor = aws_byte_cursor_from_buf(&impl->remote_host);
-    aws_byte_buf_append(&impl->write_buffer, &connect_cursor);                   // address
+    aws_byte_buf_append(&impl->write_buffer, &connect_cursor);       // address
     aws_byte_buf_write_be16(&impl->write_buffer, impl->remote_port); // port
 
     impl->pending_write_data = aws_byte_cursor_from_buf(&impl->write_buffer);

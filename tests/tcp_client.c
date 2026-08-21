@@ -130,8 +130,7 @@ static struct aws_tcp_client_task *s_aws_tcp_client_task_new(
     struct aws_allocator *allocator,
     struct aws_tcp_client *client,
     aws_task_fn *task_fn) {
-    struct aws_tcp_client_task *task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client_task));
+    struct aws_tcp_client_task *task = aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client_task));
 
     task->allocator = allocator;
     task->client = client;
@@ -140,7 +139,6 @@ static struct aws_tcp_client_task *s_aws_tcp_client_task_new(
 
     return task;
 }
-
 
 static void s_on_external_ref_count_zero_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
@@ -172,7 +170,8 @@ static void s_on_external_ref_count_zero_task_fn(struct aws_task *task, void *ar
 static void s_aws_tcp_client_on_external_ref_count_zero(void *data) {
     struct aws_tcp_client *client = data;
 
-    struct aws_tcp_client_task *task = s_aws_tcp_client_task_new(client->allocator, client, s_on_external_ref_count_zero_task_fn);
+    struct aws_tcp_client_task *task =
+        s_aws_tcp_client_task_new(client->allocator, client, s_on_external_ref_count_zero_task_fn);
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
 }
 
@@ -266,7 +265,9 @@ static size_t s_tcp_client_channel_handler_message_overhead(struct aws_channel_h
 }
 
 static void s_tcp_client_channel_handler_destroy(struct aws_channel_handler *handler) {
-    (void)handler;
+    struct aws_tcp_client *client = handler->impl;
+
+    aws_ref_count_release(&client->internal_ref_count);
 }
 
 static struct aws_channel_handler_vtable s_tcp_client_channel_handler_vtable = {
@@ -341,8 +342,6 @@ static void s_aws_tcp_client_on_channel_shutdown_fn(
     if (client->config->on_disconnection_callback) {
         (*client->config->on_disconnection_callback)(client->shutdown_error_code, client->config->user_data);
     }
-
-    aws_ref_count_release(&client->internal_ref_count);
 }
 
 static void s_aws_tcp_client_connect(struct aws_tcp_client *client) {
@@ -391,10 +390,9 @@ static void s_aws_tcp_client_connect_task_fn(struct aws_task *task, void *arg, e
     s_aws_tcp_client_task_destroy(client_task);
 }
 
-
-
 void aws_tcp_client_connect(struct aws_tcp_client *client) {
-    struct aws_tcp_client_task *task = s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_connect_task_fn);
+    struct aws_tcp_client_task *task =
+        s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_connect_task_fn);
 
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
 }
@@ -427,7 +425,8 @@ static void s_aws_tcp_client_disconnect_task_fn(struct aws_task *task, void *arg
 }
 
 void aws_tcp_client_disconnect(struct aws_tcp_client *client) {
-    struct aws_tcp_client_task *task = s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_disconnect_task_fn);
+    struct aws_tcp_client_task *task =
+        s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_disconnect_task_fn);
 
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
 }
@@ -583,10 +582,12 @@ void aws_tcp_client_test_context_init(
         .remote_port = options->remote_port,
         .proxy_config = options->proxy_config,
         .bootstrap = context->bootstrap,
-        .socket_options = {
-            .type = AWS_SOCKET_STREAM,
-            .domain = AWS_SOCKET_IPV4,
-        },
+        .socket_options =
+            {
+                .type = AWS_SOCKET_STREAM,
+                .domain = AWS_SOCKET_IPV4,
+                .connect_timeout_ms = 10000,
+            },
         .on_connection_result_callback = s_aws_tcp_client_test_context_on_connection_result_callback,
         .on_disconnection_callback = s_aws_tcp_client_test_context_on_disconnection_callback,
         .on_data_callback = s_aws_tcp_client_test_context_on_data_callback,
@@ -605,7 +606,8 @@ static bool s_aws_tcp_client_test_context_is_destroyed(void *user_data) {
 
 static void s_aws_tcp_client_test_context_wait_on_destroyed(struct aws_tcp_client_test_context *context) {
     aws_mutex_lock(&context->lock);
-    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_is_destroyed, context);
+    aws_condition_variable_wait_pred(
+        &context->signal, &context->lock, s_aws_tcp_client_test_context_is_destroyed, context);
     aws_mutex_unlock(&context->lock);
 }
 
@@ -634,7 +636,8 @@ static bool s_aws_tcp_client_test_context_has_connection_result(void *user_data)
 
 int aws_tcp_client_test_context_wait_on_connection_result(struct aws_tcp_client_test_context *context) {
     aws_mutex_lock(&context->lock);
-    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_has_connection_result, context);
+    aws_condition_variable_wait_pred(
+        &context->signal, &context->lock, s_aws_tcp_client_test_context_has_connection_result, context);
     int error_code = context->sync.connection_error_code;
     aws_mutex_unlock(&context->lock);
 
@@ -649,7 +652,8 @@ static bool s_aws_tcp_client_test_context_has_disconnection_result(void *user_da
 
 int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_client_test_context *context) {
     aws_mutex_lock(&context->lock);
-    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_has_disconnection_result, context);
+    aws_condition_variable_wait_pred(
+        &context->signal, &context->lock, s_aws_tcp_client_test_context_has_disconnection_result, context);
     int error_code = context->sync.disconnection_error_code;
     aws_mutex_unlock(&context->lock);
 
@@ -661,7 +665,7 @@ void aws_tcp_client_test_context_send_data(struct aws_tcp_client_test_context *c
     aws_byte_buf_append_dynamic(&context->sync.sent_data, &data);
     aws_mutex_unlock(&context->lock);
 
-   aws_tcp_client_send(context->client, data);
+    aws_tcp_client_send(context->client, data);
 }
 
 struct aws_tcp_client_test_received_bytes_context {
@@ -675,7 +679,9 @@ static bool s_aws_tcp_client_test_context_has_received_bytes(void *user_data) {
     return context->context->sync.received_data.len == context->received_bytes;
 }
 
-void aws_tcp_client_test_context_wait_on_received_bytes(struct aws_tcp_client_test_context *context, size_t received_bytes) {
+void aws_tcp_client_test_context_wait_on_received_bytes(
+    struct aws_tcp_client_test_context *context,
+    size_t received_bytes) {
     aws_mutex_lock(&context->lock);
 
     struct aws_tcp_client_test_received_bytes_context received_bytes_context = {
@@ -683,18 +689,23 @@ void aws_tcp_client_test_context_wait_on_received_bytes(struct aws_tcp_client_te
         .received_bytes = received_bytes,
     };
 
-    aws_condition_variable_wait_pred(&context->signal, &context->lock, s_aws_tcp_client_test_context_has_received_bytes, &received_bytes_context);
+    aws_condition_variable_wait_pred(
+        &context->signal, &context->lock, s_aws_tcp_client_test_context_has_received_bytes, &received_bytes_context);
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_tcp_client_test_context_get_sent_bytes(struct aws_tcp_client_test_context *context, struct aws_byte_buf *bytes) {
+void aws_tcp_client_test_context_get_sent_bytes(
+    struct aws_tcp_client_test_context *context,
+    struct aws_byte_buf *bytes) {
     aws_mutex_lock(&context->lock);
     struct aws_byte_cursor sent_data = aws_byte_cursor_from_buf(&context->sync.sent_data);
     aws_byte_buf_append_dynamic(bytes, &sent_data);
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_tcp_client_test_context_get_received_bytes(struct aws_tcp_client_test_context *context, struct aws_byte_buf *bytes) {
+void aws_tcp_client_test_context_get_received_bytes(
+    struct aws_tcp_client_test_context *context,
+    struct aws_byte_buf *bytes) {
     aws_mutex_lock(&context->lock);
     struct aws_byte_cursor received_data = aws_byte_cursor_from_buf(&context->sync.received_data);
     aws_byte_buf_append_dynamic(bytes, &received_data);
