@@ -421,7 +421,7 @@ AWS_TEST_CASE(aws_socks5_echo_success_windowed_5000_256, s_aws_socks5_echo_succe
 static int s_aws_socks5_echo_success_windowed_500000_80000_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_large_window_echo_success_test(allocator, 100000, 80000, 0, 1));
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_large_window_echo_success_test(allocator, 500000, 80000, 0, 100));
 
     return AWS_OP_SUCCESS;
 }
