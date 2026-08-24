@@ -38,6 +38,8 @@ struct aws_tcp_client_options {
     aws_tcp_client_on_destroyed_callback on_destroyed_callback;
 
     void *user_data;
+
+    size_t window_size;
 };
 
 struct aws_tcp_client_test_context_options {
@@ -47,6 +49,8 @@ struct aws_tcp_client_test_context_options {
     struct aws_l4_proxy_config *proxy_config;
 
     struct aws_event_loop_group *elg;
+
+    size_t window_size;
 };
 
 struct aws_tcp_client_test_context {
@@ -104,6 +108,8 @@ AWS_IO_API void aws_tcp_client_test_context_get_sent_bytes(
 AWS_IO_API void aws_tcp_client_test_context_get_received_bytes(
     struct aws_tcp_client_test_context *context,
     struct aws_byte_buf *bytes);
+
+AWS_IO_API void aws_tcp_client_test_context_reset_data(struct aws_tcp_client_test_context *context);
 
 AWS_EXTERN_C_END
 

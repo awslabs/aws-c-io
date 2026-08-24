@@ -63,14 +63,19 @@ struct aws_socks5_tcp_test_context {
     struct aws_tcp_client_test_context tcp_client_context;
 };
 
-typedef void (*socks5_server_options_override_fn)(struct aws_socks5_server_test_context_options *socks5_server_options);
-typedef void (*tcp_client_options_override_fn)(struct aws_tcp_client_test_context_options *tcp_client_options);
+typedef void(socks5_server_options_override_fn)(struct aws_socks5_server_test_context_options *socks5_server_options);
+typedef void(tcp_client_options_override_fn)(struct aws_tcp_client_test_context_options *tcp_client_options);
+
+struct aws_socks5_tcp_test_context_options {
+    socks5_server_options_override_fn *socks5_server_options_override;
+    struct aws_socks5_proxy_negotiation_strategy *strategy;
+    tcp_client_options_override_fn *tcp_client_options_override;
+};
 
 static void s_aws_socks5_tcp_test_context_init(
     struct aws_socks5_tcp_test_context *context,
     struct aws_allocator *allocator,
-    socks5_server_options_override_fn *socks5_override_fn,
-    struct aws_socks5_proxy_negotiation_strategy *strategy) {
+    struct aws_socks5_tcp_test_context_options *context_options) {
     AWS_ZERO_STRUCT(*context);
 
     context->allocator = allocator;
@@ -87,8 +92,8 @@ static void s_aws_socks5_tcp_test_context_init(
         .elg = context->elg,
     };
 
-    if (socks5_override_fn) {
-        (*socks5_override_fn)(&socks5_test_context_options);
+    if (context_options->socks5_server_options_override) {
+        (*context_options->socks5_server_options_override)(&socks5_test_context_options);
     }
 
     aws_socks5_server_test_context_init(&context->socks5_server_context, allocator, &socks5_test_context_options);
@@ -97,7 +102,7 @@ static void s_aws_socks5_tcp_test_context_init(
     struct aws_socks5_proxy_options proxy_options = {
         .proxy_host = aws_byte_cursor_from_c_str("127.0.0.1"),
         .proxy_port = aws_socks5_server_get_listener_port(context->socks5_server_context.server),
-        .negotiation_strategy = strategy,
+        .negotiation_strategy = context_options->strategy,
         .negotiation_timeout_ms = 10000,
     };
 
@@ -109,6 +114,10 @@ static void s_aws_socks5_tcp_test_context_init(
         .proxy_config = context->proxy_config,
         .elg = context->elg,
     };
+
+    if (context_options->tcp_client_options_override) {
+        (*context_options->tcp_client_options_override)(&tcp_client_test_context_options);
+    }
 
     aws_tcp_client_test_context_init(&context->tcp_client_context, allocator, &tcp_client_test_context_options);
 }
@@ -126,8 +135,10 @@ static int s_aws_socks5_connect_success_fn(struct aws_allocator *allocator, void
 
     aws_io_library_init(allocator);
 
+    struct aws_socks5_tcp_test_context_options context_options = {};
+
     struct aws_socks5_tcp_test_context context;
-    s_aws_socks5_tcp_test_context_init(&context, allocator, NULL, NULL);
+    s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
 
     aws_tcp_client_connect(context.tcp_client_context.client);
     aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
@@ -158,7 +169,8 @@ static int s_aws_socks5_do_send_success_test(
     struct aws_byte_cursor to_send_cursor = aws_byte_cursor_from_buf(&to_send);
 
     while (to_send_cursor.len > 0) {
-        struct aws_byte_cursor chunk_cursor = aws_byte_cursor_advance(&to_send_cursor, chunk_size);
+        size_t advance_size = aws_min_size(chunk_size, to_send_cursor.len);
+        struct aws_byte_cursor chunk_cursor = aws_byte_cursor_advance(&to_send_cursor, advance_size);
         if (chunk_cursor.len > 0) {
             aws_tcp_client_test_context_send_data(client_context, chunk_cursor);
         }
@@ -189,32 +201,43 @@ static int s_aws_socks5_do_send_success_test(
 }
 
 static int s_aws_socks5_do_echo_success_test(
-    struct aws_allocator *allocator,
+    struct aws_socks5_tcp_test_context *context,
     size_t total_bytes,
     size_t chunk_size,
     uint64_t chunk_delay_millis) {
-    aws_io_library_init(allocator);
 
-    struct aws_socks5_tcp_test_context context;
-    s_aws_socks5_tcp_test_context_init(&context, allocator, NULL, NULL);
-
-    aws_tcp_client_connect(context.tcp_client_context.client);
-    aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
+    aws_tcp_client_connect(context->tcp_client_context.client);
+    aws_tcp_client_test_context_wait_on_connection_result(&context->tcp_client_context);
 
     ASSERT_SUCCESS(
-        s_aws_socks5_do_send_success_test(&context.tcp_client_context, total_bytes, chunk_size, chunk_delay_millis));
+        s_aws_socks5_do_send_success_test(&context->tcp_client_context, total_bytes, chunk_size, chunk_delay_millis));
 
-    s_aws_socks5_tcp_test_context_clean_up(&context);
+    s_aws_socks5_tcp_test_context_clean_up(context);
 
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
 
+static int s_aws_socks5_do_no_auth_echo_success_test(
+    struct aws_allocator *allocator,
+    size_t total_bytes,
+    size_t chunk_size,
+    uint64_t chunk_delay_millis) {
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_tcp_test_context_options context_options = {};
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
+
+    return s_aws_socks5_do_echo_success_test(&context, total_bytes, chunk_size, chunk_delay_millis);
+}
+
 static int s_aws_socks5_echo_success_256_256_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_echo_success_test(allocator, 256, 256, 0));
 
     return AWS_OP_SUCCESS;
 }
@@ -224,7 +247,7 @@ AWS_TEST_CASE(aws_socks5_echo_success_256_256, s_aws_socks5_echo_success_256_256
 static int s_aws_socks5_echo_success_1024_256_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_echo_success_test(allocator, 1024, 256, 0));
 
     return AWS_OP_SUCCESS;
 }
@@ -234,7 +257,7 @@ AWS_TEST_CASE(aws_socks5_echo_success_1024_256, s_aws_socks5_echo_success_1024_2
 static int s_aws_socks5_echo_success_5000_256_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_echo_success_test(allocator, 5000, 256, 0));
 
     return AWS_OP_SUCCESS;
 }
@@ -244,28 +267,15 @@ AWS_TEST_CASE(aws_socks5_echo_success_5000_256, s_aws_socks5_echo_success_5000_2
 static int s_aws_socks5_echo_success_65536_16384_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_socks5_do_echo_success_test(allocator, 256, 256, 0));
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_echo_success_test(allocator, 65536, 16384, 0));
 
     return AWS_OP_SUCCESS;
 }
 
 AWS_TEST_CASE(aws_socks5_echo_success_65536_16384, s_aws_socks5_echo_success_65536_16384_fn)
 
-static struct aws_socks5_proxy_negotiation_strategy *s_build_no_auth_strategy(struct aws_allocator *allocator) {
-    return aws_socks5_proxy_negotiation_strategy_new_no_auth(allocator);
-}
-
 static const char s_good_username[] = "hello";
 static const char s_good_password[] = "world";
-
-static struct aws_socks5_proxy_negotiation_strategy *s_build_basic_auth_strategy_good(struct aws_allocator *allocator) {
-    struct aws_socks5_proxy_negotiation_basic_auth_options good_options = {
-        .username = aws_byte_cursor_from_array(s_good_username, AWS_ARRAY_SIZE(s_good_username)),
-        .password = aws_byte_cursor_from_array(s_good_password, AWS_ARRAY_SIZE(s_good_password)),
-    };
-
-    return aws_socks5_proxy_negotiation_strategy_new_basic_auth(allocator, &good_options);
-}
 
 static struct aws_socks5_proxy_negotiation_strategy *s_build_basic_auth_strategy_bad(struct aws_allocator *allocator) {
     struct aws_socks5_proxy_negotiation_basic_auth_options bad_options = {
@@ -292,3 +302,128 @@ static struct aws_socks5_server_auth_options s_good_basic_auth_options = {
     .basic_username = &s_good_username_cursor,
     .basic_password = &s_good_password_cursor,
 };
+
+static struct aws_socks5_proxy_negotiation_strategy *s_build_basic_auth_strategy_good(struct aws_allocator *allocator) {
+    struct aws_socks5_proxy_negotiation_basic_auth_options good_options = {
+        .username = s_good_username_cursor,
+        .password = s_good_password_cursor,
+    };
+
+    return aws_socks5_proxy_negotiation_strategy_new_basic_auth(allocator, &good_options);
+}
+
+static void aws_socks5_server_apply_basic_auth_override_fn(
+    struct aws_socks5_server_test_context_options *socks5_server_options) {
+    socks5_server_options->override_auth_options = &s_good_basic_auth_options;
+}
+
+static int s_aws_socks5_do_basic_auth_echo_success_test(
+    struct aws_allocator *allocator,
+    size_t total_bytes,
+    size_t chunk_size,
+    uint64_t chunk_delay_millis) {
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_proxy_negotiation_strategy *basic_auth_strategy = s_build_basic_auth_strategy_good(allocator);
+
+    struct aws_socks5_tcp_test_context_options context_options = {
+        .socks5_server_options_override = aws_socks5_server_apply_basic_auth_override_fn,
+        .strategy = basic_auth_strategy,
+    };
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
+
+    aws_socks5_proxy_negotiation_strategy_release(basic_auth_strategy);
+
+    return s_aws_socks5_do_echo_success_test(&context, total_bytes, chunk_size, chunk_delay_millis);
+}
+
+static int s_aws_socks5_echo_success_basic_auth_256_256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_basic_auth_echo_success_test(allocator, 256, 256, 0));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_basic_auth_256_256, s_aws_socks5_echo_success_basic_auth_256_256_fn)
+
+static int s_aws_socks5_echo_success_basic_auth_65536_16384_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_echo_success_test(allocator, 65536, 16384, 0));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_basic_auth_65536_16384, s_aws_socks5_echo_success_basic_auth_65536_16384_fn)
+
+static int s_aws_socks5_do_windowed_echo_success_test(
+    struct aws_socks5_tcp_test_context *context,
+    size_t total_bytes,
+    size_t chunk_size,
+    uint64_t chunk_delay_millis,
+    size_t iterations) {
+
+    aws_tcp_client_connect(context->tcp_client_context.client);
+    aws_tcp_client_test_context_wait_on_connection_result(&context->tcp_client_context);
+
+    for (size_t i = 0; i < iterations; ++i) {
+        ASSERT_SUCCESS(s_aws_socks5_do_send_success_test(
+            &context->tcp_client_context, total_bytes, chunk_size, chunk_delay_millis));
+
+        aws_tcp_client_test_context_reset_data(&context->tcp_client_context);
+    }
+
+    s_aws_socks5_tcp_test_context_clean_up(context);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+static void aws_socks5_client_apply_large_window_override_fn(
+    struct aws_tcp_client_test_context_options *tcp_client_options) {
+    tcp_client_options->window_size = 65536;
+}
+
+static int s_aws_socks5_do_no_auth_large_window_echo_success_test(
+    struct aws_allocator *allocator,
+    size_t total_bytes,
+    size_t chunk_size,
+    uint64_t chunk_delay_millis,
+    uint64_t iterations) {
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_tcp_test_context_options context_options = {
+        .tcp_client_options_override = aws_socks5_client_apply_large_window_override_fn,
+    };
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
+
+    return s_aws_socks5_do_windowed_echo_success_test(
+        &context, total_bytes, chunk_size, chunk_delay_millis, iterations);
+}
+
+static int s_aws_socks5_echo_success_windowed_5000_256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_large_window_echo_success_test(allocator, 5000, 256, 0, 100));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_windowed_5000_256, s_aws_socks5_echo_success_windowed_5000_256_fn)
+
+static int s_aws_socks5_echo_success_windowed_500000_80000_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_large_window_echo_success_test(allocator, 100000, 80000, 0, 1));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_windowed_500000_80000, s_aws_socks5_echo_success_windowed_500000_80000_fn)

@@ -30,6 +30,8 @@ struct aws_tcp_client_config {
     aws_tcp_client_on_data_callback on_data_callback;
     aws_tcp_client_on_destroyed_callback on_destroyed_callback;
     void *user_data;
+
+    size_t window_size;
 };
 
 static struct aws_tcp_client_config *s_aws_tcp_client_config_new(
@@ -48,6 +50,7 @@ static struct aws_tcp_client_config *s_aws_tcp_client_config_new(
     config->on_data_callback = options->on_data_callback;
     config->on_destroyed_callback = options->on_destroyed_callback;
     config->user_data = options->user_data;
+    config->window_size = options->window_size;
 
     return config;
 }
@@ -72,6 +75,38 @@ enum aws_tcp_client_state {
     AWS_TCS_DISCONNECTED,
 };
 
+struct aws_tcp_client_outbound_data {
+    struct aws_allocator *allocator;
+    struct aws_linked_list_node node;
+    struct aws_byte_buf data;
+    struct aws_byte_cursor remaining;
+};
+
+// extra copy but who cares atm
+static struct aws_tcp_client_outbound_data *aws_tcp_client_outbound_data_new(
+    struct aws_allocator *allocator,
+    struct aws_byte_cursor data) {
+    struct aws_tcp_client_outbound_data *data_node =
+        aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client_outbound_data));
+
+    data_node->allocator = allocator;
+    aws_byte_buf_init_copy_from_cursor(&data_node->data, allocator, data);
+    data_node->remaining = aws_byte_cursor_from_buf(&data_node->data);
+
+    return data_node;
+}
+
+static void aws_tcp_client_outbound_data_destroy(struct aws_tcp_client_outbound_data *data) {
+    if (data == NULL) {
+        return;
+    }
+
+    // assumes already removed from list
+
+    aws_byte_buf_clean_up(&data->data);
+    aws_mem_release(data->allocator, data);
+}
+
 struct aws_tcp_client {
     struct aws_allocator *allocator;
 
@@ -87,7 +122,77 @@ struct aws_tcp_client {
 
     enum aws_tcp_client_state state;
     int shutdown_error_code;
+
+    struct aws_linked_list outbound_data_queue;
+    struct aws_channel_task write_task;
+    bool is_write_scheduled;
 };
+
+void s_aws_tcp_client_schedule_write_if_needed(struct aws_tcp_client *client) {
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
+
+    if (client->is_write_scheduled) {
+        return;
+    }
+
+    if (client->state != AWS_TCS_CONNECTED || client->channel == NULL) {
+        return;
+    }
+
+    if (aws_linked_list_empty(&client->outbound_data_queue)) {
+        return;
+    }
+
+    client->is_write_scheduled = true;
+    aws_channel_schedule_task_now(client->channel, &client->write_task);
+}
+
+static void s_aws_tcp_client_on_message_write_completed(
+    struct aws_channel *channel,
+    struct aws_io_message *message,
+    int err_code,
+    void *user_data) {
+
+    struct aws_tcp_client *client = user_data;
+
+    s_aws_tcp_client_schedule_write_if_needed(client);
+}
+
+void s_aws_tcp_client_write_task_fn(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+    struct aws_tcp_client *client = arg;
+
+    client->is_write_scheduled = false;
+
+    if (aws_linked_list_empty(&client->outbound_data_queue)) {
+        return;
+    }
+
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        return;
+    }
+
+    struct aws_io_message *message =
+        aws_channel_acquire_message_from_pool(client->channel, AWS_IO_MESSAGE_APPLICATION_DATA, 16 * 1024);
+
+    struct aws_linked_list_node *node = aws_linked_list_front(&client->outbound_data_queue);
+    struct aws_tcp_client_outbound_data *data_entry = AWS_CONTAINER_OF(node, struct aws_tcp_client_outbound_data, node);
+
+    size_t advance = aws_min_size(message->message_data.capacity, data_entry->remaining.len);
+    struct aws_byte_cursor to_write = aws_byte_cursor_advance(&data_entry->remaining, advance);
+
+    aws_byte_buf_append(&message->message_data, &to_write);
+    message->on_completion = s_aws_tcp_client_on_message_write_completed;
+    message->user_data = client;
+
+    if (aws_channel_slot_send_message(client->channel_handler.slot, message, AWS_CHANNEL_DIR_WRITE)) {
+        aws_mem_release(message->allocator, message);
+    }
+
+    if (data_entry->remaining.len == 0) {
+        aws_linked_list_pop_front(&client->outbound_data_queue);
+        aws_tcp_client_outbound_data_destroy(data_entry);
+    }
+}
 
 static void s_aws_tcp_client_update_error_code(struct aws_tcp_client *client, int error_code) {
     if (client->shutdown_error_code == AWS_ERROR_SUCCESS) {
@@ -104,6 +209,14 @@ static void s_aws_tcp_client_on_internal_ref_count_zero(void *data) {
     void *user_data = client->config->user_data;
 
     s_aws_tcp_client_config_destroy(client->config);
+
+    while (!aws_linked_list_empty(&client->outbound_data_queue)) {
+        struct aws_linked_list_node *node = aws_linked_list_pop_front(&client->outbound_data_queue);
+        struct aws_tcp_client_outbound_data *data_entry =
+            AWS_CONTAINER_OF(node, struct aws_tcp_client_outbound_data, node);
+
+        aws_tcp_client_outbound_data_destroy(data_entry);
+    }
 
     aws_mem_release(client->allocator, client);
 
@@ -186,6 +299,10 @@ struct aws_tcp_client *aws_tcp_client_new(struct aws_allocator *allocator, struc
     client->loop = aws_event_loop_group_get_next_loop(client->config->bootstrap->event_loop_group);
     client->state = AWS_TCS_DISCONNECTED;
 
+    aws_linked_list_init(&client->outbound_data_queue);
+
+    aws_channel_task_init(&client->write_task, s_aws_tcp_client_write_task_fn, client, "tcpclientwrite");
+
     return client;
 }
 
@@ -223,12 +340,14 @@ static int s_tcp_client_channel_handler_process_read_message(
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
-    if (client->config->on_data_callback) {
-        struct aws_byte_cursor data = aws_byte_cursor_from_buf(&message->message_data);
-        aws_byte_cursor_advance(&data, message->copy_mark);
+    struct aws_byte_cursor data = aws_byte_cursor_from_buf(&message->message_data);
+    aws_byte_cursor_advance(&data, message->copy_mark);
 
+    if (client->config->on_data_callback) {
         (*client->config->on_data_callback)(data, client->config->user_data);
     }
+
+    aws_channel_slot_increment_read_window(slot, data.len);
 
     aws_mem_release(message->allocator, message);
 
@@ -252,8 +371,28 @@ static int s_tcp_client_channel_handler_shutdown(
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 
-static size_t s_tcp_client_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
+static int s_tcp_client_increment_read_window(
+    struct aws_channel_handler *handler,
+    struct aws_channel_slot *slot,
+    size_t size) {
     (void)handler;
+
+    uint64_t new_size = aws_add_size_saturating(size, slot->window_size);
+    uint64_t increment = new_size - slot->window_size;
+
+    if (increment > 0) {
+        aws_channel_slot_increment_read_window(slot, increment);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+static size_t s_tcp_client_channel_handler_initial_window_size(struct aws_channel_handler *handler) {
+    struct aws_tcp_client *client = handler->impl;
+
+    if (client->config->window_size > 0) {
+        return client->config->window_size;
+    }
 
     return SIZE_MAX;
 }
@@ -273,7 +412,7 @@ static void s_tcp_client_channel_handler_destroy(struct aws_channel_handler *han
 static struct aws_channel_handler_vtable s_tcp_client_channel_handler_vtable = {
     .process_read_message = s_tcp_client_channel_handler_process_read_message,
     .process_write_message = NULL,
-    .increment_read_window = NULL,
+    .increment_read_window = s_tcp_client_increment_read_window,
     .shutdown = s_tcp_client_channel_handler_shutdown,
     .initial_window_size = s_tcp_client_channel_handler_initial_window_size,
     .message_overhead = s_tcp_client_channel_handler_message_overhead,
@@ -361,7 +500,7 @@ static void s_aws_tcp_client_connect(struct aws_tcp_client *client) {
         .creation_callback = NULL,
         .setup_callback = s_aws_tcp_client_on_channel_setup_fn,
         .shutdown_callback = s_aws_tcp_client_on_channel_shutdown_fn,
-        .enable_read_back_pressure = false,
+        .enable_read_back_pressure = client->config->window_size > 0,
         .user_data = client,
         .requested_event_loop = client->loop,
         .host_resolution_override_config = NULL,
@@ -452,13 +591,10 @@ static void s_aws_tcp_client_send(struct aws_tcp_client *client, struct aws_byte
         return;
     }
 
-    struct aws_io_message *message =
-        aws_channel_acquire_message_from_pool(client->channel, AWS_IO_MESSAGE_APPLICATION_DATA, data.len);
-    aws_byte_buf_append(&message->message_data, &data);
+    struct aws_tcp_client_outbound_data *data_entry = aws_tcp_client_outbound_data_new(client->allocator, data);
+    aws_linked_list_push_back(&client->outbound_data_queue, &data_entry->node);
 
-    if (aws_channel_slot_send_message(client->channel_handler.slot, message, AWS_CHANNEL_DIR_WRITE)) {
-        aws_mem_release(message->allocator, message);
-    }
+    s_aws_tcp_client_schedule_write_if_needed(client);
 }
 
 static void s_aws_tcp_client_send_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
@@ -595,6 +731,10 @@ void aws_tcp_client_test_context_init(
         .user_data = context,
     };
 
+    if (options->window_size > 0) {
+        client_options.window_size = options->window_size;
+    }
+
     context->client = aws_tcp_client_new(allocator, &client_options);
 }
 
@@ -709,5 +849,12 @@ void aws_tcp_client_test_context_get_received_bytes(
     aws_mutex_lock(&context->lock);
     struct aws_byte_cursor received_data = aws_byte_cursor_from_buf(&context->sync.received_data);
     aws_byte_buf_append_dynamic(bytes, &received_data);
+    aws_mutex_unlock(&context->lock);
+}
+
+void aws_tcp_client_test_context_reset_data(struct aws_tcp_client_test_context *context) {
+    aws_mutex_lock(&context->lock);
+    aws_byte_buf_reset(&context->sync.sent_data, false);
+    aws_byte_buf_reset(&context->sync.received_data, false);
     aws_mutex_unlock(&context->lock);
 }

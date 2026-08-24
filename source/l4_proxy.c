@@ -106,7 +106,11 @@ static void s_service_l4_proxy_negotiation(
     context.status = handler->status;
     context.to_write = &output_message->message_data;
 
+    size_t pre_consumed_bytes = fragment_cursor.len;
     int negotiation_result = s_drive_negotiation_l4_proxy(handler, &context);
+    size_t consumed_bytes = pre_consumed_bytes - fragment_cursor.len;
+    aws_channel_slot_increment_read_window(handler->channel_handler.slot, consumed_bytes);
+
     if (message) {
         aws_mem_release(message->allocator, message);
     }
@@ -213,8 +217,6 @@ static int s_increment_read_window_l4_proxy(
     struct aws_channel_handler *handler,
     struct aws_channel_slot *slot,
     size_t size) {
-    (void)slot;
-    (void)size;
 
     struct aws_l4_proxy_channel_handler *l4_proxy_handler = handler->impl;
 
@@ -223,6 +225,9 @@ static int s_increment_read_window_l4_proxy(
         if (size < slot->window_size) {
             return aws_raise_error(AWS_ERROR_INVALID_STATE);
         }
+
+        // by syncing ourselves to the new downstream, anything that works for us will work for our downstream
+        size -= slot->window_size;
     }
 
     uint64_t new_size = aws_add_size_saturating(size, slot->window_size);
