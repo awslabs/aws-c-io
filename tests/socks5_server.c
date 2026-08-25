@@ -37,6 +37,8 @@ struct aws_socks5_server_config {
 
     struct aws_socks5_server_auth_config *auth_config;
 
+    enum aws_socks5_server_fault_mode fault_mode;
+
     void (*on_setup)(struct aws_socks5_server *server, int error_code, void *user_data);
     void *on_setup_user_data;
 
@@ -199,6 +201,7 @@ static struct aws_socks5_server_config *s_aws_socks5_server_config_new(
     config->on_setup_user_data = options->on_setup_user_data;
     config->on_destroy = options->on_destroy;
     config->on_destroy_user_data = options->on_destroy_user_data;
+    config->fault_mode = options->fault_mode;
 
     return config;
 }
@@ -560,13 +563,20 @@ static bool s_methods_contains(struct aws_byte_cursor methods, uint8_t method) {
     return false;
 }
 
+enum aws_socks5_version_code {
+    AWS_SOCKS5_VERSION_5 = 0x05,
+    AWS_SOCKS5_VERSION_BAD = 0x7F,
+};
+
 static int s_send_method_selection(struct aws_socks5_tunnel *tunnel, enum aws_socks5_auth_method_ids method) {
     tunnel->selected_auth_method = method;
 
     struct aws_io_message *message =
         aws_channel_acquire_message_from_pool(tunnel->to_client, AWS_IO_MESSAGE_APPLICATION_DATA, 2);
 
-    uint8_t method_selection_data[2] = {0x05, method};
+    uint8_t version_code = (tunnel->server->config->fault_mode == AWS_SOCKS5_SFM_BAD_VERSION) ? AWS_SOCKS5_VERSION_BAD
+                                                                                              : AWS_SOCKS5_VERSION_5;
+    uint8_t method_selection_data[2] = {version_code, method};
 
     struct aws_byte_cursor method_selection_data_cursor =
         aws_byte_cursor_from_array(method_selection_data, AWS_ARRAY_SIZE(method_selection_data));
@@ -889,6 +899,11 @@ static int s_handle_command(struct aws_socks5_tunnel *tunnel, struct aws_io_mess
         return aws_raise_error(AWS_IO_SOCKS5_PROTOCOL_FAILURE);
     }
 
+    if (tunnel->server->config->fault_mode == AWS_SOCKS5_SFM_REMOTE_UNAVAILABLE) {
+        s_send_connect_response(tunnel, AWS_SOCKS5_CRC_HOST_UNREACHABLE);
+        return AWS_OP_SUCCESS;
+    }
+
     struct aws_byte_cursor remote_host_name =
         aws_byte_cursor_from_array(tunnel->handshake_data.buffer + 5, address_length);
     tunnel->remote_host_name = aws_string_new_from_cursor(tunnel->allocator, &remote_host_name);
@@ -1201,6 +1216,7 @@ void aws_socks5_server_test_context_init(
                 .allow_no_auth = true,
                 .allow_basic_auth = false,
             },
+        .fault_mode = options->fault_mode,
         .on_setup = s_aws_socks5_server_test_context_on_server_setup,
         .on_setup_user_data = context,
         .on_destroy = s_aws_socks5_server_test_context_on_server_destroy,

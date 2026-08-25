@@ -21,6 +21,19 @@ struct aws_server_bootstrap;
 
 struct aws_socks5_server;
 
+// tells the server to fail in particular ways
+enum aws_socks5_server_fault_mode {
+
+    // don't fail, defult
+    AWS_SOCKS5_SFM_NONE,
+
+    // send back a bad version code in the hello response
+    AWS_SOCKS5_SFM_BAD_VERSION,
+
+    // don't try to connect to the remote, just send a response that says it's unavailable
+    AWS_SOCKS5_SFM_REMOTE_UNAVAILABLE,
+};
+
 struct aws_socks5_server_auth_options {
     bool allow_no_auth;
     bool allow_basic_auth;
@@ -40,6 +53,8 @@ struct aws_socks5_server_options {
 
     struct aws_socks5_server_auth_options auth_options;
 
+    enum aws_socks5_server_fault_mode fault_mode;
+
     void (*on_setup)(struct aws_socks5_server *server, int error_code, void *user_data);
     void *on_setup_user_data;
 
@@ -51,6 +66,8 @@ struct aws_socks5_server_test_context_options {
     struct aws_event_loop_group *elg;
 
     struct aws_socks5_server_auth_options *override_auth_options;
+
+    enum aws_socks5_server_fault_mode fault_mode;
 };
 
 struct aws_socks5_server_test_context {
