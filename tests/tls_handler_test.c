@@ -2921,7 +2921,15 @@ static int s_tls_ctx_new_invalid_ca_cert_rejected_fn(struct aws_allocator *alloc
 
     struct aws_tls_ctx_options tls_options;
     AWS_ZERO_STRUCT(tls_options);
-    aws_tls_ctx_options_init_default_client(&tls_options, allocator);
+
+    struct aws_byte_buf cert_buf = {0};
+    struct aws_byte_buf key_buf = {0};
+
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
+    struct aws_byte_cursor cert_cur = aws_byte_cursor_from_buf(&cert_buf);
+    struct aws_byte_cursor key_cur = aws_byte_cursor_from_buf(&key_buf);
+    ASSERT_SUCCESS(aws_tls_ctx_options_init_client_mtls(&tls_options, allocator, &cert_cur, &key_cur));
 
     struct aws_byte_cursor ca_cur = aws_byte_cursor_from_c_str(s_empty_body_ca);
     ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur));
@@ -2934,6 +2942,8 @@ static int s_tls_ctx_new_invalid_ca_cert_rejected_fn(struct aws_allocator *alloc
         error == AWS_ERROR_PEM_MALFORMED || error == AWS_IO_TLS_CTX_ERROR || error == AWS_IO_FILE_VALIDATION_FAILURE);
 
     aws_tls_ctx_options_clean_up(&tls_options);
+    aws_byte_buf_clean_up(&cert_buf);
+    aws_byte_buf_clean_up(&key_buf);
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;

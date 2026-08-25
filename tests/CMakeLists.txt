@@ -324,7 +324,6 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(test_ecc_cert_import)
     add_net_test_case(test_tls_cipher_preference)
     add_test_case(tls_ctx_new_empty_ca_cert_rejected)
-    add_test_case(tls_ctx_new_invalid_ca_cert_rejected)
 
 if(NOT AWS_USE_SECITEM)
     # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
@@ -346,6 +345,9 @@ if(NOT AWS_USE_SECITEM)
     # TLS statistics tracks and handles the timeout of TLS. Using SecItem, the TLS handshake takes place within
     # the socket establishment and does not need a separate timeout task for TLS.
     add_net_test_case(tls_channel_statistics_test)
+
+    # Uses mTLS; skipped on SecItem because keychain import needs entitlements CI lacks.
+    add_test_case(tls_ctx_new_invalid_ca_cert_rejected)
 endif()
 
     add_test_case(alpn_error_creating_handler)
