@@ -947,7 +947,11 @@ int aws_import_trusted_certificates(
     }
     aws_mutex_unlock(&s_sec_mutex);
 
-    *certs = temp_cert_array;
+    if (err == AWS_OP_SUCCESS) {
+        *certs = temp_cert_array;
+    } else {
+        CFRelease(temp_cert_array);
+    }
     aws_pem_objects_clean_up(&certificates);
     aws_array_list_clean_up(&certificates);
     return err;
