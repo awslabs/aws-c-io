@@ -2910,4 +2910,35 @@ static int s_tls_ctx_new_empty_ca_cert_rejected_fn(struct aws_allocator *allocat
 
 AWS_TEST_CASE(tls_ctx_new_empty_ca_cert_rejected, s_tls_ctx_new_empty_ca_cert_rejected_fn)
 
+/* Regression test for PEM cert, which contains valid base64 but itself is invalid. */
+static int s_tls_ctx_new_invalid_ca_cert_rejected_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    static const char *s_empty_body_ca = "-----BEGIN CERTIFICATE-----\n"
+                                         "MIICeDCCAeGgAwIBAgIJAObttnPKQhVlMA0GCSqGSIb3DQEBDgUAMF8xCzAJBgNV\n"
+                                         "-----END CERTIFICATE-----";
+
+    struct aws_tls_ctx_options tls_options;
+    AWS_ZERO_STRUCT(tls_options);
+    aws_tls_ctx_options_init_default_client(&tls_options, allocator);
+
+    struct aws_byte_cursor ca_cur = aws_byte_cursor_from_c_str(s_empty_body_ca);
+    ASSERT_SUCCESS(aws_tls_ctx_options_override_default_trust_store(&tls_options, &ca_cur));
+
+    struct aws_tls_ctx *tls_context = aws_tls_client_ctx_new(allocator, &tls_options);
+
+    ASSERT_NULL(tls_context);
+    int error = aws_last_error();
+    ASSERT_TRUE(
+        error == AWS_ERROR_PEM_MALFORMED || error == AWS_IO_TLS_CTX_ERROR || error == AWS_IO_FILE_VALIDATION_FAILURE);
+
+    aws_tls_ctx_options_clean_up(&tls_options);
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(tls_ctx_new_invalid_ca_cert_rejected, s_tls_ctx_new_invalid_ca_cert_rejected_fn)
+
 #endif /* BYO_CRYPTO */

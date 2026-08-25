@@ -324,6 +324,7 @@ if(NOT BYO_CRYPTO)
     add_net_test_case(test_ecc_cert_import)
     add_net_test_case(test_tls_cipher_preference)
     add_test_case(tls_ctx_new_empty_ca_cert_rejected)
+    add_test_case(tls_ctx_new_invalid_ca_cert_rejected)
 
 if(NOT AWS_USE_SECITEM)
     # These tests require the test binary to be codesigned with an Apple Developer account with entitlements.
