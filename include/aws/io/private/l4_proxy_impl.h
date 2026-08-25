@@ -85,6 +85,8 @@ struct aws_l4_proxy_channel_handler {
     enum aws_l4_proxy_protocol_status status;
 
     struct aws_channel_slot *last_seen_right_slot;
+
+    struct aws_task *timeout_task;
 };
 
 struct aws_l4_proxy_channel_handler_options {

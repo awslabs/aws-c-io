@@ -378,6 +378,9 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKS5_CONNECT_REQUEST_FAILED,
         "Server rejected the connect request"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_SOCKS5_NEGOTIATION_TIMEOUT,
+        "Socks5 protocol negotiation took too long"),
 
 };
 /* clang-format on */

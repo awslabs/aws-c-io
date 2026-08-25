@@ -7,6 +7,9 @@
 #include <aws/io/logging.h>
 #include <aws/io/private/l4_proxy_impl.h>
 
+#include "aws/common/clock.h"
+#include "aws/io/event_loop.h"
+
 void aws_l4_proxy_config_clean_up(struct aws_l4_proxy_config *config) {
     aws_byte_buf_clean_up(&config->proxy_host);
 }
@@ -46,6 +49,17 @@ void aws_l4_proxy_config_get_proxy_address(
 
 static const size_t AWS_L4_PROXY_IO_MESSAGE_DEFAULT_LENGTH = 1024;
 static const size_t DEFAULT_L4_PROXY_WINDOW_SIZE = 1024;
+
+void s_aws_l4_proxy_cancel_timeout_task(struct aws_l4_proxy_channel_handler *handler) {
+    if (handler->timeout_task) {
+        struct aws_channel *channel = handler->channel_handler.slot->channel;
+        struct aws_event_loop *loop = aws_channel_get_event_loop(channel);
+
+        aws_event_loop_cancel_task(loop, handler->timeout_task);
+        aws_mem_release(handler->allocator, handler->timeout_task);
+        handler->timeout_task = NULL;
+    }
+}
 
 static void s_aws_l4_proxy_on_socket_write_completion(
     struct aws_channel *channel,
@@ -127,23 +141,30 @@ static void s_service_l4_proxy_negotiation(
         }
     }
 
+    bool invoke_completion_callback = false;
+    int callback_error_code = AWS_ERROR_SUCCESS;
+
     if (negotiation_result == AWS_OP_ERR || context.status == AWS_L4PPS_FAILURE) {
-        int error_code = context.error_code;
-        if (error_code == AWS_ERROR_SUCCESS) {
-            error_code = aws_last_error();
-        }
         handler->status = AWS_L4PPS_FAILURE;
 
-        if (handler->negotiation_complete_callback) {
-            (*handler->negotiation_complete_callback)(channel, error_code, handler->negotiation_complete_user_data);
+        callback_error_code = context.error_code;
+        if (callback_error_code == AWS_ERROR_SUCCESS) {
+            callback_error_code = aws_last_error();
         }
+        invoke_completion_callback = true;
     }
 
     if (handler->status == AWS_L4PPS_SUCCESS) {
+        invoke_completion_callback = true;
+    }
+
+    if (invoke_completion_callback) {
         if (handler->negotiation_complete_callback) {
             (*handler->negotiation_complete_callback)(
-                channel, AWS_ERROR_SUCCESS, handler->negotiation_complete_user_data);
+                channel, callback_error_code, handler->negotiation_complete_user_data);
         }
+
+        s_aws_l4_proxy_cancel_timeout_task(handler);
     }
 
     if (output_message != NULL) {
@@ -255,6 +276,9 @@ static int s_shutdown_l4_proxy(
 
     (void)handler;
 
+    // get this early before there's a chance the channel structure gets torn down
+    s_aws_l4_proxy_cancel_timeout_task(handler->impl);
+
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
 
@@ -291,6 +315,8 @@ static struct aws_channel_handler_vtable s_l4_proxy_channel_handle_vtable = {
 };
 
 void aws_l4_proxy_channel_handler_clean_up(struct aws_l4_proxy_channel_handler *handler) {
+    s_aws_l4_proxy_cancel_timeout_task(handler);
+
     handler->config = aws_l4_proxy_config_release(handler->config);
 }
 
@@ -314,6 +340,44 @@ void aws_l4_proxy_channel_handler_init(
     base_handler->impl = handler;
 }
 
+void s_l4_proxy_negotiation_timeout_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
+    struct aws_l4_proxy_channel_handler *handler = arg;
+
+    if (status == AWS_TASK_STATUS_RUN_READY) {
+        struct aws_channel *channel = handler->channel_handler.slot->channel;
+        aws_channel_shutdown(channel, AWS_IO_SOCKS5_NEGOTIATION_TIMEOUT);
+    }
+
+    aws_mem_release(handler->allocator, task);
+    handler->timeout_task = NULL;
+}
+
+static void s_l4_proxy_schedule_timeout_task(struct aws_l4_proxy_channel_handler *handler) {
+    uint64_t timeout_millis = handler->config->negotiation_timeout_ms;
+    if (timeout_millis == 0) {
+        return;
+    }
+
+    uint64_t now = 0;
+    if (aws_high_res_clock_get_ticks(&now)) {
+        return;
+    }
+
+    uint64_t timeout_delay_nanos =
+        aws_timestamp_convert(timeout_millis, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
+    uint64_t timeout_timepoint = aws_add_u64_saturating(timeout_delay_nanos, now);
+
+    struct aws_allocator *allocator = handler->allocator;
+    handler->timeout_task = aws_mem_calloc(allocator, 1, sizeof(struct aws_task));
+    aws_task_init(handler->timeout_task, s_l4_proxy_negotiation_timeout_task_fn, handler, "socks5_negotiation_timeout");
+
+    struct aws_channel *channel = handler->channel_handler.slot->channel;
+    struct aws_event_loop *loop = aws_channel_get_event_loop(channel);
+    aws_event_loop_schedule_task_future(loop, handler->timeout_task, timeout_timepoint);
+}
+
 void aws_l4_proxy_channel_handler_start_negotiation(struct aws_l4_proxy_channel_handler *handler) {
+    s_l4_proxy_schedule_timeout_task(handler);
+
     s_service_l4_proxy_negotiation(handler, NULL);
 }

@@ -4,6 +4,7 @@
  */
 #include <aws/io/channel_bootstrap.h>
 
+#include <aws/common/clock.h>
 #include <aws/common/ref_count.h>
 #include <aws/common/string.h>
 #include <aws/io/event_loop.h>
