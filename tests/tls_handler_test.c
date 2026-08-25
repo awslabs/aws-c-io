@@ -2910,7 +2910,9 @@ static int s_tls_ctx_new_empty_ca_cert_rejected_fn(struct aws_allocator *allocat
 
 AWS_TEST_CASE(tls_ctx_new_empty_ca_cert_rejected, s_tls_ctx_new_empty_ca_cert_rejected_fn)
 
-/* Regression test for PEM cert, which contains valid base64 but itself is invalid. */
+/* Regression test for importing PEM cert, which contains valid base64 but itself is invalid. TLS context also
+ * configures mTLS to check additional memory leaks.
+ */
 static int s_tls_ctx_new_invalid_ca_cert_rejected_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     aws_io_library_init(allocator);
