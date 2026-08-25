@@ -228,6 +228,12 @@ static int s_increment_read_window_l4_proxy(
 
         // by syncing ourselves to the new downstream, anything that works for us will work for our downstream
         size -= slot->window_size;
+        if (slot->current_window_update_batch_size > size) {
+            slot->current_window_update_batch_size = size;
+            size = 0;
+        } else {
+            size -= slot->current_window_update_batch_size;
+        }
     }
 
     uint64_t new_size = aws_add_size_saturating(size, slot->window_size);

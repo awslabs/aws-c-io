@@ -408,7 +408,7 @@ static int s_aws_socks5_do_no_auth_large_window_echo_success_test(
         &context, total_bytes, chunk_size, chunk_delay_millis, iterations);
 }
 
-static int s_aws_socks5_echo_success_windowed_5000_256_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_aws_socks5_echo_success_large_window_5000_256_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     ASSERT_SUCCESS(s_aws_socks5_do_no_auth_large_window_echo_success_test(allocator, 5000, 256, 0, 100));
@@ -416,9 +416,9 @@ static int s_aws_socks5_echo_success_windowed_5000_256_fn(struct aws_allocator *
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(aws_socks5_echo_success_windowed_5000_256, s_aws_socks5_echo_success_windowed_5000_256_fn)
+AWS_TEST_CASE(aws_socks5_echo_success_large_window_5000_256, s_aws_socks5_echo_success_large_window_5000_256_fn)
 
-static int s_aws_socks5_echo_success_windowed_500000_80000_fn(struct aws_allocator *allocator, void *ctx) {
+static int s_aws_socks5_echo_success_large_window_500000_80000_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     ASSERT_SUCCESS(s_aws_socks5_do_no_auth_large_window_echo_success_test(allocator, 500000, 80000, 0, 100));
@@ -426,4 +426,49 @@ static int s_aws_socks5_echo_success_windowed_500000_80000_fn(struct aws_allocat
     return AWS_OP_SUCCESS;
 }
 
-AWS_TEST_CASE(aws_socks5_echo_success_windowed_500000_80000, s_aws_socks5_echo_success_windowed_500000_80000_fn)
+AWS_TEST_CASE(aws_socks5_echo_success_large_window_500000_80000, s_aws_socks5_echo_success_large_window_500000_80000_fn)
+
+static void aws_socks5_client_apply_small_window_override_fn(
+    struct aws_tcp_client_test_context_options *tcp_client_options) {
+    tcp_client_options->window_size = 2000;
+}
+
+static int s_aws_socks5_do_no_auth_small_window_echo_success_test(
+    struct aws_allocator *allocator,
+    size_t total_bytes,
+    size_t chunk_size,
+    uint64_t chunk_delay_millis,
+    uint64_t iterations) {
+
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_tcp_test_context_options context_options = {
+        .tcp_client_options_override = aws_socks5_client_apply_small_window_override_fn,
+    };
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
+
+    return s_aws_socks5_do_windowed_echo_success_test(
+        &context, total_bytes, chunk_size, chunk_delay_millis, iterations);
+}
+
+static int s_aws_socks5_echo_success_small_window_5000_256_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_small_window_echo_success_test(allocator, 5000, 256, 0, 100));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_small_window_5000_256, s_aws_socks5_echo_success_small_window_5000_256_fn)
+
+static int s_aws_socks5_echo_success_small_window_500000_80000_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_small_window_echo_success_test(allocator, 500000, 80000, 0, 100));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(aws_socks5_echo_success_small_window_500000_80000, s_aws_socks5_echo_success_small_window_500000_80000_fn)
