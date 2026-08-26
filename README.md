@@ -10,6 +10,12 @@ with TLS already baked in. All of the platform and security concerns are already
 It is designed to be light-weight, fast, portable, and flexible for multiple domain use-cases such as:
 embedded, server, client, and mobile.
 
+## Versioning
+
+This library uses a three-part `Major.Minor.Patch` version scheme. See
+[VERSIONING.md](VERSIONING.md) for what each part means and our API/ABI
+stability policy.
+
 ## License
 
 This library is licensed under the Apache 2.0 License.
