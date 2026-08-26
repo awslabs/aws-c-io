@@ -1724,9 +1724,11 @@ AWS_TEST_CASE(
     s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain_fn)
 
 /* Keychain-less SecItem mTLS test. When aws-c-io is built with AWS_DONOT_USE_KEYCHAIN.*/
+#    if defined(AWS_DONOT_USE_KEYCHAIN)
 static void s_mtls_disable_verify_peer(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_verify_peer(options, false);
 }
+#    endif
 
 static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
     struct aws_allocator *allocator,
