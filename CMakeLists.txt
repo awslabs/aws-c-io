@@ -216,9 +216,6 @@ if (AWS_USE_SECITEM)
 endif()
 
 if (AWS_DONOT_USE_KEYCHAIN)
-    if (NOT APPLE OR NOT AWS_USE_SECITEM)
-        message(FATAL_ERROR "AWS_DONOT_USE_KEYCHAIN requires an Apple platform with AWS_USE_SECITEM")
-    endif()
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_DONOT_USE_KEYCHAIN")
 endif()
 
