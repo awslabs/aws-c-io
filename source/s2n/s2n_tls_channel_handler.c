@@ -1786,8 +1786,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
                 aws_string_destroy(ca_file_string);
 
                 if (set_ca_result) {
-                    s_log_and_raise_s2n_errno("ctx: configuration error");
-                    AWS_LOGF_ERROR(AWS_LS_IO_TLS, "Failed to set ca_file %s\n", (const char *)options->ca_file.buffer);
+                    s_log_and_raise_s2n_errno("ctx: failed to add ca_file to trust store");
                     goto cleanup_s2n_config;
                 }
             }
