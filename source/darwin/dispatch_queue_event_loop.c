@@ -97,7 +97,7 @@ static struct aws_event_loop_vtable s_vtable = {
  * are FIFO queues to which the application can submit tasks in the form of block objects. The block objects will be
  * executed on a system defined thread pool. Instead of executing the loop on a single thread, we recurrently run
  * iterations of the execution loop as dispatch queue block objects. aws-c-io library uses a serial dispatch
- * queue to insure the tasks scheduled on the event loop task scheduler are executed in the correct order.
+ * queue to ensure the tasks scheduled on the event loop task scheduler are executed in the correct order.
  *
  * Data Structures ******
  * `scheduled_iteration_entry `: Each entry maps to an execution block submitted to Apple's dispatch queue. Since Apple
@@ -285,7 +285,7 @@ struct aws_event_loop *aws_event_loop_new_with_dispatch_queue(
      * created Apple dispatch queue here to conform with other event loop types. A new event loop is expected to
      * be in a stopped state until run is called.
      *
-     * We call `s_run()` during the destruction of the event loop to insure both the execution of the cleanup/destroy
+     * We call `s_run()` during the destruction of the event loop to ensure both the execution of the cleanup/destroy
      * task as well as to release the Apple suspension count.
      */
     dispatch_suspend(dispatch_loop->dispatch_queue);
@@ -556,8 +556,8 @@ static void s_run_iteration(void *service_entry) {
         should_schedule = true;
     }
     /*
-     * If we are not scheduling a new iteration for immediate executuion, we check whether there are any tasks scheduled
-     * to execute now or in the future and scheudle the next iteration using that time.
+     * If we are not scheduling a new iteration for immediate execution, we check whether there are any tasks scheduled
+     * to execute now or in the future and schedule the next iteration using that time.
      */
     else if (aws_task_scheduler_has_tasks(&dispatch_loop->scheduler, &should_schedule_at_time)) {
         should_schedule = true;
@@ -605,7 +605,7 @@ static bool s_should_schedule_iteration(
  * being destroyed.
  *
  * This function should be wrapped with the synced_data_lock as it reads and writes to and from
- * aws_dispatch_loop->sycned_data
+ * aws_dispatch_loop->synced_data
  */
 static void s_try_schedule_new_iteration(struct aws_dispatch_loop *dispatch_loop, uint64_t timestamp) {
     if (dispatch_loop->synced_data.execution_state != AWS_DLES_RUNNING || dispatch_loop->synced_data.is_executing) {

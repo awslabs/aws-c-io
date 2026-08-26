@@ -166,7 +166,7 @@ struct _OVERLAPPED *aws_overlapped_to_windows_overlapped(struct aws_overlapped *
 /**
  * @internal - Don't use outside of testing.
  *
- * Return the default event loop type. If the return value is `AWS_ELT_PLATFORM_DEFAULT`, the function failed to
+ * Return the default event loop type. If the return value is `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the function failed to
  * retrieve the default type value.
  * If `aws_event_loop_override_default_type` has been called, return the override default type.
  */

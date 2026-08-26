@@ -197,7 +197,7 @@ static uint64_t s_compute_full_jitter(struct exponential_backoff_retry_token *to
     return s_random_in_range(0, non_jittered, token);
 }
 
-static uint64_t s_compute_deccorelated_jitter(struct exponential_backoff_retry_token *token) {
+static uint64_t s_compute_decorrelated_jitter(struct exponential_backoff_retry_token *token) {
     size_t last_backoff_val = aws_atomic_load_int(&token->last_backoff);
 
     if (!last_backoff_val) {
@@ -211,7 +211,7 @@ static compute_backoff_fn *s_backoff_compute_table[] = {
     [AWS_EXPONENTIAL_BACKOFF_JITTER_DEFAULT] = s_compute_full_jitter,
     [AWS_EXPONENTIAL_BACKOFF_JITTER_NONE] = s_compute_no_jitter,
     [AWS_EXPONENTIAL_BACKOFF_JITTER_FULL] = s_compute_full_jitter,
-    [AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED] = s_compute_deccorelated_jitter,
+    [AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED] = s_compute_decorrelated_jitter,
 };
 
 static int s_exponential_retry_schedule_retry(
@@ -240,8 +240,8 @@ static int s_exponential_retry_schedule_retry(
                 "id=%p: token %p has exhausted allowed retries. Retry count %zu max retries %zu",
                 (void *)backoff_retry_token->base.retry_strategy,
                 (void *)token,
-                backoff_retry_token->max_retries,
-                retry_count);
+                retry_count,
+                backoff_retry_token->max_retries);
             return aws_raise_error(AWS_IO_MAX_RETRIES_EXCEEDED);
         }
 

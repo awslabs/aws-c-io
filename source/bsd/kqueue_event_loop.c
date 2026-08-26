@@ -150,7 +150,6 @@ struct aws_event_loop *aws_event_loop_new_with_kqueue(
     struct aws_allocator *alloc,
     const struct aws_event_loop_options *options) {
     AWS_ASSERT(alloc);
-    AWS_ASSERT(clock);
     AWS_ASSERT(options);
     AWS_ASSERT(options->clock);
 
@@ -188,7 +187,7 @@ struct aws_event_loop *aws_event_loop_new_with_kqueue(
         impl->thread_options = *aws_default_thread_options();
     }
 
-    /* intialize thread id to NULL. It will be set when the event loop thread starts. */
+    /* initialize thread id to NULL. It will be set when the event loop thread starts. */
     aws_atomic_init_ptr(&impl->running_thread_id, NULL);
     clean_up_impl_mem = true;
 
