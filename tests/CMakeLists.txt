@@ -128,6 +128,10 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_net_test_case(tls_client_channel_negotiation_success_mtls_from_keychain)
     add_net_test_case(tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain)
     add_net_test_case(tls_client_channel_negotiation_failure_tls13_to_tls12_server)
+
+    if(AWS_DONOT_USE_KEYCHAIN)
+        add_net_test_case(tls_client_channel_negotiation_success_mtls_secitem_no_keychain)
+    endif()
 endif()
 
 add_test_case(channel_setup)

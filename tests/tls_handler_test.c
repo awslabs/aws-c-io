@@ -1723,6 +1723,32 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain,
     s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain_fn)
 
+/* Keychain-less SecItem mTLS test. When aws-c-io is built with AWS_DONOT_USE_KEYCHAIN.*/
+static void s_mtls_disable_verify_peer(struct aws_tls_ctx_options *options) {
+    aws_tls_ctx_options_set_verify_peer(options, false);
+}
+
+static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+#    if defined(AWS_DONOT_USE_KEYCHAIN)
+    return s_verify_good_host_mtls_connect(
+        allocator,
+        s_aws_local_tls_server_host_name,
+        AWS_TEST_LOCAL_TLS13_PORT,
+        NULL /* ca_path */,
+        s_mtls_disable_verify_peer);
+#    else
+    (void)allocator;
+    return AWS_OP_SKIP;
+#    endif
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_mtls_secitem_no_keychain,
+    s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn)
+
 static int s_tls_client_channel_negotiation_failure_tls13_to_tls12_server_fn(
     struct aws_allocator *allocator,
     void *ctx) {
