@@ -640,7 +640,10 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
         aws_error_name(error_code));
 
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
-    if (s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
+    /* In connect-by-name mode the OS owns resolution, so there is no resolved IP to feed back into the
+     * host-resolver's bad-address cache. */
+    if (connection_args->outgoing_options.connect_by_name == false &&
+        s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
         struct aws_host_address host_address;
         host_address.host = connection_args->host_name;
         host_address.address = aws_string_new_from_c_str(allocator, socket->remote_endpoint.address);
@@ -1093,7 +1096,12 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         client_connection_args->channel_data.tls_options.user_data = client_connection_args;
     }
 
-    if (s_aws_socket_domain_uses_dns(socket_options->domain)) {
+    /* When connect-by-name is requested (Apple Network Framework), skip this library's internal DNS
+     * resolution and hand the hostname straight to the socket layer so the OS can resolve it and
+     * supply it to on-demand VPNs / content filters / HTTP CONNECT proxies. */
+    const bool connect_by_name = socket_options->connect_by_name;
+
+    if (connect_by_name == false && s_aws_socket_domain_uses_dns(socket_options->domain)) {
         client_connection_args->host_name = aws_string_new_from_c_str(bootstrap->allocator, host_name);
 
         if (!client_connection_args->host_name) {
@@ -1124,7 +1132,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
         struct aws_socket_endpoint endpoint;
         AWS_ZERO_STRUCT(endpoint);
         memcpy(endpoint.address, host_name, host_name_len);
-        if (socket_options->domain == AWS_SOCKET_VSOCK) {
+        if (connect_by_name || socket_options->domain == AWS_SOCKET_VSOCK) {
             endpoint.port = port;
         } else {
             endpoint.port = 0;

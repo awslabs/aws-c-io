@@ -99,6 +99,30 @@ struct aws_socket_options {
      * unsupported platforms.
      */
     char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
+
+    /**
+     * (Optional)
+     * Apple Network Framework only. TCP over IPv4/IPv6 only. Defaults to false.
+     *
+     * When false (the default), behavior is unchanged: this library resolves the destination hostname
+     * to a numeric IP address and connects to that address.
+     *
+     * When true, the connection is established by passing the destination hostname directly to the
+     * operating system ("connect-by-name") instead of pre-resolving it. This lets Apple's Network
+     * framework own DNS resolution and, critically, provide the destination hostname to on-demand VPNs,
+     * content filters, and HTTP CONNECT proxies (which require the FQDN to authorize the route).
+     *
+     * When set, aws_client_bootstrap skips its internal host-resolver step, so the SDK-level
+     * host-resolver cache, bad-address feedback, and multi-address (happy-eyeballs) failover are not
+     * used; the OS performs resolution and failover instead. The hostname supplied to the bootstrap is
+     * forwarded verbatim to the socket layer.
+     *
+     * On platforms other than the Apple Network Framework backend, this field has no effect (there is
+     * no connect-by-name path) and is ignored. On the Apple Network Framework backend it is only valid
+     * for TCP (AWS_SOCKET_STREAM) over IPv4/IPv6; combining it with a non-TCP type or a non-IP domain
+     * (UDP or AWS_SOCKET_LOCAL) causes connect to raise AWS_IO_SOCKET_INVALID_OPTIONS.
+     */
+    bool connect_by_name;
 };
 
 struct aws_socket;
