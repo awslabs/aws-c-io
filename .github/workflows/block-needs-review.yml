@@ -9,4 +9,4 @@ permissions:
 
 jobs:
   gate:
-    uses: awslabs/aws-crt-builder/.github/workflows/block-needs-review-label.yml@main
+    uses: awslabs/aws-crt-builder/.github/workflows/block-needs-review-label.yml@label-on-push
