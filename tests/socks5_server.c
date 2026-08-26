@@ -899,8 +899,13 @@ static int s_handle_command(struct aws_socks5_tunnel *tunnel, struct aws_io_mess
         return aws_raise_error(AWS_IO_SOCKS5_PROTOCOL_FAILURE);
     }
 
-    if (tunnel->server->config->fault_mode == AWS_SOCKS5_SFM_REMOTE_UNAVAILABLE) {
+    enum aws_socks5_server_fault_mode fault_mode = tunnel->server->config->fault_mode;
+    if (fault_mode == AWS_SOCKS5_SFM_REMOTE_UNAVAILABLE) {
         s_send_connect_response(tunnel, AWS_SOCKS5_CRC_HOST_UNREACHABLE);
+        return AWS_OP_SUCCESS;
+    }
+
+    if (fault_mode == AWS_SOCKS5_SFM_REMOTE_TIMEOUT) {
         return AWS_OP_SUCCESS;
     }
 

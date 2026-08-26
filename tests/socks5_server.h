@@ -24,7 +24,7 @@ struct aws_socks5_server;
 // tells the server to fail in particular ways
 enum aws_socks5_server_fault_mode {
 
-    // don't fail, defult
+    // don't fail, default
     AWS_SOCKS5_SFM_NONE,
 
     // send back a bad version code in the hello response
@@ -32,6 +32,9 @@ enum aws_socks5_server_fault_mode {
 
     // don't try to connect to the remote, just send a response that says it's unavailable
     AWS_SOCKS5_SFM_REMOTE_UNAVAILABLE,
+
+    // don't try to connect to the remote, just do nothing (and generate a timeout)
+    AWS_SOCKS5_SFM_REMOTE_TIMEOUT,
 };
 
 struct aws_socks5_server_auth_options {
