@@ -3,16 +3,258 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include "./tcp_client.h"
+#ifndef TCP_CLIENT_H
+#define TCP_CLIENT_H
+
+#include <aws/io/io.h>
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/condition_variable.h>
+#include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
+#include <aws/common/string.h>
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
+#include <aws/io/event_loop.h>
 #include <aws/io/l4_proxy.h>
+#include <aws/io/socket.h>
 
-#include "aws/common/string.h"
-#include "aws/io/event_loop.h"
+#ifndef AWS_UNSTABLE_TESTING_API
+#    error This code is designed for use by AWS owned libraries for the AWS C99 SDK. \
+You are welcome to use it, but we make no promises on the stability of this API. \
+To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
+#endif
+
+struct aws_tcp_client;
+
+/* Public types */
+
+typedef void (*aws_tcp_client_on_connection_result_callback)(int error_code, void *user_data);
+typedef void (*aws_tcp_client_on_disconnection_callback)(int error_code, void *user_data);
+typedef void (*aws_tcp_client_on_data_callback)(struct aws_byte_cursor data, void *user_data);
+typedef void (*aws_tcp_client_on_destroyed_callback)(void *user_data);
+
+/**
+ * Configuration options for TCP client construction
+ */
+struct aws_tcp_client_options {
+
+    /** Host to connect to */
+    struct aws_byte_cursor remote_host_name;
+
+    /** Port to connect to */
+    uint16_t remote_port;
+
+    /** L4 proxy to connect through.  This type was created to test l4 proxy tunneling.  */
+    struct aws_l4_proxy_config *proxy_config;
+
+    /** Client bootstrap to use to create the connection channel */
+    struct aws_client_bootstrap *bootstrap;
+
+    /** Socket options to use when establishing the connection.  Some options won't necessarily work here */
+    struct aws_socket_options socket_options;
+
+    /** Callback to invoke when a connection attempt resolves */
+    aws_tcp_client_on_connection_result_callback on_connection_result_callback;
+
+    /** Callback to invoke on disconnection.  Only invoked if a successful connection was previously established. */
+    aws_tcp_client_on_disconnection_callback on_disconnection_callback;
+
+    /** Callback invoked when the client receives data */
+    aws_tcp_client_on_data_callback on_data_callback;
+
+    /** Callback invoked when the client has been fully destroyed.  Denotes a time point when no other callbacks can
+     * be invoked and the client can safely be forgotten.
+     */
+    aws_tcp_client_on_destroyed_callback on_destroyed_callback;
+
+    /** Opaque data to inject into callbacks */
+    void *user_data;
+
+    /** Channel window size to use.  A value of zero disables window management and read backpressure */
+    size_t window_size;
+};
+
+/**
+ * Configuration options for a tcp client test context
+ */
+struct aws_tcp_client_test_context_options {
+
+    /** Host to connect to */
+    struct aws_byte_cursor remote_host_name;
+
+    /** Port to connect to */
+    uint16_t remote_port;
+
+    /** L4 proxy to connect through.  */
+    struct aws_l4_proxy_config *proxy_config;
+
+    /** Event loop group to seat channels on */
+    struct aws_event_loop_group *elg;
+
+    /** Channel window size to use.  A value of zero disables window management and read backpressure */
+    size_t window_size;
+};
+
+/**
+ * Wraps a tcp client with test-related functionality for waiting on async events like connection, disconnection, and
+ * incoming data.
+ */
+struct aws_tcp_client_test_context {
+    struct aws_allocator *allocator;
+
+    struct aws_event_loop_group *elg;
+    struct aws_client_bootstrap *bootstrap;
+    struct aws_host_resolver *resolver;
+
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+    struct {
+        bool connection_attempt_completed;
+        int connection_error_code;
+        bool disconnection_completed;
+        int disconnection_error_code;
+        bool destruction_completed;
+        struct aws_byte_buf sent_data;
+        struct aws_byte_buf received_data;
+    } sync;
+
+    struct aws_tcp_client *client;
+};
+
+/****** Public API ******/
+
+/**
+ * Creates a new TCP client
+ *
+ * @param allocator - allocator to use
+ * @param options - client options to use
+ */
+static struct aws_tcp_client *aws_tcp_client_new(
+    struct aws_allocator *allocator,
+    struct aws_tcp_client_options *options);
+
+/**
+ * Increments the reference count of a client
+ *
+ * @param client client to add a reference to
+ * @return the input client value
+ */
+static struct aws_tcp_client *aws_tcp_client_acquire(struct aws_tcp_client *client);
+
+/**
+ * Decrements the reference count of a client
+ *
+ * @param client client to remove a reference from
+ * @return NULL
+ */
+static struct aws_tcp_client *aws_tcp_client_release(struct aws_tcp_client *client);
+
+/**
+ * Starts the client's async connection process to the configured remote.
+ *
+ * @param client client to connect with
+ */
+static void aws_tcp_client_connect(struct aws_tcp_client *client);
+
+/**
+ * Starts the client's async disconnect (if currently connected) process
+ *
+ * @param client client to disconnect
+ */
+static void aws_tcp_client_disconnect(struct aws_tcp_client *client);
+
+/**
+ * Queues data to be sent to the remote host
+ *
+ * @param client client to send data through
+ * @param data data to send
+ */
+static void aws_tcp_client_send(struct aws_tcp_client *client, struct aws_byte_cursor data);
+
+/**
+ * Initializes the test wrapper around a tcp client
+ *
+ * @param context test context to initialize
+ * @param allocator allocator to use
+ * @param options test context configuration options to use
+ */
+static void aws_tcp_client_test_context_init(
+    struct aws_tcp_client_test_context *context,
+    struct aws_allocator *allocator,
+    struct aws_tcp_client_test_context_options *options);
+
+/**
+ * Cleans up a tcp client test wrapper.  This includes blocking on disconnection and async destruction.
+ *
+ * @param context test context to clean up
+ */
+static void aws_tcp_client_test_context_clean_up(struct aws_tcp_client_test_context *context);
+
+/**
+ * Blocks on a client's connection attempt resolving.
+ *
+ * @param context client test context to wait on
+ * @return the error code associated with the connection attempt
+ */
+static int aws_tcp_client_test_context_wait_on_connection_result(struct aws_tcp_client_test_context *context);
+
+/**
+ * Blocks on a client's disconnection event.
+ *
+ * @param context client test context to wait on
+ * @return the error code associated with the disconnection
+ */
+static int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_client_test_context *context);
+
+/**
+ * Sends data through the client associated with a test context
+ *
+ * @param context context whose client will be used to send data
+ * @param data data to send
+ */
+static void aws_tcp_client_test_context_send_data(
+    struct aws_tcp_client_test_context *context,
+    struct aws_byte_cursor data);
+
+/**
+ * Blocks on receiving a specific amount of bytes from the remote host connected to by the context's client
+ *
+ * @param context context whose client must receive an amount of data
+ * @param received_bytes amount of data to wait for
+ */
+static void aws_tcp_client_test_context_wait_on_received_bytes(
+    struct aws_tcp_client_test_context *context,
+    size_t received_bytes);
+
+/**
+ * Copies all data sent by the client into a buffer
+ *
+ * @param context context to retrieve the sent data from
+ * @param bytes output parameter to place the sent data into
+ */
+static void aws_tcp_client_test_context_get_sent_bytes(
+    struct aws_tcp_client_test_context *context,
+    struct aws_byte_buf *bytes);
+
+/**
+ * Copies all data received by the client into a buffer
+ *
+ * @param context context to retrieve the received data from
+ * @param bytes output parameter to place the received data into
+ */
+static void aws_tcp_client_test_context_get_received_bytes(
+    struct aws_tcp_client_test_context *context,
+    struct aws_byte_buf *bytes);
+
+/**
+ * Resets the sent and received data to empty buffers.
+ *
+ * @param context context to reset the send/received data for
+ */
+static void aws_tcp_client_test_context_reset_data(struct aws_tcp_client_test_context *context);
+
+/****** Static implementation ******/
 
 struct aws_tcp_client_config {
     struct aws_allocator *allocator;
@@ -83,7 +325,7 @@ struct aws_tcp_client_outbound_data {
 };
 
 // extra copy but who cares atm
-static struct aws_tcp_client_outbound_data *aws_tcp_client_outbound_data_new(
+static struct aws_tcp_client_outbound_data *s_aws_tcp_client_outbound_data_new(
     struct aws_allocator *allocator,
     struct aws_byte_cursor data) {
     struct aws_tcp_client_outbound_data *data_node =
@@ -96,7 +338,7 @@ static struct aws_tcp_client_outbound_data *aws_tcp_client_outbound_data_new(
     return data_node;
 }
 
-static void aws_tcp_client_outbound_data_destroy(struct aws_tcp_client_outbound_data *data) {
+static void s_aws_tcp_client_outbound_data_destroy(struct aws_tcp_client_outbound_data *data) {
     if (data == NULL) {
         return;
     }
@@ -128,7 +370,7 @@ struct aws_tcp_client {
     bool is_write_scheduled;
 };
 
-void s_aws_tcp_client_schedule_write_if_needed(struct aws_tcp_client *client) {
+static void s_aws_tcp_client_schedule_write_if_needed(struct aws_tcp_client *client) {
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(client->loop));
 
     if (client->is_write_scheduled) {
@@ -158,7 +400,10 @@ static void s_aws_tcp_client_on_message_write_completed(
     s_aws_tcp_client_schedule_write_if_needed(client);
 }
 
-void s_aws_tcp_client_write_task_fn(struct aws_channel_task *channel_task, void *arg, enum aws_task_status status) {
+static void s_aws_tcp_client_write_task_fn(
+    struct aws_channel_task *channel_task,
+    void *arg,
+    enum aws_task_status status) {
     struct aws_tcp_client *client = arg;
 
     client->is_write_scheduled = false;
@@ -190,7 +435,7 @@ void s_aws_tcp_client_write_task_fn(struct aws_channel_task *channel_task, void 
 
     if (data_entry->remaining.len == 0) {
         aws_linked_list_pop_front(&client->outbound_data_queue);
-        aws_tcp_client_outbound_data_destroy(data_entry);
+        s_aws_tcp_client_outbound_data_destroy(data_entry);
     }
 }
 
@@ -215,7 +460,7 @@ static void s_aws_tcp_client_on_internal_ref_count_zero(void *data) {
         struct aws_tcp_client_outbound_data *data_entry =
             AWS_CONTAINER_OF(node, struct aws_tcp_client_outbound_data, node);
 
-        aws_tcp_client_outbound_data_destroy(data_entry);
+        s_aws_tcp_client_outbound_data_destroy(data_entry);
     }
 
     aws_mem_release(client->allocator, client);
@@ -288,7 +533,9 @@ static void s_aws_tcp_client_on_external_ref_count_zero(void *data) {
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
 }
 
-struct aws_tcp_client *aws_tcp_client_new(struct aws_allocator *allocator, struct aws_tcp_client_options *options) {
+static struct aws_tcp_client *aws_tcp_client_new(
+    struct aws_allocator *allocator,
+    struct aws_tcp_client_options *options) {
     struct aws_tcp_client *client = aws_mem_calloc(allocator, 1, sizeof(struct aws_tcp_client));
 
     client->allocator = allocator;
@@ -306,7 +553,7 @@ struct aws_tcp_client *aws_tcp_client_new(struct aws_allocator *allocator, struc
     return client;
 }
 
-struct aws_tcp_client *aws_tcp_client_acquire(struct aws_tcp_client *client) {
+static struct aws_tcp_client *aws_tcp_client_acquire(struct aws_tcp_client *client) {
     if (client != NULL) {
         aws_ref_count_acquire(&client->external_ref_count);
     }
@@ -529,7 +776,7 @@ static void s_aws_tcp_client_connect_task_fn(struct aws_task *task, void *arg, e
     s_aws_tcp_client_task_destroy(client_task);
 }
 
-void aws_tcp_client_connect(struct aws_tcp_client *client) {
+static void aws_tcp_client_connect(struct aws_tcp_client *client) {
     struct aws_tcp_client_task *task =
         s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_connect_task_fn);
 
@@ -563,7 +810,7 @@ static void s_aws_tcp_client_disconnect_task_fn(struct aws_task *task, void *arg
     s_aws_tcp_client_task_destroy(client_task);
 }
 
-void aws_tcp_client_disconnect(struct aws_tcp_client *client) {
+static void aws_tcp_client_disconnect(struct aws_tcp_client *client) {
     struct aws_tcp_client_task *task =
         s_aws_tcp_client_task_new(client->allocator, client, s_aws_tcp_client_disconnect_task_fn);
 
@@ -591,7 +838,7 @@ static void s_aws_tcp_client_send(struct aws_tcp_client *client, struct aws_byte
         return;
     }
 
-    struct aws_tcp_client_outbound_data *data_entry = aws_tcp_client_outbound_data_new(client->allocator, data);
+    struct aws_tcp_client_outbound_data *data_entry = s_aws_tcp_client_outbound_data_new(client->allocator, data);
     aws_linked_list_push_back(&client->outbound_data_queue, &data_entry->node);
 
     s_aws_tcp_client_schedule_write_if_needed(client);
@@ -622,7 +869,7 @@ static struct aws_tcp_client_send_task *s_aws_tcp_client_send_task_new(
     return task;
 }
 
-void aws_tcp_client_send(struct aws_tcp_client *client, struct aws_byte_cursor data) {
+static void aws_tcp_client_send(struct aws_tcp_client *client, struct aws_byte_cursor data) {
     struct aws_tcp_client_send_task *task = s_aws_tcp_client_send_task_new(client->allocator, client, data);
 
     aws_event_loop_schedule_task_now_serialized(client->loop, &task->task);
@@ -678,7 +925,7 @@ static void s_aws_tcp_client_test_context_on_destroyed_callback(void *user_data)
     aws_condition_variable_notify_all(&context->signal);
 }
 
-void aws_tcp_client_test_context_init(
+static void aws_tcp_client_test_context_init(
     struct aws_tcp_client_test_context *context,
     struct aws_allocator *allocator,
     struct aws_tcp_client_test_context_options *options) {
@@ -751,8 +998,9 @@ static void s_aws_tcp_client_test_context_wait_on_destroyed(struct aws_tcp_clien
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_tcp_client_test_context_clean_up(struct aws_tcp_client_test_context *context) {
+static void aws_tcp_client_test_context_clean_up(struct aws_tcp_client_test_context *context) {
 
+    aws_tcp_client_disconnect(context->client); // not needed but avoids unreferenced function
     aws_tcp_client_release(context->client);
 
     s_aws_tcp_client_test_context_wait_on_destroyed(context);
@@ -774,7 +1022,7 @@ static bool s_aws_tcp_client_test_context_has_connection_result(void *user_data)
     return context->sync.connection_attempt_completed;
 }
 
-int aws_tcp_client_test_context_wait_on_connection_result(struct aws_tcp_client_test_context *context) {
+static int aws_tcp_client_test_context_wait_on_connection_result(struct aws_tcp_client_test_context *context) {
     aws_mutex_lock(&context->lock);
     aws_condition_variable_wait_pred(
         &context->signal, &context->lock, s_aws_tcp_client_test_context_has_connection_result, context);
@@ -790,7 +1038,7 @@ static bool s_aws_tcp_client_test_context_has_disconnection_result(void *user_da
     return context->sync.disconnection_completed;
 }
 
-int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_client_test_context *context) {
+static int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_client_test_context *context) {
     aws_mutex_lock(&context->lock);
     aws_condition_variable_wait_pred(
         &context->signal, &context->lock, s_aws_tcp_client_test_context_has_disconnection_result, context);
@@ -800,7 +1048,9 @@ int aws_tcp_client_test_context_wait_on_disconnection_result(struct aws_tcp_clie
     return error_code;
 }
 
-void aws_tcp_client_test_context_send_data(struct aws_tcp_client_test_context *context, struct aws_byte_cursor data) {
+static void aws_tcp_client_test_context_send_data(
+    struct aws_tcp_client_test_context *context,
+    struct aws_byte_cursor data) {
     aws_mutex_lock(&context->lock);
     aws_byte_buf_append_dynamic(&context->sync.sent_data, &data);
     aws_mutex_unlock(&context->lock);
@@ -819,7 +1069,7 @@ static bool s_aws_tcp_client_test_context_has_received_bytes(void *user_data) {
     return context->context->sync.received_data.len == context->received_bytes;
 }
 
-void aws_tcp_client_test_context_wait_on_received_bytes(
+static void aws_tcp_client_test_context_wait_on_received_bytes(
     struct aws_tcp_client_test_context *context,
     size_t received_bytes) {
     aws_mutex_lock(&context->lock);
@@ -834,7 +1084,7 @@ void aws_tcp_client_test_context_wait_on_received_bytes(
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_tcp_client_test_context_get_sent_bytes(
+static void aws_tcp_client_test_context_get_sent_bytes(
     struct aws_tcp_client_test_context *context,
     struct aws_byte_buf *bytes) {
     aws_mutex_lock(&context->lock);
@@ -843,7 +1093,7 @@ void aws_tcp_client_test_context_get_sent_bytes(
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_tcp_client_test_context_get_received_bytes(
+static void aws_tcp_client_test_context_get_received_bytes(
     struct aws_tcp_client_test_context *context,
     struct aws_byte_buf *bytes) {
     aws_mutex_lock(&context->lock);
@@ -852,9 +1102,11 @@ void aws_tcp_client_test_context_get_received_bytes(
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_tcp_client_test_context_reset_data(struct aws_tcp_client_test_context *context) {
+static void aws_tcp_client_test_context_reset_data(struct aws_tcp_client_test_context *context) {
     aws_mutex_lock(&context->lock);
     aws_byte_buf_reset(&context->sync.sent_data, false);
     aws_byte_buf_reset(&context->sync.received_data, false);
     aws_mutex_unlock(&context->lock);
 }
+
+#endif /* TCP_CLIENT_H */

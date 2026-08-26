@@ -5,7 +5,7 @@
 
 #include "./echo_server.h"
 #include "./socks5_server.h"
-#include "./tcp_client.h"
+#include <aws/testing/tcp_client.h>
 
 #include <aws/testing/aws_test_harness.h>
 
