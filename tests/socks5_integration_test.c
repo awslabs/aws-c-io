@@ -14,6 +14,8 @@
 #include <aws/io/event_loop.h>
 #include <aws/io/socks5.h>
 
+#include "aws/io/private/l4_proxy_impl.h"
+
 static int s_aws_socks5_server_create_destroy_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
@@ -747,3 +749,38 @@ static int s_aws_socks5_echo_connect_failure_remote_refused_fn(struct aws_alloca
 }
 
 AWS_TEST_CASE(aws_socks5_echo_connect_failure_remote_refused, s_aws_socks5_echo_connect_failure_remote_refused_fn)
+
+static void aws_socks5_server_apply_negotiation_timeout_override_fn(
+    struct aws_socks5_server_test_context_options *socks5_server_options) {
+    socks5_server_options->fault_mode = AWS_SOCKS5_SFM_REMOTE_TIMEOUT;
+}
+
+static void s_apply_negotiation_timeout_override_fn(struct aws_tcp_client_test_context_options *tcp_client_options) {
+    tcp_client_options->proxy_config->negotiation_timeout_ms = 1000;
+}
+
+static int s_aws_socks5_do_negotiation_timeout_failure_test(struct aws_allocator *allocator) {
+    aws_io_library_init(allocator);
+
+    struct aws_socks5_tcp_test_context_options context_options = {
+        .socks5_server_options_override = aws_socks5_server_apply_negotiation_timeout_override_fn,
+        .tcp_client_options_override = s_apply_negotiation_timeout_override_fn,
+    };
+
+    struct aws_socks5_tcp_test_context context;
+    s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
+
+    return s_aws_socks5_do_connection_failure_test(&context, AWS_IO_SOCKS5_NEGOTIATION_TIMEOUT, AWS_ERROR_SUCCESS);
+}
+
+static int s_aws_socks5_echo_connect_failure_negotiation_timeout_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    ASSERT_SUCCESS(s_aws_socks5_do_negotiation_timeout_failure_test(allocator));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(
+    aws_socks5_echo_connect_failure_negotiation_timeout,
+    s_aws_socks5_echo_connect_failure_negotiation_timeout_fn)

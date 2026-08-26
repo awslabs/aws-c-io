@@ -493,7 +493,7 @@ add_test_case(aws_socks5_echo_connect_failure_no_auth_methods)
 add_test_case(aws_socks5_echo_connect_failure_version_mismatch)
 add_test_case(aws_socks5_echo_connect_failure_wrong_basic_auth_credentials)
 add_test_case(aws_socks5_echo_connect_failure_remote_refused)
-#add_test_case(aws_socks5_echo_connect_failure_negotiation_timeout)
+add_test_case(aws_socks5_echo_connect_failure_negotiation_timeout)
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
