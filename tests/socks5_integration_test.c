@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include "./echo_server.h"
-#include "./socks5_server.h"
+#include <aws/testing/echo_server.h>
+#include <aws/testing/socks5_server.h>
 #include <aws/testing/tcp_client.h>
 
 #include <aws/testing/aws_test_harness.h>

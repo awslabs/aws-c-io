@@ -3,9 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include "./socks5_server.h"
+#ifndef SOCKS5_SERVER_H
+#define SOCKS5_SERVER_H
+
+#include <aws/io/io.h>
 
 #include <aws/common/byte_buf.h>
+#include <aws/common/condition_variable.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
@@ -13,6 +17,226 @@
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/socket.h>
+
+#ifndef AWS_UNSTABLE_TESTING_API
+#    error This code is designed for use by AWS owned libraries for the AWS C99 SDK. \
+You are welcome to use it, but we make no promises on the stability of this API. \
+To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
+#endif
+
+struct aws_socks5_server;
+
+/****** Public types ******/
+
+/** tells the server to fail in particular ways */
+enum aws_socks5_server_fault_mode {
+
+    /** don't fail, default */
+    AWS_SOCKS5_SFM_NONE,
+
+    /** send back a bad version code in the hello response */
+    AWS_SOCKS5_SFM_BAD_VERSION,
+
+    /** don't try to connect to the remote, just send a response that says it's unavailable */
+    AWS_SOCKS5_SFM_REMOTE_UNAVAILABLE,
+
+    /** don't try to connect to the remote, just do nothing (and generate a timeout) */
+    AWS_SOCKS5_SFM_REMOTE_TIMEOUT,
+};
+
+/**
+ * Configuration options for socks5 server authentication controls
+ */
+struct aws_socks5_server_auth_options {
+
+    /**
+     * Is the None authentication method supported?
+     */
+    bool allow_no_auth;
+
+    /**
+     * Is basic authentication supported?
+     */
+    bool allow_basic_auth;
+
+    /**
+     * If basic authentication is enabled, what username is valid?
+     */
+    struct aws_byte_cursor *basic_username;
+
+    /**
+     * If basic authentication is enabled, what password is valid?
+     */
+    struct aws_byte_cursor *basic_password;
+};
+
+typedef void(aws_socks5_server_on_setup_fn)(struct aws_socks5_server *server, int error_code, void *user_data);
+typedef void(aws_socks5_server_on_destroy_fn)(struct aws_socks5_server *server, void *user_data);
+
+/**
+ * Configuration options for creating a socks5 server
+ */
+struct aws_socks5_server_options {
+
+    /**
+     * Event loop group to use for socket listener and tunnel channels
+     */
+    struct aws_event_loop_group *elg;
+
+    /**
+     * Client bootstrap to use when establishing a connection to remote endpoints
+     */
+    struct aws_client_bootstrap *to_remote_bootstrap;
+
+    /**
+     * Server bootstrap to use when creating the socket listener
+     */
+    struct aws_server_bootstrap *listener_bootstrap;
+
+    /**
+     * Host to listen on
+     */
+    const char *host_name;
+
+    /**
+     * Port to listen on.  Use zero to have an open port assigned at accept-time.
+     */
+    uint16_t port;
+
+    /**
+     * Socket options to use for listener and remote connections.  Not all options are valid.
+     */
+    struct aws_socket_options socket_options;
+
+    /**
+     * What authentication methods should be supported during socks5 negotiation
+     */
+    struct aws_socks5_server_auth_options auth_options;
+
+    /**
+     * Any special failure directive for testing purposes
+     */
+    enum aws_socks5_server_fault_mode fault_mode;
+
+    /**
+     * Callback to invoke when the socket listener has been set up
+     */
+    aws_socks5_server_on_setup_fn *on_setup;
+
+    /**
+     * Callback to invoke when the server has been fully destroyed
+     */
+    aws_socks5_server_on_destroy_fn *on_destroy;
+
+    /**
+     * Opaque data to pass to callbacks
+     */
+    void *user_data;
+};
+
+/**
+ * Configuration options for a socks5 server wrapper that adds wait functionality
+ */
+struct aws_socks5_server_test_context_options {
+    struct aws_event_loop_group *elg;
+
+    struct aws_socks5_server_auth_options *override_auth_options;
+
+    enum aws_socks5_server_fault_mode fault_mode;
+};
+
+struct aws_socks5_server_test_context {
+    struct aws_allocator *allocator;
+
+    struct aws_event_loop_group *elg;
+    struct aws_host_resolver *resolver;
+    struct aws_client_bootstrap *client_bootstrap;
+    struct aws_server_bootstrap *server_bootstrap;
+
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+    struct {
+        bool server_setup;
+        int setup_error_code;
+        bool server_shutdown;
+    } sync;
+
+    struct aws_socks5_server *server;
+};
+
+/****** Public API ******/
+
+/**
+ * Creates a new socks5 server
+ *
+ * @param allocator allocator to use
+ * @param options server configuration options
+ */
+static struct aws_socks5_server *aws_socks5_server_new(
+    struct aws_allocator *allocator,
+    struct aws_socks5_server_options *options);
+
+/**
+ * Adds a reference to a socks5 server
+ *
+ * @param server server to add a reference to
+ * @return the server input param value
+ */
+static struct aws_socks5_server *aws_socks5_server_acquire(struct aws_socks5_server *server);
+
+/**
+ * Removes a reference from a socks5 server
+ *
+ * @param server server to remove a reference from
+ */
+static void aws_socks5_server_release(struct aws_socks5_server *server);
+
+/**
+ * Trigger the server to start listening for incoming connection requests
+ *
+ * @param server server to begin listening on
+ * @return success/failure
+ */
+static int aws_socks5_server_begin_accept(struct aws_socks5_server *server);
+
+/**
+ * Gets what port the server is listening on; will crash if the server is not listening
+ *
+ * @param server server to query the listener port for
+ * @return the port the server is listening on
+ */
+static uint16_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server);
+
+/**
+ * Initialize a test context that wraps a socks5 server with wait functionality
+ *
+ * @param context context to initialize
+ * @param allocator allocator to use
+ * @param options context configuration options
+ */
+static void aws_socks5_server_test_context_init(
+    struct aws_socks5_server_test_context *context,
+    struct aws_allocator *allocator,
+    struct aws_socks5_server_test_context_options *options);
+
+/**
+ * Cleans up a socks5 server test context.  This includes shutting down the listener socket, destroying all
+ * active tunnels and waiting for final server destruction.
+ *
+ * @param context test context to clean up
+ */
+static void aws_socks5_server_test_context_clean_up(struct aws_socks5_server_test_context *context);
+
+/**
+ * Waits for a context's socks5 server to finish setting up its socket listener.  accept must have been called
+ * earlier.
+ *
+ * @param context test context to wait on
+ */
+static void aws_socks5_server_test_context_wait_on_server_setup(struct aws_socks5_server_test_context *context);
+
+/****** Implementation ******/
 
 struct aws_socks5_server_auth_config {
     struct aws_allocator *allocator;
@@ -39,11 +263,10 @@ struct aws_socks5_server_config {
 
     enum aws_socks5_server_fault_mode fault_mode;
 
-    void (*on_setup)(struct aws_socks5_server *server, int error_code, void *user_data);
-    void *on_setup_user_data;
+    aws_socks5_server_on_setup_fn *on_setup;
+    aws_socks5_server_on_destroy_fn *on_destroy;
 
-    void (*on_destroy)(struct aws_socks5_server *server, void *user_data);
-    void *on_destroy_user_data;
+    void *user_data;
 };
 
 enum aws_socks5_server_state {
@@ -198,9 +421,8 @@ static struct aws_socks5_server_config *s_aws_socks5_server_config_new(
     config->socket_options = options->socket_options;
     config->auth_config = s_aws_socks5_server_auth_config_new(allocator, &options->auth_options);
     config->on_setup = options->on_setup;
-    config->on_setup_user_data = options->on_setup_user_data;
     config->on_destroy = options->on_destroy;
-    config->on_destroy_user_data = options->on_destroy_user_data;
+    config->user_data = options->user_data;
     config->fault_mode = options->fault_mode;
 
     return config;
@@ -413,7 +635,7 @@ static void s_on_server_internal_ref_count_zero(void *user_data) {
     aws_hash_table_clean_up(&server->sync.tunnels_by_id);
 
     if (server->config->on_destroy) {
-        (*server->config->on_destroy)(server, server->config->on_destroy_user_data);
+        (*server->config->on_destroy)(server, server->config->user_data);
     }
 
     s_aws_socks5_server_config_destroy(server->config);
@@ -421,7 +643,7 @@ static void s_on_server_internal_ref_count_zero(void *user_data) {
     aws_mem_release(server->allocator, server);
 }
 
-struct aws_socks5_server *aws_socks5_server_new(
+static struct aws_socks5_server *aws_socks5_server_new(
     struct aws_allocator *allocator,
     struct aws_socks5_server_options *options) {
 
@@ -450,7 +672,7 @@ struct aws_socks5_server *aws_socks5_server_new(
     return server;
 }
 
-struct aws_socks5_server *aws_socks5_server_acquire(struct aws_socks5_server *server) {
+static struct aws_socks5_server *aws_socks5_server_acquire(struct aws_socks5_server *server) {
     if (server) {
         aws_ref_count_acquire(&server->external_ref_count);
     }
@@ -458,7 +680,7 @@ struct aws_socks5_server *aws_socks5_server_acquire(struct aws_socks5_server *se
     return server;
 }
 
-void aws_socks5_server_release(struct aws_socks5_server *server) {
+static void aws_socks5_server_release(struct aws_socks5_server *server) {
     aws_ref_count_release(&server->external_ref_count);
 }
 
@@ -483,7 +705,7 @@ static void s_aws_socks5_server_bootstrap_on_listener_setup_fn(
     aws_mutex_unlock(&server->lock);
 
     if (server->config->on_setup) {
-        (*server->config->on_setup)(server, error_code, server->config->on_setup_user_data);
+        (*server->config->on_setup)(server, error_code, server->config->user_data);
     }
 
     if (error_code != AWS_ERROR_SUCCESS) {
@@ -1079,7 +1301,7 @@ static void s_aws_socks5_server_bootstrap_on_server_listener_destroy_fn(
     aws_ref_count_release(&server->internal_ref_count); // Internal Ref Case 2
 }
 
-int aws_socks5_server_begin_accept(struct aws_socks5_server *server) {
+static int aws_socks5_server_begin_accept(struct aws_socks5_server *server) {
     if (!server) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
@@ -1130,7 +1352,7 @@ error:
     return AWS_OP_ERR;
 }
 
-uint16_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server) {
+static uint16_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server) {
     uint16_t port = 0;
 
     aws_mutex_lock(&server->lock);
@@ -1172,7 +1394,7 @@ static void s_aws_socks5_server_test_context_on_server_destroy(struct aws_socks5
     aws_condition_variable_notify_all(&context->signal);
 }
 
-void aws_socks5_server_test_context_init(
+static void aws_socks5_server_test_context_init(
     struct aws_socks5_server_test_context *context,
     struct aws_allocator *allocator,
     struct aws_socks5_server_test_context_options *options) {
@@ -1223,9 +1445,8 @@ void aws_socks5_server_test_context_init(
             },
         .fault_mode = options->fault_mode,
         .on_setup = s_aws_socks5_server_test_context_on_server_setup,
-        .on_setup_user_data = context,
         .on_destroy = s_aws_socks5_server_test_context_on_server_destroy,
-        .on_destroy_user_data = context,
+        .user_data = context,
     };
 
     if (options && options->override_auth_options) {
@@ -1243,7 +1464,7 @@ static bool s_check_server_setup(void *user_data) {
     return context->sync.server_setup;
 }
 
-void aws_socks5_server_test_context_wait_on_server_setup(struct aws_socks5_server_test_context *context) {
+static void aws_socks5_server_test_context_wait_on_server_setup(struct aws_socks5_server_test_context *context) {
     aws_mutex_lock(&context->lock);
     aws_condition_variable_wait_pred(&context->signal, &context->lock, s_check_server_setup, context);
     aws_mutex_unlock(&context->lock);
@@ -1261,7 +1482,7 @@ static void s_aws_socks5_server_test_context_wait_on_server_shutdown(struct aws_
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_socks5_server_test_context_clean_up(struct aws_socks5_server_test_context *context) {
+static void aws_socks5_server_test_context_clean_up(struct aws_socks5_server_test_context *context) {
 
     aws_socks5_server_release(context->server);
 
@@ -1275,3 +1496,5 @@ void aws_socks5_server_test_context_clean_up(struct aws_socks5_server_test_conte
     aws_condition_variable_clean_up(&context->signal);
     aws_mutex_clean_up(&context->lock);
 }
+
+#endif /* SOCKS5_SERVER_H */

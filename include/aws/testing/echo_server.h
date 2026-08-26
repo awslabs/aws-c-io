@@ -3,8 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
-#include "echo_server.h"
+#ifndef ECHO_SERVER_H
+#define ECHO_SERVER_H
 
+#include <aws/io/io.h>
+
+#include <aws/common/condition_variable.h>
 #include <aws/common/hash_table.h>
 #include <aws/common/mutex.h>
 #include <aws/common/ref_count.h>
@@ -12,6 +16,139 @@
 #include <aws/io/channel.h>
 #include <aws/io/channel_bootstrap.h>
 #include <aws/io/event_loop.h>
+#include <aws/io/socket.h>
+
+#ifndef AWS_UNSTABLE_TESTING_API
+#    error This code is designed for use by AWS owned libraries for the AWS C99 SDK. \
+You are welcome to use it, but we make no promises on the stability of this API. \
+To enable use of this code, set the AWS_UNSTABLE_TESTING_API compiler flag.
+#endif
+
+struct aws_echo_server;
+
+/****** Public types ******/
+
+typedef void(aws_echo_server_on_setup_fn)(struct aws_echo_server *server, int error_code, void *user_data);
+typedef void(aws_echo_server_on_destroy_fn)(struct aws_echo_server *server, void *user_data);
+
+/**
+ * Configuration options for a TCP echo server
+ */
+struct aws_echo_server_options {
+
+    /** Event loop group to seat listener and connection channels on */
+    struct aws_event_loop_group *elg;
+
+    /** Channel bootstrap to create the socket listener with */
+    struct aws_server_bootstrap *listener_bootstrap;
+
+    /** Host name to listen on */
+    const char *host_name;
+
+    /** Port to listen on, leave as zero to let OS determine port */
+    uint16_t port;
+
+    /** Socket options for listener creation */
+    struct aws_socket_options socket_options;
+
+    /** Callback to invoke when the server is setup (listener successfully set up). */
+    aws_echo_server_on_setup_fn *on_setup;
+
+    /** Callback to invoke when the server has been shut down and fully destroyed */
+    aws_echo_server_on_destroy_fn *on_destroy;
+
+    /** Opaque data to pass to callbacks */
+    void *user_data;
+};
+
+struct aws_echo_server_test_context {
+    struct aws_allocator *allocator;
+
+    struct aws_event_loop_group *elg;
+    struct aws_server_bootstrap *server_bootstrap;
+
+    struct aws_mutex lock;
+    struct aws_condition_variable signal;
+    struct {
+        bool server_setup;
+        int setup_error_code;
+        bool server_shutdown;
+    } sync;
+
+    struct aws_echo_server *server;
+};
+
+/****** Public API ******/
+
+/**
+ * Creates a new echo server
+ *
+ * @param allocator allocator to use
+ * @param options server configuration options
+ */
+static struct aws_echo_server *aws_echo_server_new(
+    struct aws_allocator *allocator,
+    struct aws_echo_server_options *options);
+
+/**
+ * Adds a reference to an echo server
+ *
+ * @param server server to add a reference to
+ * @return the server input param value
+ */
+static struct aws_echo_server *aws_echo_server_acquire(struct aws_echo_server *server);
+
+/**
+ * Removes a reference from an echo server
+ *
+ * @param server server to remove a reference from
+ */
+static void aws_echo_server_release(struct aws_echo_server *server);
+
+/**
+ * Cause an echo server to start listening and accepting incoming connections
+ *
+ * @param server server to start listening on
+ * @return success/failure
+ */
+static int aws_echo_server_begin_accept(struct aws_echo_server *server);
+
+/**
+ * Gets the listener port for a server.  Only valid after the socket listener has been succesfully set up.
+ *
+ * @param server the server to get the listener port for
+ * @return the port the server is listening on
+ */
+static uint16_t aws_echo_server_get_listener_port(struct aws_echo_server *server);
+
+/**
+ * Initializes a test context wrapper around an echo server
+ *
+ * @param context context to initialize
+ * @param allocator allocator touse
+ * @param elg event loop group the server should use
+ */
+static void aws_echo_server_test_context_init(
+    struct aws_echo_server_test_context *context,
+    struct aws_allocator *allocator,
+    struct aws_event_loop_group *elg);
+
+/**
+ * Cleans up an echo server test context.  This includes shutting down the server and blocking until the async
+ * destruction process has completed.
+ *
+ * @param context test context to clean up
+ */
+static void aws_echo_server_test_context_clean_up(struct aws_echo_server_test_context *context);
+
+/**
+ * Waits for the context's echo server to fully set up its listener socket.  accept must have been called first.
+ *
+ * @param context test context to wait on
+ */
+static void aws_echo_server_test_context_wait_on_server_setup(struct aws_echo_server_test_context *context);
+
+/****** Static implementation ******/
 
 struct aws_echo_server_config {
     struct aws_allocator *allocator;
@@ -24,11 +161,10 @@ struct aws_echo_server_config {
 
     struct aws_socket_options socket_options;
 
-    void (*on_setup)(struct aws_echo_server *server, int error_code, void *user_data);
-    void *on_setup_user_data;
+    aws_echo_server_on_setup_fn *on_setup;
+    aws_echo_server_on_destroy_fn *on_destroy;
 
-    void (*on_destroy)(struct aws_echo_server *server, void *user_data);
-    void *on_destroy_user_data;
+    void *user_data;
 };
 
 enum aws_echo_server_state {
@@ -105,9 +241,8 @@ static struct aws_echo_server_config *s_aws_echo_server_config_new(
     config->port = options->port;
     config->socket_options = options->socket_options;
     config->on_setup = options->on_setup;
-    config->on_setup_user_data = options->on_setup_user_data;
     config->on_destroy = options->on_destroy;
-    config->on_destroy_user_data = options->on_destroy_user_data;
+    config->user_data = options->user_data;
 
     return config;
 }
@@ -298,7 +433,7 @@ static void s_on_echo_server_internal_ref_count_zero(void *user_data) {
     aws_hash_table_clean_up(&server->sync.connections_by_id);
 
     if (server->config->on_destroy) {
-        (*server->config->on_destroy)(server, server->config->on_destroy_user_data);
+        (*server->config->on_destroy)(server, server->config->user_data);
     }
 
     s_aws_echo_server_config_destroy(server->config);
@@ -306,7 +441,9 @@ static void s_on_echo_server_internal_ref_count_zero(void *user_data) {
     aws_mem_release(server->allocator, server);
 }
 
-struct aws_echo_server *aws_echo_server_new(struct aws_allocator *allocator, struct aws_echo_server_options *options) {
+static struct aws_echo_server *aws_echo_server_new(
+    struct aws_allocator *allocator,
+    struct aws_echo_server_options *options) {
 
     struct aws_echo_server *server = aws_mem_calloc(allocator, 1, sizeof(struct aws_echo_server));
 
@@ -334,7 +471,7 @@ struct aws_echo_server *aws_echo_server_new(struct aws_allocator *allocator, str
     return server;
 }
 
-struct aws_echo_server *aws_echo_server_acquire(struct aws_echo_server *server) {
+static struct aws_echo_server *aws_echo_server_acquire(struct aws_echo_server *server) {
     if (server) {
         aws_ref_count_acquire(&server->external_ref_count);
     }
@@ -342,7 +479,7 @@ struct aws_echo_server *aws_echo_server_acquire(struct aws_echo_server *server) 
     return server;
 }
 
-void aws_echo_server_release(struct aws_echo_server *server) {
+static void aws_echo_server_release(struct aws_echo_server *server) {
     aws_ref_count_release(&server->external_ref_count);
 }
 
@@ -367,7 +504,7 @@ static void s_aws_echo_server_bootstrap_on_listener_setup_fn(
     aws_mutex_unlock(&server->lock);
 
     if (server->config->on_setup) {
-        (*server->config->on_setup)(server, error_code, server->config->on_setup_user_data);
+        (*server->config->on_setup)(server, error_code, server->config->user_data);
     }
 
     if (error_code != AWS_ERROR_SUCCESS) {
@@ -562,7 +699,7 @@ static void s_aws_echo_server_bootstrap_on_server_listener_destroy_fn(
     aws_ref_count_release(&server->internal_ref_count); // Internal Ref Case 2
 }
 
-int aws_echo_server_begin_accept(struct aws_echo_server *server) {
+static int aws_echo_server_begin_accept(struct aws_echo_server *server) {
     if (!server) {
         return aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
     }
@@ -613,7 +750,7 @@ error:
     return AWS_OP_ERR;
 }
 
-uint16_t aws_echo_server_get_listener_port(struct aws_echo_server *server) {
+static uint16_t aws_echo_server_get_listener_port(struct aws_echo_server *server) {
     uint16_t port = 0;
 
     aws_mutex_lock(&server->lock);
@@ -655,7 +792,7 @@ static void s_aws_echo_server_test_context_on_server_destroy(struct aws_echo_ser
     aws_condition_variable_notify_all(&context->signal);
 }
 
-void aws_echo_server_test_context_init(
+static void aws_echo_server_test_context_init(
     struct aws_echo_server_test_context *context,
     struct aws_allocator *allocator,
     struct aws_event_loop_group *elg) {
@@ -686,9 +823,8 @@ void aws_echo_server_test_context_init(
                 .domain = AWS_SOCKET_IPV4,
             },
         .on_setup = s_aws_echo_server_test_context_on_server_setup,
-        .on_setup_user_data = context,
         .on_destroy = s_aws_echo_server_test_context_on_server_destroy,
-        .on_destroy_user_data = context,
+        .user_data = context,
     };
 
     context->server = aws_echo_server_new(allocator, &server_options);
@@ -702,7 +838,7 @@ static bool s_check_echo_server_setup(void *user_data) {
     return context->sync.server_setup;
 }
 
-void aws_echo_server_test_context_wait_on_server_setup(struct aws_echo_server_test_context *context) {
+static void aws_echo_server_test_context_wait_on_server_setup(struct aws_echo_server_test_context *context) {
     aws_mutex_lock(&context->lock);
     aws_condition_variable_wait_pred(&context->signal, &context->lock, s_check_echo_server_setup, context);
     aws_mutex_unlock(&context->lock);
@@ -720,7 +856,7 @@ static void s_aws_echo_server_test_context_wait_on_server_shutdown(struct aws_ec
     aws_mutex_unlock(&context->lock);
 }
 
-void aws_echo_server_test_context_clean_up(struct aws_echo_server_test_context *context) {
+static void aws_echo_server_test_context_clean_up(struct aws_echo_server_test_context *context) {
 
     aws_echo_server_release(context->server);
 
@@ -732,3 +868,5 @@ void aws_echo_server_test_context_clean_up(struct aws_echo_server_test_context *
     aws_condition_variable_clean_up(&context->signal);
     aws_mutex_clean_up(&context->lock);
 }
+
+#endif /* ECHO_SERVER_H */
