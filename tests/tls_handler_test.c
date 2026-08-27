@@ -32,6 +32,7 @@
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
+#    define AWS_TEST_LOCAL_TLS12_PORT 58443
 #    define AWS_TEST_LOCAL_TLS13_PORT 59443
 #    define AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT 60443
 
@@ -1738,7 +1739,7 @@ static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
     return s_verify_good_host_mtls_connect(
         allocator,
         s_aws_local_tls_server_host_name,
-        AWS_TEST_LOCAL_TLS13_PORT,
+        AWS_TEST_LOCAL_TLS12_PORT,
         NULL /* ca_path */,
         s_mtls_disable_verify_peer);
 #    else
