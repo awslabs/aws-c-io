@@ -1473,6 +1473,7 @@ static int s_verify_good_host_mtls_connect(
     const struct aws_string *host_name,
     uint32_t port,
     const char *ca_path,
+    const char *key_path,
     void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
 
     struct aws_byte_buf cert_buf = {0};
@@ -1480,7 +1481,7 @@ static int s_verify_good_host_mtls_connect(
     struct aws_byte_buf ca_buf = {0};
 
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, key_path));
     if (ca_path) {
         ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, ca_path));
     }
@@ -1657,6 +1658,7 @@ static int s_tls_client_channel_negotiation_success_mtls_tls13_fn(struct aws_all
         s_aws_local_tls_server_host_name,
         AWS_TEST_LOCAL_TLS13_PORT,
         "mtls_server_root_ca.pem.crt",
+        "mtls_device.key",
         s_raise_tls_version_to_13);
 }
 
@@ -1670,7 +1672,12 @@ static int s_tls_client_channel_negotiation_success_mtls_from_keychain_fn(struct
         return AWS_OP_SKIP;
     }
     return s_verify_good_host_mtls_connect(
-        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, NULL /* ca_path */, NULL);
+        allocator,
+        s_aws_local_tls_server_host_name,
+        AWS_TEST_LOCAL_TLS13_PORT,
+        NULL /* ca_path */,
+        "mtls_device.key",
+        NULL);
 }
 
 AWS_TEST_CASE(
@@ -1736,11 +1743,17 @@ static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
     void *ctx) {
     (void)ctx;
 #    if defined(AWS_DONOT_USE_KEYCHAIN)
+    /*
+     * Keychain-less SecItem mTLS handshake. Uses mtls_device_pkcs1.ke because SecItem cannot import PKCS8 keys.
+     * Targets the local TLS 1.2 server (Secure Transport's max version), with verify_peer disabled since the server
+     * root CA is not trusted via a keychain in this mode.
+     */
     return s_verify_good_host_mtls_connect(
         allocator,
         s_aws_local_tls_server_host_name,
         AWS_TEST_LOCAL_TLS12_PORT,
         NULL /* ca_path */,
+        "mtls_device_pkcs1.key",
         s_mtls_disable_verify_peer);
 #    else
     (void)allocator;
