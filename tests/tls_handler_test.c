@@ -1744,9 +1744,8 @@ static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
     (void)ctx;
 #    if defined(AWS_DONOT_USE_KEYCHAIN)
     /*
-     * Keychain-less SecItem mTLS handshake. Uses mtls_device_pkcs1.ke because SecItem cannot import PKCS8 keys.
-     * Targets the local TLS 1.2 server (Secure Transport's max version), with verify_peer disabled since the server
-     * root CA is not trusted via a keychain in this mode.
+     * Keychain-less SecItem mTLS handshake. Uses mtls_device_pkcs1.key because SecItem cannot import PKCS8 keys.
+     * Targets the local TLS 1.2 server (Secure Transport's max version).
      */
     return s_verify_good_host_mtls_connect(
         allocator,
