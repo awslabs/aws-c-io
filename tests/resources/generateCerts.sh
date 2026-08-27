@@ -204,8 +204,7 @@ openssl req -new -key mtls_device.key -subj "$SUBJ" | \
 openssl x509 -req -CA mtls_device_root_ca.pem.crt -CAkey mtls_device_root_ca.key \
   -CAcreateserial -days 824 -sha256 -out mtls_device.pem.crt
 
-# PKCS1 ("BEGIN RSA PRIVATE KEY") re-encoding of the SAME mtls_device key. Required by the Apple
-# SecItem keychain-less mTLS test: SecItem cannot import PKCS8 ("BEGIN PRIVATE KEY") keys, only PKCS1/EC.
+# Generate mtls_device_pkcs1 key: PKCS1 re-encoding of mtls_device.key
 openssl rsa -in mtls_device.key -traditional -out mtls_device_pkcs1.key
 
 # Generate mtls_untrusted_server_root_ca key and self-signed cert
