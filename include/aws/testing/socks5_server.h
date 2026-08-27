@@ -206,7 +206,7 @@ static int aws_socks5_server_begin_accept(struct aws_socks5_server *server);
  * @param server server to query the listener port for
  * @return the port the server is listening on
  */
-static uint16_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server);
+static uint32_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server);
 
 /**
  * Initialize a test context that wraps a socks5 server with wait functionality
@@ -1352,8 +1352,8 @@ error:
     return AWS_OP_ERR;
 }
 
-static uint16_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server) {
-    uint16_t port = 0;
+static uint32_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server) {
+    uint32_t port = 0;
 
     aws_mutex_lock(&server->lock);
     port = server->sync.listener_socket->local_endpoint.port;
@@ -1454,6 +1454,10 @@ static void aws_socks5_server_test_context_init(
     }
 
     context->server = aws_socks5_server_new(allocator, &server_options);
+
+    // use the APIs to prevent unused funtion warning
+    aws_socks5_server_acquire(context->server);
+    aws_socks5_server_release(context->server);
 
     aws_socks5_server_begin_accept(context->server);
 }

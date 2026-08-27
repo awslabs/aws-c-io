@@ -88,7 +88,7 @@ static void s_aws_socks5_tcp_test_context_init(
     aws_echo_server_test_context_init(&context->echo_server_context, allocator, context->elg);
     aws_echo_server_test_context_wait_on_server_setup(&context->echo_server_context);
 
-    uint16_t echo_server_port = aws_echo_server_get_listener_port(context->echo_server_context.server);
+    uint32_t echo_server_port = aws_echo_server_get_listener_port(context->echo_server_context.server);
 
     struct aws_socks5_server_test_context_options socks5_test_context_options = {
         .elg = context->elg,

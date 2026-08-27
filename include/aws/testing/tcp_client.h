@@ -84,7 +84,7 @@ struct aws_tcp_client_test_context_options {
     struct aws_byte_cursor remote_host_name;
 
     /** Port to connect to */
-    uint16_t remote_port;
+    uint32_t remote_port;
 
     /** L4 proxy to connect through.  */
     struct aws_l4_proxy_config *proxy_config;
@@ -260,7 +260,7 @@ struct aws_tcp_client_config {
     struct aws_allocator *allocator;
 
     struct aws_string *remote_host_name;
-    uint16_t remote_port;
+    uint32_t remote_port;
 
     struct aws_l4_proxy_config *proxy_config;
 

@@ -35,7 +35,7 @@ struct aws_l4_proxy_config {
     void *impl;
 
     struct aws_byte_buf proxy_host;
-    uint16_t proxy_port;
+    uint32_t proxy_port;
 
     uint32_t negotiation_timeout_ms;
 };

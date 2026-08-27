@@ -50,7 +50,7 @@ void aws_l4_proxy_config_get_proxy_address(
 static const size_t AWS_L4_PROXY_IO_MESSAGE_DEFAULT_LENGTH = 1024;
 static const size_t DEFAULT_L4_PROXY_WINDOW_SIZE = 1024;
 
-void s_aws_l4_proxy_cancel_timeout_task(struct aws_l4_proxy_channel_handler *handler) {
+static void s_aws_l4_proxy_cancel_timeout_task(struct aws_l4_proxy_channel_handler *handler) {
     if (handler->timeout_task) {
         struct aws_channel *channel = handler->channel_handler.slot->channel;
         struct aws_event_loop *loop = aws_channel_get_event_loop(channel);
@@ -98,6 +98,7 @@ static void s_service_l4_proxy_negotiation(
 
     struct aws_channel *channel = handler->channel_handler.slot->channel;
 
+    // we may or may not use this; if we don't use, we release before exiting
     struct aws_io_message *output_message = aws_channel_acquire_message_from_pool(
         channel, AWS_IO_MESSAGE_APPLICATION_DATA, AWS_L4_PROXY_IO_MESSAGE_DEFAULT_LENGTH);
     output_message->user_data = handler;
@@ -109,6 +110,7 @@ static void s_service_l4_proxy_negotiation(
     struct aws_byte_cursor fragment_cursor;
     AWS_ZERO_STRUCT(fragment_cursor);
 
+    // we may or may not have input data
     if (message != NULL) {
         fragment_cursor = aws_byte_cursor_from_buf(&message->message_data);
         aws_byte_cursor_advance(&fragment_cursor, message->copy_mark);
@@ -120,6 +122,7 @@ static void s_service_l4_proxy_negotiation(
     context.status = handler->status;
     context.to_write = &output_message->message_data;
 
+    // the handler tells us how many bytes they used, use that for window updates
     size_t pre_consumed_bytes = fragment_cursor.len;
     int negotiation_result = s_drive_negotiation_l4_proxy(handler, &context);
     size_t consumed_bytes = pre_consumed_bytes - fragment_cursor.len;
@@ -132,10 +135,12 @@ static void s_service_l4_proxy_negotiation(
     if (negotiation_result == AWS_OP_SUCCESS) {
         handler->status = context.status;
 
+        // is there anything to write?
         if (output_message->message_data.len > 0) {
             if (aws_channel_slot_send_message(handler->channel_handler.slot, output_message, AWS_CHANNEL_DIR_WRITE)) {
                 negotiation_result = AWS_OP_ERR;
             } else {
+                // successful send means we shouldn't release
                 output_message = NULL;
             }
         }
@@ -147,10 +152,7 @@ static void s_service_l4_proxy_negotiation(
     if (negotiation_result == AWS_OP_ERR || context.status == AWS_L4PPS_FAILURE) {
         handler->status = AWS_L4PPS_FAILURE;
 
-        callback_error_code = context.error_code;
-        if (callback_error_code == AWS_ERROR_SUCCESS) {
-            callback_error_code = aws_last_error();
-        }
+        callback_error_code = aws_error_or_last_error_or_unknown(context.error_code);
         invoke_completion_callback = true;
     }
 

@@ -119,7 +119,7 @@ static int aws_echo_server_begin_accept(struct aws_echo_server *server);
  * @param server the server to get the listener port for
  * @return the port the server is listening on
  */
-static uint16_t aws_echo_server_get_listener_port(struct aws_echo_server *server);
+static uint32_t aws_echo_server_get_listener_port(struct aws_echo_server *server);
 
 /**
  * Initializes a test context wrapper around an echo server
@@ -750,8 +750,8 @@ error:
     return AWS_OP_ERR;
 }
 
-static uint16_t aws_echo_server_get_listener_port(struct aws_echo_server *server) {
-    uint16_t port = 0;
+static uint32_t aws_echo_server_get_listener_port(struct aws_echo_server *server) {
+    uint32_t port = 0;
 
     aws_mutex_lock(&server->lock);
     port = server->sync.listener_socket->local_endpoint.port;
@@ -828,6 +828,10 @@ static void aws_echo_server_test_context_init(
     };
 
     context->server = aws_echo_server_new(allocator, &server_options);
+
+    // use the APIs to remove the unused warning despite being intended for cross-library testing
+    aws_echo_server_acquire(context->server);
+    aws_echo_server_release(context->server);
 
     aws_echo_server_begin_accept(context->server);
 }

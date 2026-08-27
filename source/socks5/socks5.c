@@ -13,8 +13,6 @@
 #include <aws/io/private/socks5_impl.h>
 #include <aws/io/socks5.h>
 
-#include "aws/io/event_loop.h"
-
 static void s_aws_socks5_proxy_config_destroy(void *value) {
     struct aws_l4_proxy_config *l4_config = value;
     if (!l4_config) {
@@ -182,6 +180,7 @@ struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
     aws_l4_proxy_config_acquire(&impl->config->base);
     impl->auth_instance = aws_socks5_proxy_negotiation_strategy_new_instance(config->negotiation_strategy);
     impl->state = AWS_S5PIS_START;
+
     if (aws_byte_buf_init(&impl->write_buffer, allocator, DEFAULT_SOCKS5_PROTOCOL_BUFFER_SIZE) ||
         aws_byte_buf_init(&impl->read_buffer, allocator, DEFAULT_SOCKS5_PROTOCOL_BUFFER_SIZE)) {
         goto failure;
@@ -190,6 +189,7 @@ struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
     if (aws_byte_buf_init_copy_from_cursor(&impl->remote_host, allocator, l4_options->remote.host)) {
         goto failure;
     }
+
     impl->remote_port = l4_options->remote.port;
 
     return impl;
@@ -199,21 +199,6 @@ failure:
     aws_socks5_proxy_impl_destroy(impl);
 
     return NULL;
-}
-
-static void s_on_socks5_protocol_error(
-    struct aws_socks5_proxy_impl *impl,
-    struct aws_l4_proxy_negotiation_context *context,
-    int error_code) {
-    context->error_code = error_code;
-    impl->final_error_code = error_code;
-
-    AWS_LOGF_ERROR(
-        AWS_LS_IO_SOCKS5,
-        "(%p) Socks5 proxy protocol negotiation failed with error code %d(%s)",
-        (void *)impl,
-        error_code,
-        aws_error_debug_str(error_code));
 }
 
 static void s_transition_socks5_impl_state(
@@ -230,6 +215,25 @@ static void s_transition_socks5_impl_state(
             s_aws_socks5_impl_state_strings[new_state]);
 
         impl->state = new_state;
+    }
+}
+
+static void s_socks5_apply_error(
+    struct aws_socks5_proxy_impl *impl,
+    struct aws_l4_proxy_negotiation_context *context,
+    int error_code) {
+
+    if (impl->state != AWS_S5PIS_FAILURE) {
+        context->error_code = error_code;
+        impl->final_error_code = error_code;
+        s_transition_socks5_impl_state(impl, AWS_S5PIS_FAILURE);
+
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKS5,
+            "(%p) Socks5 proxy protocol negotiation failed with error code %d(%s)",
+            (void *)impl,
+            error_code,
+            aws_error_debug_str(error_code));
     }
 }
 
@@ -268,8 +272,7 @@ static void s_handle_socks5_impl_state_start(
     if (num_methods == 0 || num_methods > UINT8_MAX) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKS5, "(%p) Illegal number of authentication methods: %d", (void *)impl, (int)num_methods);
-        s_on_socks5_protocol_error(impl, context, AWS_IO_SOCKS5_INTERNAL_FAILURE);
-        s_transition_socks5_impl_state(impl, AWS_S5PIS_FAILURE);
+        s_socks5_apply_error(impl, context, AWS_IO_SOCKS5_INTERNAL_FAILURE);
         goto done;
     }
 
@@ -348,8 +351,7 @@ static void s_handle_socks5_impl_state_pending_auth_subnegotiation(
 
         case AWS_L4PPS_FAILURE:
             context->status = AWS_L4PPS_FAILURE;
-            s_on_socks5_protocol_error(impl, context, auth_context.error_code);
-            s_transition_socks5_impl_state(impl, AWS_S5PIS_FAILURE);
+            s_socks5_apply_error(impl, context, auth_context.error_code);
             break;
 
         default:
@@ -443,8 +445,7 @@ static void s_handle_socks5_impl_state_pending_response(
     size_t actual_bytes_required = 0;
     if (s_calculate_response_bytes_required(impl, &actual_bytes_required)) {
         AWS_LOGF_ERROR(AWS_LS_IO_SOCKS5, "(%p) Failed to parse response", (void *)impl);
-        s_on_socks5_protocol_error(impl, context, aws_last_error());
-        s_transition_socks5_impl_state(impl, AWS_S5PIS_FAILURE);
+        s_socks5_apply_error(impl, context, aws_last_error());
         return;
     }
 
@@ -471,8 +472,7 @@ static void s_handle_socks5_impl_state_pending_response(
                 (int)reply_code);
         }
         context->status = AWS_L4PPS_FAILURE;
-        s_on_socks5_protocol_error(impl, context, AWS_IO_SOCKS5_CONNECT_REQUEST_FAILED);
-        s_transition_socks5_impl_state(impl, AWS_S5PIS_FAILURE);
+        s_socks5_apply_error(impl, context, AWS_IO_SOCKS5_CONNECT_REQUEST_FAILED);
         return;
     }
 
@@ -550,7 +550,8 @@ static void s_destroy_channel_handler_socks5(struct aws_l4_proxy_channel_handler
 
 static struct aws_l4_proxy_channel_handler_vtable s_l4_proxy_channel_handler_vtable = {
     .drive_negotiation = &s_drive_negotiation_socks5,
-    .destroy = &s_destroy_channel_handler_socks5};
+    .destroy = &s_destroy_channel_handler_socks5,
+};
 
 static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_socks5(
     struct aws_l4_proxy_config *config,
