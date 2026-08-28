@@ -12,16 +12,21 @@
 #include <aws/common/ref_count.h>
 #include <aws/io/private/l4_proxy_impl.h>
 
-#define METHOD_SELECTION_LENGTH 2
-#define METHOD_RESPONSE_LENGTH 2
-#define SOCKS_VERSION 5
-#define NO_ACCEPTABLE_METHODS_ID 255
+#define SOCKS5_METHOD_SELECTION_LENGTH 2
+#define SOCKS5_METHOD_RESPONSE_LENGTH 2
+#define SOCKS5_VERSION_VALUE 5
+#define SOCKS5_NO_ACCEPTABLE_METHODS_ID 255
 
 struct aws_socks5_proxy_negotiation_strategy;
 struct aws_socks5_proxy_negotiation_strategy_instance;
 
 struct aws_socks5_proxy_negotiation_strategy_instance_vtable {
     void (*destroy)(struct aws_socks5_proxy_negotiation_strategy_instance *);
+
+    /*
+     * Given a context that optionally contains input data, attempts to progress the authentication part of
+     * the SOCKS5 protocol
+     */
     void (*drive_negotiation)(
         struct aws_socks5_proxy_negotiation_strategy_instance *,
         struct aws_l4_proxy_negotiation_context *);
@@ -42,17 +47,32 @@ struct aws_socks5_proxy_negotiation_strategy_instance_vtable {
      */
 };
 
+/*
+ * A per-connection instance of a particular strategy for negotiating the authentication component of the SOCKS5
+ * protocol.
+ *
+ * These are created from a `aws_socks5_proxy_negotiation_strategy` object each time we perform the authentication
+ * part of the handshake/tunnel protocol
+ */
 struct aws_socks5_proxy_negotiation_strategy_instance {
     struct aws_allocator *allocator;
     const struct aws_socks5_proxy_negotiation_strategy_instance_vtable *vtable;
     void *impl;
 };
 
+/*
+ * Strategy vtable
+ * Just contains a method for creating strategy instances
+ */
 struct aws_socks5_proxy_negotiation_strategy_vtable {
     struct aws_socks5_proxy_negotiation_strategy_instance *(*new_instance)(
         struct aws_socks5_proxy_negotiation_strategy *);
 };
 
+/*
+ * Persistent configuration that controls how the authentication step is accomplished during SOCKS5 proxy
+ * negotiation
+ */
 struct aws_socks5_proxy_negotiation_strategy {
     struct aws_allocator *allocator;
     const struct aws_socks5_proxy_negotiation_strategy_vtable *vtable;

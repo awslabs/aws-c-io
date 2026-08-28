@@ -10,6 +10,9 @@
 
 #include <aws/common/byte_buf.h>
 
+/*
+ * What is the status of proxy tunnel negotiation?
+ */
 enum aws_l4_proxy_protocol_status {
     AWS_L4PPS_IN_PROGRESS,
     AWS_L4PPS_SUCCESS,
@@ -17,11 +20,11 @@ enum aws_l4_proxy_protocol_status {
 };
 
 /*
- * Input-output structure containing the results of an attempt to progress the auth negotiation
+ * Input-output structure containing the results of an attempt to establish a tunnel through a proxy
  */
 struct aws_l4_proxy_negotiation_context {
 
-    /* Incoming data to be processed.  Negotiation instance will update this based on bytes consumed */
+    /* Incoming data to be processed.  Negotiation updates this based on bytes consumed */
     struct aws_byte_cursor *data;
 
     /* Resulting current status of the negotiation */

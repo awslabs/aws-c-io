@@ -158,7 +158,8 @@ static int s_build_basic_auth_request(struct aws_socks5_proxy_negotiation_strate
 static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_service_pending_method_selection(
     struct aws_socks5_proxy_negotiation_strategy_instance_basic_auth *instance,
     struct aws_l4_proxy_negotiation_context *context) {
-    size_t bytes_needed = METHOD_SELECTION_LENGTH - aws_min_size(instance->inbound_buffer.len, METHOD_SELECTION_LENGTH);
+    size_t bytes_needed =
+        SOCKS5_METHOD_SELECTION_LENGTH - aws_min_size(instance->inbound_buffer.len, SOCKS5_METHOD_SELECTION_LENGTH);
     size_t bytes_available = aws_min_size(bytes_needed, (context->data) ? context->data->len : 0);
 
     if (bytes_available > 0) {
@@ -169,11 +170,11 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_service_
         }
     }
 
-    if (instance->inbound_buffer.len < METHOD_SELECTION_LENGTH) {
+    if (instance->inbound_buffer.len < SOCKS5_METHOD_SELECTION_LENGTH) {
         return;
     }
 
-    if (instance->inbound_buffer.buffer[0] != SOCKS_VERSION) {
+    if (instance->inbound_buffer.buffer[0] != SOCKS5_VERSION_VALUE) {
         s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_fail(
             instance, context, AWS_IO_SOCKS5_PROTOCOL_VERSION_MISMATCH);
         return;
@@ -184,8 +185,8 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_service_
         s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_fail(
             instance,
             context,
-            (selected_method == NO_ACCEPTABLE_METHODS_ID) ? AWS_IO_SOCKS5_NO_ACCEPTABLE_METHODS
-                                                          : AWS_IO_SOCKS5_UNEXPECTED_METHOD_ID);
+            (selected_method == SOCKS5_NO_ACCEPTABLE_METHODS_ID) ? AWS_IO_SOCKS5_NO_ACCEPTABLE_METHODS
+                                                                 : AWS_IO_SOCKS5_UNEXPECTED_METHOD_ID);
         return;
     }
 
@@ -214,7 +215,8 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_service_
 static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_service_pending_response(
     struct aws_socks5_proxy_negotiation_strategy_instance_basic_auth *instance,
     struct aws_l4_proxy_negotiation_context *context) {
-    size_t bytes_needed = METHOD_RESPONSE_LENGTH - aws_min_size(instance->inbound_buffer.len, METHOD_RESPONSE_LENGTH);
+    size_t bytes_needed =
+        SOCKS5_METHOD_RESPONSE_LENGTH - aws_min_size(instance->inbound_buffer.len, SOCKS5_METHOD_RESPONSE_LENGTH);
     size_t bytes_available = (context->data) ? (context->data->len) : 0;
     if (bytes_available == 0) {
         return;
@@ -228,7 +230,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_service_
         return;
     }
 
-    if (instance->inbound_buffer.len < METHOD_RESPONSE_LENGTH) {
+    if (instance->inbound_buffer.len < SOCKS5_METHOD_RESPONSE_LENGTH) {
         return;
     }
 
@@ -312,7 +314,7 @@ static struct aws_socks5_proxy_negotiation_strategy_instance *
     instance->strategy = aws_socks5_proxy_negotiation_strategy_acquire(strategy);
 
     struct aws_socks5_proxy_negotiation_strategy_basic_auth *basic_auth_strategy = strategy->impl;
-    size_t inbound_buffer_length = aws_max_size(METHOD_SELECTION_LENGTH, METHOD_RESPONSE_LENGTH);
+    size_t inbound_buffer_length = aws_max_size(SOCKS5_METHOD_SELECTION_LENGTH, SOCKS5_METHOD_RESPONSE_LENGTH);
     size_t outbound_buffer_length = 3 + basic_auth_strategy->username.len + basic_auth_strategy->password.len;
     if (aws_byte_buf_init(&instance->inbound_buffer, strategy->allocator, inbound_buffer_length) ||
         aws_byte_buf_init(&instance->outbound_buffer, strategy->allocator, outbound_buffer_length)) {

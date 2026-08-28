@@ -101,7 +101,8 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(
 static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_service_pending_method_selection(
     struct aws_socks5_proxy_negotiation_strategy_instance_no_auth *instance,
     struct aws_l4_proxy_negotiation_context *context) {
-    size_t bytes_needed = METHOD_SELECTION_LENGTH - aws_min_size(instance->inbound_buffer.len, METHOD_SELECTION_LENGTH);
+    size_t bytes_needed =
+        SOCKS5_METHOD_SELECTION_LENGTH - aws_min_size(instance->inbound_buffer.len, SOCKS5_METHOD_SELECTION_LENGTH);
     size_t bytes_available = aws_min_size(bytes_needed, (context->data) ? context->data->len : 0);
 
     if (bytes_available > 0) {
@@ -112,13 +113,13 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_service_pen
         }
     }
 
-    if (instance->inbound_buffer.len < METHOD_SELECTION_LENGTH) {
+    if (instance->inbound_buffer.len < SOCKS5_METHOD_SELECTION_LENGTH) {
         return;
     }
 
     AWS_FATAL_ASSERT(instance->inbound_buffer.len == METHOD_SELECTION_LENGTH);
 
-    if (instance->inbound_buffer.buffer[0] != SOCKS_VERSION) {
+    if (instance->inbound_buffer.buffer[0] != SOCKS5_VERSION_VALUE) {
         s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(
             instance, context, AWS_IO_SOCKS5_PROTOCOL_VERSION_MISMATCH);
         return;
@@ -129,8 +130,8 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_service_pen
         s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(
             instance,
             context,
-            (selected_method == NO_ACCEPTABLE_METHODS_ID) ? AWS_IO_SOCKS5_NO_ACCEPTABLE_METHODS
-                                                          : AWS_IO_SOCKS5_UNEXPECTED_METHOD_ID);
+            (selected_method == SOCKS5_NO_ACCEPTABLE_METHODS_ID) ? AWS_IO_SOCKS5_NO_ACCEPTABLE_METHODS
+                                                                 : AWS_IO_SOCKS5_UNEXPECTED_METHOD_ID);
         return;
     }
 
@@ -192,7 +193,7 @@ static struct aws_socks5_proxy_negotiation_strategy_instance *
     instance->base.vtable = &s_no_auth_strategy_instance_vtable;
     instance->base.impl = instance;
 
-    if (aws_byte_buf_init(&instance->inbound_buffer, strategy->allocator, METHOD_SELECTION_LENGTH)) {
+    if (aws_byte_buf_init(&instance->inbound_buffer, strategy->allocator, SOCKS5_METHOD_SELECTION_LENGTH)) {
         goto error;
     }
 
