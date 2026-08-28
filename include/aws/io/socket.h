@@ -112,17 +112,35 @@ struct aws_socket_options {
      * framework own DNS resolution and, critically, provide the destination hostname to on-demand VPNs,
      * content filters, and HTTP CONNECT proxies (which require the FQDN to authorize the route).
      *
-     * When set, aws_client_bootstrap skips its internal host-resolver step, so the SDK-level
-     * host-resolver cache, bad-address feedback, and multi-address (happy-eyeballs) failover are not
-     * used; the OS performs resolution and failover instead. The hostname supplied to the bootstrap is
-     * forwarded verbatim to the socket layer.
-     *
      * On platforms other than the Apple Network Framework backend, this field has no effect (there is
      * no connect-by-name path) and is ignored. On the Apple Network Framework backend it is only valid
      * for TCP (AWS_SOCKET_STREAM) over IPv4/IPv6; combining it with a non-TCP type or a non-IP domain
      * (UDP or AWS_SOCKET_LOCAL) causes connect to raise AWS_IO_SOCKET_INVALID_OPTIONS.
      */
     bool connect_by_name;
+
+    /**
+     * (Optional)
+     * Apple Network Framework only. Defaults to false.
+     *
+     * When true, connections created from these options ignore any proxies configured on the system,
+     * via Apple's nw_parameters_set_prefer_no_proxy(). Use this when the caller must reach the
+     * destination directly regardless of system proxy configuration.
+     *
+     * On platforms other than the Apple Network Framework backend this field has no effect and is
+     * ignored (aws-c-io never applies system proxies at the socket layer on those backends).
+     */
+    bool prefer_no_proxy;
+
+    /**
+     * (Optional)
+     * Apple Network Framework only. Defaults to NULL.
+     *
+     * An opaque pointer to an Apple `nw_privacy_context_t` used to configure privacy settings (for
+     * example disabling connection logging or requiring encrypted name resolution) for connections.
+     *
+     */
+    void *privacy_context;
 };
 
 struct aws_socket;

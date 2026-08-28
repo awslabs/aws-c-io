@@ -862,6 +862,17 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
+    /* Optionally instruct Network Framework to ignore any system-configured proxies. */
+    if (options->prefer_no_proxy) {
+        nw_parameters_set_prefer_no_proxy(nw_socket->nw_parameters, true);
+    }
+
+    /* Optionally apply a caller-supplied privacy context. Ownership stays with the caller; Network
+     * framework retains its own reference. */
+    if (options->privacy_context != NULL) {
+        nw_parameters_set_privacy_context(nw_socket->nw_parameters, (nw_privacy_context_t)options->privacy_context);
+    }
+
     return AWS_OP_SUCCESS;
 }
 
