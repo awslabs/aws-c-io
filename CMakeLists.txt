@@ -51,6 +51,7 @@ file(GLOB AWS_IO_PRIV_HEADERS
 
 file(GLOB AWS_IO_SRC
         "source/*.c"
+        "source/socks5/*.c"
         )
 
 if (WIN32)
