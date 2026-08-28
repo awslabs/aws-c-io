@@ -152,7 +152,7 @@ static void s_service_l4_proxy_negotiation(
     if (negotiation_result == AWS_OP_ERR || context.status == AWS_L4PPS_FAILURE) {
         handler->status = AWS_L4PPS_FAILURE;
 
-        callback_error_code = aws_error_or_last_error_or_unknown(context.error_code);
+        callback_error_code = aws_error_or_last_error_or_unknown_error(context.error_code);
         invoke_completion_callback = true;
     }
 
