@@ -54,7 +54,7 @@ static int s_do_get_auth_methods_test(
 
     uint8_t method = 0xFF;
     ASSERT_SUCCESS(aws_array_list_get_at(&methods, &method, 0));
-    ASSERT_INT_EQUALS(0, method);
+    ASSERT_INT_EQUALS(expected_method_id, method);
 
     aws_array_list_clean_up(&methods);
 
@@ -121,9 +121,9 @@ static int s_do_first_phase_auth_negotiation_test(
     size_t input_length,
     int expected_error_code,
     int (*verify_negotiation_fn)(void *)) {
-    struct aws_byte_cursor input_cursor = aws_byte_cursor_from_array(input_data, input_length);
+    struct aws_byte_cursor input_data_cursor = aws_byte_cursor_from_array(input_data, input_length);
     struct aws_byte_buf input_buffer;
-    aws_byte_buf_init_copy_from_cursor(&input_buffer, strategy->allocator, input_cursor);
+    aws_byte_buf_init_copy_from_cursor(&input_buffer, strategy->allocator, input_data_cursor);
 
     struct aws_byte_buf output_buffer;
     aws_byte_buf_init(&output_buffer, input_buffer.allocator, 256);
@@ -300,8 +300,7 @@ static int s_socks5_negotiation_basic_auth_get_method_ids_fn(struct aws_allocato
 
     aws_io_library_init(allocator);
 
-    struct aws_socks5_proxy_negotiation_strategy *strategy =
-        aws_socks5_proxy_negotiation_strategy_new_no_auth(allocator);
+    struct aws_socks5_proxy_negotiation_strategy *strategy = s_create_basic_auth_strategy(allocator);
 
     struct aws_socks5_proxy_negotiation_strategy_instance *instance =
         aws_socks5_proxy_negotiation_strategy_new_instance(strategy);
