@@ -117,7 +117,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_service_pen
         return;
     }
 
-    AWS_FATAL_ASSERT(instance->inbound_buffer.len == METHOD_SELECTION_LENGTH);
+    AWS_FATAL_ASSERT(instance->inbound_buffer.len == SOCKS5_METHOD_SELECTION_LENGTH);
 
     if (instance->inbound_buffer.buffer[0] != SOCKS5_VERSION_VALUE) {
         s_aws_socks5_proxy_negotiation_strategy_instance_no_auth_fail(
