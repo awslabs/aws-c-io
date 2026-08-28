@@ -33,7 +33,44 @@ struct aws_socks5_proxy_negotiation_basic_auth_options {
     struct aws_byte_cursor password;
 };
 
+/**
+ * Configuration options for a socks5-based l4 proxy configuration
+ */
+struct aws_socks5_proxy_options {
+
+    /**
+     * Host name for the SOCKS5 server
+     */
+    struct aws_byte_cursor proxy_host;
+
+    /**
+     * SOCKS5 server port
+     */
+    uint32_t proxy_port;
+
+    /**
+     * Strategy to apply during authentication
+     */
+    struct aws_socks5_proxy_negotiation_strategy *negotiation_strategy;
+
+    /**
+     * Timeout (zero for none) for negotiation completion
+     */
+    uint32_t negotiation_timeout_ms;
+};
+
 AWS_EXTERN_C_BEGIN
+
+/**
+ * Creates a new l4_proxy_config capable of negotiating a tunnel through a SOCKS5 proxy
+ *
+ * @param allocator allocator to use
+ * @param options SOCKS5 configuration options
+ * @return a new proxy configuration
+ */
+AWS_IO_API struct aws_l4_proxy_config *aws_l4_proxy_config_new_socks5(
+    struct aws_allocator *allocator,
+    struct aws_socks5_proxy_options *options);
 
 /**
  * Creates a new SOCKS5 authentication strategy that performs basic authentication
