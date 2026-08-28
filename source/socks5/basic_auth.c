@@ -289,7 +289,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_drive_ne
     }
 }
 
-static int a_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_get_auth_methods(
+static int s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_get_auth_methods(
     struct aws_socks5_proxy_negotiation_strategy_instance *instance,
     struct aws_array_list *methods) {
     (void)instance;
@@ -301,7 +301,7 @@ static int a_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_get_auth_
 static struct aws_socks5_proxy_negotiation_strategy_instance_vtable s_basic_auth_strategy_instance_vtable = {
     .destroy = s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_destroy,
     .drive_negotiation = s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_drive_negotiation,
-    .get_auth_methods = a_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_get_auth_methods};
+    .get_auth_methods = s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_get_auth_methods};
 
 static struct aws_socks5_proxy_negotiation_strategy_instance *
     s_aws_socks5_proxy_negotiation_strategy_basic_auth_new_instance(

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0.
  */
 
+#include <aws/io/socks5.h>
+
 #include <aws/common/allocator.h>
 #include <aws/common/byte_buf.h>
 #include <aws/common/logging.h>
