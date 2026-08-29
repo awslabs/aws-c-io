@@ -136,7 +136,7 @@ struct aws_socks5_proxy_impl {
     struct aws_socks5_proxy_negotiation_strategy_instance *auth_instance;
 
     struct aws_byte_buf remote_host;
-    uint32_t remote_port;
+    uint16_t remote_port;
 
     enum aws_socks5_proxy_impl_state state;
 
@@ -172,6 +172,15 @@ struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
     struct aws_l4_proxy_channel_handler_options *l4_options) {
 
     if (allocator == NULL || config == NULL) {
+        aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
+        return NULL;
+    }
+
+    if (l4_options->remote.port > UINT16_MAX) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_SOCKS5,
+            "Invalid socks5 remote port: %u.  Only 16 bit values are allowed.",
+            l4_options->remote.port);
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
     }
