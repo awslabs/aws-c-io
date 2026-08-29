@@ -942,6 +942,7 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_destroy
 static void s_aws_socks5_proxy_negotiation_strategy_instance_bad_methods_drive_negotiation(
     struct aws_socks5_proxy_negotiation_strategy_instance *instance,
     struct aws_l4_proxy_negotiation_context *context) {
+    (void)instance;
 
     context->status = AWS_L4PPS_FAILURE;
     context->error_code = AWS_ERROR_UNIMPLEMENTED;
