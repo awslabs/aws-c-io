@@ -201,7 +201,7 @@ struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
         goto failure;
     }
 
-    impl->remote_port = l4_options->remote.port;
+    impl->remote_port = (uint16_t)l4_options->remote.port;
 
     return impl;
 
