@@ -130,6 +130,9 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_net_test_case(tls_client_channel_negotiation_failure_tls13_to_tls12_server)
 
     if(AWS_DONOT_USE_KEYCHAIN)
+        # This test uses the keychain-less SecItem path (SecIdentityCreate), which does not require the
+        # test binary to be codesigned with an Apple Developer account and entitlements. It is the only
+        # macOS mTLS path that can run in CI, so it is gated on AWS_DONOT_USE_KEYCHAIN.
         add_net_test_case(tls_client_channel_negotiation_success_mtls_secitem_no_keychain)
     endif()
 endif()

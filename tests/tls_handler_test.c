@@ -1731,39 +1731,6 @@ AWS_TEST_CASE(
     tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain,
     s_tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain_fn)
 
-/* Keychain-less SecItem mTLS test. When aws-c-io is built with AWS_DONOT_USE_KEYCHAIN.*/
-#    if defined(AWS_DONOT_USE_KEYCHAIN)
-static void s_mtls_disable_verify_peer(struct aws_tls_ctx_options *options) {
-    aws_tls_ctx_options_set_verify_peer(options, false);
-}
-#    endif
-
-static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
-    struct aws_allocator *allocator,
-    void *ctx) {
-    (void)ctx;
-#    if defined(AWS_DONOT_USE_KEYCHAIN)
-    /*
-     * Keychain-less SecItem mTLS handshake. Uses mtls_device_pkcs1.key because SecItem cannot import PKCS8 keys.
-     * Targets the local TLS 1.2 server (Secure Transport's max version).
-     */
-    return s_verify_good_host_mtls_connect(
-        allocator,
-        s_aws_local_tls_server_host_name,
-        AWS_TEST_LOCAL_TLS12_PORT,
-        NULL /* ca_path */,
-        "mtls_device_pkcs1.key",
-        s_mtls_disable_verify_peer);
-#    else
-    (void)allocator;
-    return AWS_OP_SKIP;
-#    endif
-}
-
-AWS_TEST_CASE(
-    tls_client_channel_negotiation_success_mtls_secitem_no_keychain,
-    s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn)
-
 static int s_tls_client_channel_negotiation_failure_tls13_to_tls12_server_fn(
     struct aws_allocator *allocator,
     void *ctx) {
@@ -1780,6 +1747,33 @@ AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 static void s_disable_verify_peer(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_verify_peer(options, false);
 }
+
+/* Keychain-less SecItem mTLS test. When aws-c-io is built with AWS_DONOT_USE_KEYCHAIN.*/
+static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+#    if defined(AWS_DONOT_USE_KEYCHAIN)
+    /*
+     * Keychain-less SecItem mTLS handshake. Uses mtls_device_pkcs1.key because SecItem cannot import PKCS8 keys.
+     * Targets the local TLS 1.2 server (Secure Transport's max version).
+     */
+    return s_verify_good_host_mtls_connect(
+        allocator,
+        s_aws_local_tls_server_host_name,
+        AWS_TEST_LOCAL_TLS12_PORT,
+        NULL /* ca_path */,
+        "mtls_device_pkcs1.key",
+        s_disable_verify_peer);
+#    else
+    (void)allocator;
+    return AWS_OP_SKIP;
+#    endif
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_mtls_secitem_no_keychain,
+    s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn)
 
 /* prove that connections complete even when verify_peer is false */
 static int s_tls_client_channel_no_verify_fn(struct aws_allocator *allocator, void *ctx) {
