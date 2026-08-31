@@ -135,8 +135,7 @@ enum aws_socket_impl_type aws_socket_get_default_impl_type(void) {
 #    elif defined(AWS_ENABLE_IO_COMPLETION_PORTS)
     return AWS_SOCKET_IMPL_WINSOCK;
 #    else
-    AWS_FATAL_ASSERT(
-        true && "Invalid default socket impl type. Please check make sure the library is compiled the correct ");
+    AWS_FATAL_ASSERT(true && "Invalid default socket impl type. Please make sure the library is compiled correctly.");
     return AWS_SOCKET_IMPL_PLATFORM_DEFAULT;
 #    endif
 #endif

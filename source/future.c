@@ -67,7 +67,6 @@ static void s_future_impl_result_dtor(struct aws_future_impl *future, void *resu
     switch (future->type) {
         case AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP: {
             future->result_dtor.clean_up(result_addr);
-            break;
         } break;
 
         case AWS_FUTURE_T_POINTER_WITH_DESTROY: {
@@ -348,7 +347,7 @@ void aws_future_impl_set_result_by_move(struct aws_future_impl *future, void *sr
 }
 
 /* Returns true if callback was registered, or false if callback was ignored
- * because the the future is already done and invoke_if_already_done==false */
+ * because the future is already done and invoke_if_already_done==false */
 static bool s_future_impl_register_callback(
     struct aws_future_impl *future,
     struct aws_future_callback_data *callback,

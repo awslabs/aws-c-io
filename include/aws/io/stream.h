@@ -82,7 +82,7 @@ AWS_IO_API struct aws_input_stream *aws_input_stream_acquire(struct aws_input_st
 AWS_IO_API struct aws_input_stream *aws_input_stream_release(struct aws_input_stream *stream);
 
 /*
- * Seek to a position within a stream; analagous to fseek() and its relatives
+ * Seek to a position within a stream; analogous to fseek() and its relatives
  */
 AWS_IO_API int aws_input_stream_seek(struct aws_input_stream *stream, int64_t offset, enum aws_stream_seek_basis basis);
 
