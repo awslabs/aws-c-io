@@ -528,6 +528,8 @@ static void s_aws_echo_server_on_connection_shutdown(
     struct aws_echo_connection *connection,
     int error_code,
     void *user_data) {
+    (void)error_code;
+
     struct aws_echo_server *server = user_data;
 
     aws_mutex_lock(&server->lock);

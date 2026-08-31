@@ -43,7 +43,7 @@ struct aws_tcp_client_options {
     struct aws_byte_cursor remote_host_name;
 
     /** Port to connect to */
-    uint16_t remote_port;
+    uint32_t remote_port;
 
     /** L4 proxy to connect through.  This type was created to test l4 proxy tunneling.  */
     struct aws_l4_proxy_config *proxy_config;
@@ -392,8 +392,11 @@ static void s_aws_tcp_client_schedule_write_if_needed(struct aws_tcp_client *cli
 static void s_aws_tcp_client_on_message_write_completed(
     struct aws_channel *channel,
     struct aws_io_message *message,
-    int err_code,
+    int error_code,
     void *user_data) {
+    (void)channel;
+    (void)message;
+    (void)error_code;
 
     struct aws_tcp_client *client = user_data;
 
@@ -404,6 +407,8 @@ static void s_aws_tcp_client_write_task_fn(
     struct aws_channel_task *channel_task,
     void *arg,
     enum aws_task_status status) {
+    (void)channel_task;
+
     struct aws_tcp_client *client = arg;
 
     client->is_write_scheduled = false;
@@ -715,6 +720,8 @@ static void s_aws_tcp_client_on_channel_shutdown_fn(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+    (void)bootstrap;
+    (void)channel;
 
     struct aws_tcp_client *client = user_data;
 

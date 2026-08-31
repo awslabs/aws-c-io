@@ -726,6 +726,8 @@ struct aws_socks5_tunnel_options {
 };
 
 static void s_aws_socks5_server_on_tunnel_shutdown(struct aws_socks5_tunnel *tunnel, int error_code, void *user_data) {
+    (void)error_code;
+
     struct aws_socks5_server *server = user_data;
 
     aws_mutex_lock(&server->lock);
@@ -1008,6 +1010,7 @@ static void s_aws_socks5_tunnel_on_remote_channel_setup_fn(
     int error_code,
     struct aws_channel *channel,
     void *user_data) {
+    (void)bootstrap;
 
     struct aws_socks5_tunnel *tunnel = user_data;
     tunnel->pending_remote = false;
