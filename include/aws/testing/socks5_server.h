@@ -828,11 +828,12 @@ static int s_handle_pending_method_list(struct aws_socks5_tunnel *tunnel, struct
     }
 
     uint8_t num_methods = *(tunnel->handshake_data.buffer + 1);
-    if (handshake_data_len < num_methods + 2) {
+    size_t expected_data_len = (size_t)(num_methods + 2);
+    if (handshake_data_len < expected_data_len) {
         return AWS_OP_SUCCESS;
     }
 
-    if (handshake_data_len != num_methods + 2) {
+    if (handshake_data_len != expected_data_len) {
         return aws_raise_error(AWS_IO_SOCKS5_PROTOCOL_FAILURE);
     }
 

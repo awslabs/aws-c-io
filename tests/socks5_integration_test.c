@@ -399,7 +399,7 @@ static int s_aws_socks5_do_no_auth_large_window_echo_success_test(
     size_t total_bytes,
     size_t chunk_size,
     uint64_t chunk_delay_millis,
-    uint64_t iterations) {
+    size_t iterations) {
 
     aws_io_library_init(allocator);
 
@@ -444,7 +444,7 @@ static int s_aws_socks5_do_no_auth_small_window_echo_success_test(
     size_t total_bytes,
     size_t chunk_size,
     uint64_t chunk_delay_millis,
-    uint64_t iterations) {
+    size_t iterations) {
 
     aws_io_library_init(allocator);
 
@@ -484,7 +484,7 @@ static int s_aws_socks5_do_basic_auth_large_window_echo_success_test(
     size_t total_bytes,
     size_t chunk_size,
     uint64_t chunk_delay_millis,
-    uint64_t iterations) {
+    size_t iterations) {
 
     aws_io_library_init(allocator);
 
@@ -536,7 +536,7 @@ static int s_aws_socks5_do_basic_auth_small_window_echo_success_test(
     size_t total_bytes,
     size_t chunk_size,
     uint64_t chunk_delay_millis,
-    uint64_t iterations) {
+    size_t iterations) {
 
     aws_io_library_init(allocator);
 

@@ -629,8 +629,8 @@ static int s_tcp_client_increment_read_window(
     size_t size) {
     (void)handler;
 
-    uint64_t new_size = aws_add_size_saturating(size, slot->window_size);
-    uint64_t increment = new_size - slot->window_size;
+    size_t new_size = aws_add_size_saturating(size, slot->window_size);
+    size_t increment = new_size - slot->window_size;
 
     if (increment > 0) {
         aws_channel_slot_increment_read_window(slot, increment);
