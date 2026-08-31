@@ -890,9 +890,8 @@ static void s_aws_tcp_client_test_context_on_connection_result_callback(int erro
     context->sync.connection_attempt_completed = true;
     context->sync.connection_error_code = error_code;
 
-    aws_mutex_unlock(&context->lock);
-
     aws_condition_variable_notify_all(&context->signal);
+    aws_mutex_unlock(&context->lock);
 }
 
 static void s_aws_tcp_client_test_context_on_disconnection_callback(int error_code, void *user_data) {
@@ -903,9 +902,8 @@ static void s_aws_tcp_client_test_context_on_disconnection_callback(int error_co
     context->sync.disconnection_completed = true;
     context->sync.disconnection_error_code = error_code;
 
-    aws_mutex_unlock(&context->lock);
-
     aws_condition_variable_notify_all(&context->signal);
+    aws_mutex_unlock(&context->lock);
 }
 
 static void s_aws_tcp_client_test_context_on_data_callback(struct aws_byte_cursor data, void *user_data) {

@@ -777,9 +777,8 @@ static void s_aws_echo_server_test_context_on_server_setup(
     if (error_code != AWS_ERROR_SUCCESS) {
         context->sync.server_shutdown = true;
     }
-    aws_mutex_unlock(&context->lock);
-
     aws_condition_variable_notify_all(&context->signal);
+    aws_mutex_unlock(&context->lock);
 }
 
 static void s_aws_echo_server_test_context_on_server_destroy(struct aws_echo_server *server, void *user_data) {
@@ -789,9 +788,8 @@ static void s_aws_echo_server_test_context_on_server_destroy(struct aws_echo_ser
 
     aws_mutex_lock(&context->lock);
     context->sync.server_shutdown = true;
-    aws_mutex_unlock(&context->lock);
-
     aws_condition_variable_notify_all(&context->signal);
+    aws_mutex_unlock(&context->lock);
 }
 
 static void aws_echo_server_test_context_init(
