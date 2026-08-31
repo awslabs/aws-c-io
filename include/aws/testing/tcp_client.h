@@ -950,7 +950,9 @@ static void aws_tcp_client_test_context_init(
     if (options->elg != NULL) {
         context->elg = aws_event_loop_group_acquire(options->elg);
     } else {
-        struct aws_event_loop_group_options elg_options = {};
+        struct aws_event_loop_group_options elg_options;
+        AWS_ZERO_STRUCT(elg_options);
+
         context->elg = aws_event_loop_group_new(allocator, &elg_options);
     }
 

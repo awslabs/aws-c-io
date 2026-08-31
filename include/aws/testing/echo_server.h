@@ -805,7 +805,9 @@ static void aws_echo_server_test_context_init(
     if (elg != NULL) {
         context->elg = aws_event_loop_group_acquire(elg);
     } else {
-        struct aws_event_loop_group_options elg_options = {};
+        struct aws_event_loop_group_options elg_options;
+        AWS_ZERO_STRUCT(elg_options);
+
         context->elg = aws_event_loop_group_new(allocator, &elg_options);
     }
 

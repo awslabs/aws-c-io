@@ -82,7 +82,9 @@ static void s_aws_socks5_tcp_test_context_init(
 
     context->allocator = allocator;
 
-    struct aws_event_loop_group_options elg_options = {};
+    struct aws_event_loop_group_options elg_options;
+    AWS_ZERO_STRUCT(elg_options);
+
     context->elg = aws_event_loop_group_new(allocator, &elg_options);
 
     aws_echo_server_test_context_init(&context->echo_server_context, allocator, context->elg);
@@ -137,7 +139,8 @@ static int s_aws_socks5_connect_success_fn(struct aws_allocator *allocator, void
 
     aws_io_library_init(allocator);
 
-    struct aws_socks5_tcp_test_context_options context_options = {};
+    struct aws_socks5_tcp_test_context_options context_options;
+    AWS_ZERO_STRUCT(context_options);
 
     struct aws_socks5_tcp_test_context context;
     s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
@@ -228,7 +231,8 @@ static int s_aws_socks5_do_no_auth_echo_success_test(
     uint64_t chunk_delay_millis) {
     aws_io_library_init(allocator);
 
-    struct aws_socks5_tcp_test_context_options context_options = {};
+    struct aws_socks5_tcp_test_context_options context_options;
+    AWS_ZERO_STRUCT(context_options);
 
     struct aws_socks5_tcp_test_context context;
     s_aws_socks5_tcp_test_context_init(&context, allocator, &context_options);
