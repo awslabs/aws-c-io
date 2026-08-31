@@ -1283,6 +1283,17 @@ static void s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn(
     aws_channel_slot_set_handler(slot, &tunnel->to_client_handler);
 }
 
+static void s_aws_socks5_server_bootstrap_on_accept_channel_shutdown_fn(
+    struct aws_server_bootstrap *bootstrap,
+    int error_code,
+    struct aws_channel *channel,
+    void *user_data) {
+    (void)error_code;
+    (void)bootstrap;
+    (void)channel;
+    (void)user_data;
+}
+
 static void s_aws_socks5_server_bootstrap_on_server_listener_destroy_fn(
     struct aws_server_bootstrap *bootstrap,
     void *user_data) {
@@ -1320,6 +1331,7 @@ static int aws_socks5_server_begin_accept(struct aws_socks5_server *server) {
         .tls_options = NULL,
         .setup_callback = s_aws_socks5_server_bootstrap_on_listener_setup_fn,
         .incoming_callback = s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn,
+        .shutdown_callback = s_aws_socks5_server_bootstrap_on_accept_channel_shutdown_fn,
         .destroy_callback = s_aws_socks5_server_bootstrap_on_server_listener_destroy_fn,
         .enable_read_back_pressure = false,
         .user_data = server,
