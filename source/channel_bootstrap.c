@@ -1462,6 +1462,23 @@ static void s_server_incoming_callback(
     args->incoming_callback(args->bootstrap, error_code, channel, args->user_data);
     channel_data->incoming_callback_status =
         error_code == AWS_ERROR_SUCCESS ? AWS_ICST_CALLED_WITH_SUCCESS : AWS_ICST_CALLED_WITH_ERROR;
+
+    /*
+     * Data can arrive while the accept task is sitting in the task queue.  Since the server socket channel handler
+     * hasn't been set up yet (and so readable notifications haven't been subscribed to yet), we never get notified
+     * about this data.  This can lead to hung channels if the client wrote an entire hello and is expecting a response
+     * and thus sends no more data.
+     *
+     * We work around this by strobing the socket's read after invoking the user callback, if this was a successful
+     * setup.  The assumption is that the user callback would at least attach the next handler which could be capable
+     * of handling the data.
+     */
+    if (channel_data->socket && error_code == AWS_ERROR_SUCCESS) {
+        struct aws_socket *socket = channel_data->socket;
+        if (socket->readable_fn) {
+            socket->readable_fn(socket, AWS_ERROR_SUCCESS, socket->readable_user_data);
+        }
+    }
 }
 
 static void s_tls_server_on_negotiation_result(
@@ -1727,7 +1744,7 @@ static void s_on_server_channel_on_setup_completed(struct aws_channel *channel, 
             goto error;
         }
     } else {
-        s_server_incoming_callback(channel_data, AWS_OP_SUCCESS, channel);
+        s_server_incoming_callback(channel_data, AWS_ERROR_SUCCESS, channel);
     }
 
     return;
