@@ -3040,7 +3040,8 @@ static int s_test_connect_by_name_long_fqdn(struct aws_allocator *allocator, voi
 AWS_TEST_CASE(connect_by_name_long_fqdn, s_test_connect_by_name_long_fqdn)
 
 /* Client-side: connect_by_name resolves "localhost" and attempts a real TCP connection.
- * This helps in  proving the host_name path reaches the OS resolver and connect rather than being rejected synchronously. */
+ * This helps in  proving the host_name path reaches the OS resolver and connect rather than being rejected
+ * synchronously. */
 static int s_test_connect_by_name_client_localhost(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
