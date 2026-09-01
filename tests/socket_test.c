@@ -3026,7 +3026,7 @@ static int s_test_connect_by_name_long_fqdn(struct aws_allocator *allocator, voi
     aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args);
     ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
     /* Any async error (resolution failure or timeout) is acceptable; the point is it was not INVALID_ADDRESS. */
-    ASSERT_INT_NOT_EQUALS(AWS_IO_SOCKET_INVALID_ADDRESS, args.error_code);
+    ASSERT_TRUE(args.error_code != AWS_IO_SOCKET_INVALID_ADDRESS);
 
     aws_socket_clean_up(&outgoing);
     ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
