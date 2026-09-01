@@ -219,6 +219,10 @@ if(NOT WIN32)
 endif()
 add_test_case(socket_pinned_event_loop)
 add_net_test_case(socket_pinned_event_loop_dns_failure)
+if(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+# connect_by_name resolver-bypass path is Apple Network Framework only
+add_net_test_case(socket_bootstrap_connect_by_name_long_fqdn)
+endif()
 
 if(NOT BYO_CRYPTO)
     if(USE_S2N)
