@@ -32,6 +32,7 @@
  * higher chance of actually testing something. */
 #    define BADSSL_TIMEOUT_MS 10000
 
+#    define AWS_TEST_LOCAL_TLS12_PORT 58443
 #    define AWS_TEST_LOCAL_TLS13_PORT 59443
 #    define AWS_TEST_LOCAL_UNTRUSTED_TLS_PORT 60443
 
@@ -1472,6 +1473,7 @@ static int s_verify_good_host_mtls_connect(
     const struct aws_string *host_name,
     uint32_t port,
     const char *ca_path,
+    const char *key_path,
     void (*override_tls_options_fn)(struct aws_tls_ctx_options *)) {
 
     struct aws_byte_buf cert_buf = {0};
@@ -1479,7 +1481,7 @@ static int s_verify_good_host_mtls_connect(
     struct aws_byte_buf ca_buf = {0};
 
     ASSERT_SUCCESS(aws_byte_buf_init_from_file(&cert_buf, allocator, "mtls_device.pem.crt"));
-    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, "mtls_device.key"));
+    ASSERT_SUCCESS(aws_byte_buf_init_from_file(&key_buf, allocator, key_path));
     if (ca_path) {
         ASSERT_SUCCESS(aws_byte_buf_init_from_file(&ca_buf, allocator, ca_path));
     }
@@ -1656,6 +1658,7 @@ static int s_tls_client_channel_negotiation_success_mtls_tls13_fn(struct aws_all
         s_aws_local_tls_server_host_name,
         AWS_TEST_LOCAL_TLS13_PORT,
         "mtls_server_root_ca.pem.crt",
+        "mtls_device.key",
         s_raise_tls_version_to_13);
 }
 
@@ -1669,7 +1672,12 @@ static int s_tls_client_channel_negotiation_success_mtls_from_keychain_fn(struct
         return AWS_OP_SKIP;
     }
     return s_verify_good_host_mtls_connect(
-        allocator, s_aws_local_tls_server_host_name, AWS_TEST_LOCAL_TLS13_PORT, NULL /* ca_path */, NULL);
+        allocator,
+        s_aws_local_tls_server_host_name,
+        AWS_TEST_LOCAL_TLS13_PORT,
+        NULL /* ca_path */,
+        "mtls_device.key",
+        NULL);
 }
 
 AWS_TEST_CASE(
@@ -1739,6 +1747,33 @@ AWS_STATIC_STRING_FROM_LITERAL(s3_host_name, "s3.amazonaws.com");
 static void s_disable_verify_peer(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_verify_peer(options, false);
 }
+
+/* Keychain-less SecItem mTLS test. When aws-c-io is built with AWS_DONOT_USE_KEYCHAIN.*/
+static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
+    struct aws_allocator *allocator,
+    void *ctx) {
+    (void)ctx;
+#    if defined(AWS_DONOT_USE_KEYCHAIN)
+    /*
+     * Keychain-less SecItem mTLS handshake. Uses mtls_device_pkcs1.key because SecItem cannot import PKCS8 keys.
+     * Targets the local TLS 1.2 server (Secure Transport's max version).
+     */
+    return s_verify_good_host_mtls_connect(
+        allocator,
+        s_aws_local_tls_server_host_name,
+        AWS_TEST_LOCAL_TLS12_PORT,
+        NULL /* ca_path */,
+        "mtls_device_pkcs1.key",
+        s_disable_verify_peer);
+#    else
+    (void)allocator;
+    return AWS_OP_SKIP;
+#    endif
+}
+
+AWS_TEST_CASE(
+    tls_client_channel_negotiation_success_mtls_secitem_no_keychain,
+    s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn)
 
 /* prove that connections complete even when verify_peer is false */
 static int s_tls_client_channel_no_verify_fn(struct aws_allocator *allocator, void *ctx) {
