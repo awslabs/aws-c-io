@@ -148,6 +148,8 @@ static int s_aws_socks5_connect_success_fn(struct aws_allocator *allocator, void
     aws_tcp_client_connect(context.tcp_client_context.client);
     aws_tcp_client_test_context_wait_on_connection_result(&context.tcp_client_context);
 
+    ASSERT_INT_EQUALS(1, aws_socks5_server_get_connection_count(context.socks5_server_context.server));
+
     s_aws_socks5_tcp_test_context_clean_up(&context);
 
     aws_io_library_clean_up();

@@ -209,6 +209,15 @@ static int aws_socks5_server_begin_accept(struct aws_socks5_server *server);
 static uint32_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server);
 
 /**
+ * Gets how many tunnels are currently active on the server.  Useful as a simple verification that a test
+ * is actually connecting through the server and not skipping it.
+ *
+ * @param server server to check tunnel count for
+ * @return current number of active tunnels
+ */
+static size_t aws_socks5_server_get_connection_count(struct aws_socks5_server *server);
+
+/**
  * Initialize a test context that wraps a socks5 server with wait functionality
  *
  * @param context context to initialize
@@ -1363,6 +1372,16 @@ static uint32_t aws_socks5_server_get_listener_port(struct aws_socks5_server *se
     aws_mutex_unlock(&server->lock);
 
     return port;
+}
+
+static size_t aws_socks5_server_get_connection_count(struct aws_socks5_server *server) {
+    size_t count = 0;
+
+    aws_mutex_lock(&server->lock);
+    count = aws_hash_table_get_entry_count(&server->sync.tunnels_by_id);
+    aws_mutex_unlock(&server->lock);
+
+    return count;
 }
 
 static void s_aws_socks5_server_test_context_on_server_setup(
