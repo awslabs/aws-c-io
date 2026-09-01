@@ -1748,12 +1748,12 @@ static void s_disable_verify_peer(struct aws_tls_ctx_options *options) {
     aws_tls_ctx_options_set_verify_peer(options, false);
 }
 
-/* Keychain-less SecItem mTLS test. When aws-c-io is built with AWS_DONOT_USE_KEYCHAIN.*/
+/* Keychain-less SecItem mTLS test. When aws-c-io is built with AWS_SECITEM_NO_KEYCHAIN.*/
 static int s_tls_client_channel_negotiation_success_mtls_secitem_no_keychain_fn(
     struct aws_allocator *allocator,
     void *ctx) {
     (void)ctx;
-#    if defined(AWS_DONOT_USE_KEYCHAIN)
+#    if defined(AWS_SECITEM_NO_KEYCHAIN)
     /*
      * Keychain-less SecItem mTLS handshake. Uses mtls_device_pkcs1.key because SecItem cannot import PKCS8 keys.
      * Targets the local TLS 1.2 server (Secure Transport's max version).

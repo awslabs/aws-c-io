@@ -363,7 +363,7 @@ void aws_cf_release(CFTypeRef obj) {
     }
 }
 
-#ifdef AWS_DONOT_USE_KEYCHAIN
+#ifdef AWS_SECITEM_NO_KEYCHAIN
 /* SecIdentityCreate is a private (SPI) function not exposed in the public Security.framework headers. */
 extern SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);
 #else
@@ -619,7 +619,7 @@ done:
 
     return result;
 }
-#endif /* !AWS_DONOT_USE_KEYCHAIN */
+#endif /* !AWS_SECITEM_NO_KEYCHAIN */
 
 int aws_secitem_import_cert_and_key(
     struct aws_allocator *alloc,
@@ -803,7 +803,7 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
-#ifdef AWS_DONOT_USE_KEYCHAIN
+#ifdef AWS_SECITEM_NO_KEYCHAIN
     SecIdentityRef identity_ref = NULL;
     sec_identity_t identity = NULL;
 

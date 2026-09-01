@@ -730,15 +730,15 @@ Sets the clean up completion callback. The callback will be invoked if `aws_sock
 
 Connects to a remote endpoint. In TCP and all Apple Network Framework connections (regardless it is UDP, TCP or LOCAL), when the connection succeed, you still must wait on  the `on_connection_result()` callback to be invoked before using the socket.
 
-In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`, and if the operation is successful, 
+In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`, and if the operation is successful,
 the socket can immediately be used for write operations.
 
 For LOCAL (Unix Domain Sockets or Named Pipes), the socket will be immediately ready for use upon a successful return.
 
     int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
 
-Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In connection oriented 
-modes or if you are using Apple Network Framework (regardless it is UDP or TCP), you still must call `aws_socket_listen()` and 
+Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In connection oriented
+modes or if you are using Apple Network Framework (regardless it is UDP or TCP), you still must call `aws_socket_listen()` and
 `aws_socket_start_accept()` before using the socket.
 
     int aws_socket_listen(struct aws_socket *socket, int backlog_size);
@@ -747,11 +747,11 @@ TCP, LOCAL, and Apple Network Framework only. Sets up the socket to listen on th
 
     int aws_socket_start_accept(struct aws_socket *socket, struct aws_event_loop *accept_loop, struct aws_socket_listener_options options);
 
-TCP, LOCAL, and Apple Network Framework only. The socket will begin accepting new connections. This is an asynchronous operation. `on_accept_start()` will be invoked when the listener is ready to accept new connection. New connections will arrive via the `on_accept_result()` callback. 
+TCP, LOCAL, and Apple Network Framework only. The socket will begin accepting new connections. This is an asynchronous operation. `on_accept_start()` will be invoked when the listener is ready to accept new connection. New connections will arrive via the `on_accept_result()` callback.
 
     int aws_socket_stop_accept(struct aws_socket *socket);
 
-TCP, LOCAL, and Apple Network Framework only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` 
+TCP, LOCAL, and Apple Network Framework only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()`
 again after this operation.
 
     int aws_socket_close(struct aws_socket *socket);
@@ -790,7 +790,7 @@ Option | Platform | Description                                                 
 --- | --- |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ---
 `USE_S2N` | macOS | Compiles s2n-tls in as an available TLS implementation. User-overridable via `-DUSE_S2N=ON/OFF`.<br>Note that Apple Secure Transport remains the default backend even when `ON` (s2n-tls is only selected when `AWS_CRT_USE_NON_FIPS_TLS_13` is set); setting `OFF` removes s2n-tls from the macOS build entirely.<br>If `AWS_USE_SECITEM` is defined, s2n-tls is never used at runtime, so `USE_S2N` is forced to `OFF` (with a warning) even if explicitly set to `ON`, to avoid linking an unused s2n dependency. | ON when `AWS_USE_SECITEM` is not defined, otherwise OFF
 `AWS_USE_SECITEM` | Apple | Uses Apple's SecItem/Secure Transport API instead of s2n-tls. When defined (regardless of value), the Apple Dispatch Queue event loop is used instead of kqueue.                                                                                                                                                   | Not defined
-`AWS_DONOT_USE_KEYCHAIN` | Apple | Builds the mTLS identity (`SecIdentityRef`) in memory from the provided certificate and private key via `SecIdentityCreate`, instead of adding them to the shared macOS Keychain and reading the identity back out. Intended for products whose security requirements forbid persisting certificates and private keys in the system Keychain. Only effective when `AWS_USE_SECITEM` is enabled. | Not defined
+`AWS_SECITEM_NO_KEYCHAIN` | Apple | Builds the mTLS identity (`SecIdentityRef`) in memory from the provided certificate and private key via `SecIdentityCreate`, instead of adding them to the shared macOS Keychain and reading the identity back out. Intended for products whose security requirements forbid persisting certificates and private keys in the system Keychain. Only effective when `AWS_USE_SECITEM` is enabled. | Not defined
 `USE_VSOCK` | Linux | Enables VSOCK socket domain support. Requires an appropriate VSOCK kernel driver.                                                                                                                                                                                                                                  | OFF
 `BYO_CRYPTO` | Linux/Non-Apple Unix | Disables the built-in TLS implementation and crypto linkage. Your application must provide its own `aws_tls_ctx` and `aws_channel_handler` implementations.                                                                                                                                                        | OFF
 
