@@ -96,6 +96,15 @@ add_test_case(parse_ipv4_invalid_addresses)
 add_test_case(parse_ipv6_valid_addresses)
 add_test_case(parse_ipv6_invalid_addresses)
 
+
+if(AWS_USE_APPLE_NETWORK_FRAMEWORK)
+# Connect_by_name is only Apple Network Framework feature
+add_test_case(connect_by_name_invalid_options_udp)
+add_test_case(connect_by_name_null_hostname)
+add_net_test_case(connect_by_name_long_fqdn)
+add_net_test_case(connect_by_name_client_localhost)
+endif()
+
 if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
 # Apple Network Framework does not support bind+connect
 add_test_case(udp_bind_connect_communication)
