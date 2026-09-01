@@ -104,18 +104,12 @@ struct aws_socket_options {
      * (Optional)
      * Apple Network Framework only. TCP over IPv4/IPv6 only. Defaults to false.
      *
-     * When false (the default), behavior is unchanged: this library resolves the destination hostname
-     * to a numeric IP address and connects to that address.
+     * When false (the default), behavior is unchanged.
      *
      * When true, the connection is established by passing the destination hostname directly to the
-     * operating system ("connect-by-name") instead of pre-resolving it. This lets Apple's Network
-     * framework own DNS resolution and, critically, provide the destination hostname to on-demand VPNs,
-     * content filters, and HTTP CONNECT proxies (which require the FQDN to authorize the route).
+     * operating system instead of pre-resolving it.
      *
-     * On platforms other than the Apple Network Framework backend, this field has no effect (there is
-     * no connect-by-name path) and is ignored. On the Apple Network Framework backend it is only valid
-     * for TCP (AWS_SOCKET_STREAM) over IPv4/IPv6; combining it with a non-TCP type or a non-IP domain
-     * (UDP or AWS_SOCKET_LOCAL) causes connect to raise AWS_IO_SOCKET_INVALID_OPTIONS.
+     * On platforms other than the Apple Network Framework backend, this field has no effect and is ignored.
      */
     bool connect_by_name;
 
@@ -124,11 +118,9 @@ struct aws_socket_options {
      * Apple Network Framework only. Defaults to false.
      *
      * When true, connections created from these options ignore any proxies configured on the system,
-     * via Apple's nw_parameters_set_prefer_no_proxy(). Use this when the caller must reach the
-     * destination directly regardless of system proxy configuration.
+     * Use this when the caller must reach the destination directly regardless of system proxy configuration.
      *
-     * On platforms other than the Apple Network Framework backend this field has no effect and is
-     * ignored (aws-c-io never applies system proxies at the socket layer on those backends).
+     * On platforms other than the Apple Network Framework backend this field has no effect and is ignored
      */
     bool prefer_no_proxy;
 

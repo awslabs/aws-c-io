@@ -1861,11 +1861,10 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
         if (socket->options.type != AWS_SOCKET_STREAM ||
             (socket->options.domain != AWS_SOCKET_IPV4 && socket->options.domain != AWS_SOCKET_IPV6)) {
             s_unlock_socket_synced_data(nw_socket);
-            AWS_LOGF_DEBUG(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p: connect_by_name is only supported for TCP (AWS_SOCKET_STREAM) over IPv4/IPv6.",
                 (void *)socket);
-            s_unlock_socket_synced_data(nw_socket);
             aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
             goto error;
         }
@@ -1875,11 +1874,10 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
         const char *host_name = remote_endpoint->host_name;
         if (host_name == NULL) {
             s_unlock_socket_synced_data(nw_socket);
-            AWS_LOGF_DEBUG(
+            AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
                 "id=%p: connect_by_name requires remote_endpoint->host_name to be set.",
                 (void *)socket);
-            s_unlock_socket_synced_data(nw_socket);
             aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
             goto error;
         }

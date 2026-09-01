@@ -560,7 +560,7 @@ static bool s_aws_socket_domain_uses_dns(enum aws_socket_domain domain) {
     return domain == AWS_SOCKET_IPV4 || domain == AWS_SOCKET_IPV6;
 }
 
-/* connect_by_name is only honored on the Apple Network Framework backend (nw_endpoint_create_host). On every
+/* connect_by_name is only used on the Apple Network Framework backend (nw_endpoint_create_host). On every
  * other backend there is no OS-level connect-by-name path, so treat the flag as false to keep it a true no-op
  * rather than routing a hostname into a resolver-bypass that later fails address parsing. */
 static bool s_connect_by_name_is_supported(const struct aws_socket_options *socket_options) {
