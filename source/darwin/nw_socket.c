@@ -1860,7 +1860,8 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
          * filters, and HTTP CONNECT proxies. Only valid for TCP over IPv4/IPv6. */
         if (socket->options.type != AWS_SOCKET_STREAM ||
             (socket->options.domain != AWS_SOCKET_IPV4 && socket->options.domain != AWS_SOCKET_IPV6)) {
-            AWS_LOGF_ERROR(
+            s_unlock_socket_synced_data(nw_socket);
+            AWS_LOGF_DEBUG(
                 AWS_LS_IO_SOCKET,
                 "id=%p: connect_by_name is only supported for TCP (AWS_SOCKET_STREAM) over IPv4/IPv6.",
                 (void *)socket);
@@ -1869,17 +1870,27 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
             goto error;
         }
 
+        /* The full FQDN travels in a dedicated field so it is not bounded by the address[] buffer,
+         * which is sized for a sockaddr_un path. */
+        const char *host_name = remote_endpoint->host_name;
+        if (host_name == NULL) {
+            s_unlock_socket_synced_data(nw_socket);
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_SOCKET,
+                "id=%p: connect_by_name requires remote_endpoint->host_name to be set.",
+                (void *)socket);
+            s_unlock_socket_synced_data(nw_socket);
+            aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+            goto error;
+        }
+
         char port_string[16];
         snprintf(port_string, sizeof(port_string), "%u", (unsigned)remote_endpoint->port);
 
         AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p: connecting by name to endpoint %s:%s.",
-            (void *)socket,
-            remote_endpoint->address,
-            port_string);
+            AWS_LS_IO_SOCKET, "id=%p: connecting by name to endpoint %s:%s.", (void *)socket, host_name, port_string);
 
-        endpoint = nw_endpoint_create_host(remote_endpoint->address, port_string);
+        endpoint = nw_endpoint_create_host(host_name, port_string);
     } else {
         /* fill in posix sock addr, and then let Network framework sort it out. */
         size_t address_strlen;

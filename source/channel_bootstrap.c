@@ -655,8 +655,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
 
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
     /* In connect-by-name mode the OS owns resolution, so there is no resolved IP to feed back into the
-     * host-resolver's bad-address cache. Only true on the Apple Network Framework backend; elsewhere the
-     * flag is a no-op and the resolver path ran, so bad addresses must still be recorded. */
+     * host-resolver's bad-address cache.*/
     if (s_connect_by_name_is_supported(&connection_args->outgoing_options) == false &&
         s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
         struct aws_host_address host_address;
@@ -1113,9 +1112,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
 
     /* When connect-by-name is requested (Apple Network Framework), skip this library's internal DNS
      * resolution and hand the hostname straight to the socket layer so the OS can resolve it and
-     * supply it to on-demand VPNs / content filters / HTTP CONNECT proxies. This is only honored on
-     * the Apple Network Framework backend; on every other backend it is a no-op (see
-     * s_connect_by_name_is_supported) so the normal resolver path runs. */
+     * supply it to on-demand VPNs / content filters / HTTP CONNECT proxies.*/
     const bool connect_by_name = s_connect_by_name_is_supported(socket_options);
 
     if (connect_by_name == false && s_aws_socket_domain_uses_dns(socket_options->domain)) {
@@ -1139,20 +1136,29 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
             goto error;
         }
     } else {
-        /* ensure that the pipe/domain socket name will fit in the endpoint address */
-        const size_t host_name_len = strlen(host_name);
-        if (host_name_len >= AWS_ADDRESS_MAX_LEN) {
-            aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-            goto error;
-        }
-
         struct aws_socket_endpoint endpoint;
         AWS_ZERO_STRUCT(endpoint);
-        memcpy(endpoint.address, host_name, host_name_len);
-        if (connect_by_name || socket_options->domain == AWS_SOCKET_VSOCK) {
+
+        if (connect_by_name) {
+            /* Carry the full FQDN in a dedicated field so it is not bounded by the endpoint address buffer.*/
+            client_connection_args->host_name = aws_string_new_from_c_str(bootstrap->allocator, host_name);
+            if (!client_connection_args->host_name) {
+                goto error;
+            }
+            endpoint.host_name = aws_string_c_str(client_connection_args->host_name);
             endpoint.port = port;
         } else {
-            endpoint.port = 0;
+            const size_t host_name_len = strlen(host_name);
+            if (host_name_len >= AWS_ADDRESS_MAX_LEN) {
+                aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+                goto error;
+            }
+            memcpy(endpoint.address, host_name, host_name_len);
+            if (socket_options->domain == AWS_SOCKET_VSOCK) {
+                endpoint.port = port;
+            } else {
+                endpoint.port = 0;
+            }
         }
 
         struct aws_socket *outgoing_socket = aws_mem_acquire(bootstrap->allocator, sizeof(struct aws_socket));
