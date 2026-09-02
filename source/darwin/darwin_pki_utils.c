@@ -364,7 +364,8 @@ void aws_cf_release(CFTypeRef obj) {
 }
 
 #ifdef AWS_SECITEM_NO_KEYCHAIN
-/* SecIdentityCreate is a private (SPI) function not exposed in the public Security.framework headers. */
+/* SecIdentityCreate became a public documented security API in the macOS 26 SDK (in October 2025).Earlier SDKs do not
+ * declare it in the Security.framework headers, so we forward-declare it here to build against them.*/
 extern SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);
 #else
 static int s_aws_secitem_add_certificate_to_keychain(
