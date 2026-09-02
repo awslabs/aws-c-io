@@ -3102,3 +3102,66 @@ static int s_test_connect_by_name_client_localhost(struct aws_allocator *allocat
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE(connect_by_name_client_localhost, s_test_connect_by_name_client_localhost)
+
+/* Validating that on enabling prefer_no_proxy does not break normal socket setup or connect: the socket must still
+ * init, connect asynchronously, and get refused on a dead loopback port (rather than failing at init/connect). */
+static int s_test_prefer_no_proxy_does_not_break_connect(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
+    ASSERT_NOT_NULL(event_loop);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    options.prefer_no_proxy = true;
+
+    /* Loopback port with nothing listening. */
+    struct aws_socket_endpoint endpoint;
+    AWS_ZERO_STRUCT(endpoint);
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", "127.0.0.1");
+    endpoint.port = 1567;
+
+    struct error_test_args args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_invoked = false,
+    };
+
+    struct aws_socket outgoing;
+    /* aws_socket_init() runs the ANW parameter setup that applies prefer_no_proxy. */
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .user_data = &args};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
+
+    aws_socket_clean_up(&outgoing);
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_socket_error_shutdown_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+
+    aws_event_loop_group_release(el_group);
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(prefer_no_proxy_does_not_break_connect, s_test_prefer_no_proxy_does_not_break_connect)

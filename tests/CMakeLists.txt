@@ -98,12 +98,13 @@ add_test_case(parse_ipv6_invalid_addresses)
 
 
 if(AWS_USE_APPLE_NETWORK_FRAMEWORK)
-# Connect_by_name is only Apple Network Framework feature
+# Connect_by_name and prefer_no_proxy are only Apple Network Framework feature
 add_test_case(connect_by_name_invalid_options_udp)
 add_test_case(connect_by_name_null_hostname)
 add_net_test_case(connect_by_name_long_fqdn)
 add_net_test_case(connect_by_name_client_localhost)
 add_net_test_case(socket_bootstrap_connect_by_name_long_fqdn)
+add_net_test_case(prefer_no_proxy_does_not_break_connect)
 endif()
 
 if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
