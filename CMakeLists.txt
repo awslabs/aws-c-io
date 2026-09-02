@@ -215,6 +215,13 @@ if (AWS_USE_SECITEM)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_USE_SECITEM")
 endif()
 
+if (AWS_SECITEM_NO_KEYCHAIN)
+    if (NOT APPLE OR NOT AWS_USE_SECITEM)
+        message(FATAL_ERROR "AWS_SECITEM_NO_KEYCHAIN requires an Apple platform with AWS_USE_SECITEM")
+    endif()
+    target_compile_definitions(${PROJECT_NAME} PUBLIC "-DAWS_SECITEM_NO_KEYCHAIN")
+endif()
+
 if (BYO_CRYPTO)
     target_compile_definitions(${PROJECT_NAME} PUBLIC "-DBYO_CRYPTO")
 endif()
