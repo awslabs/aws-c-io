@@ -103,6 +103,7 @@ add_test_case(connect_by_name_invalid_options_udp)
 add_test_case(connect_by_name_null_hostname)
 add_net_test_case(connect_by_name_long_fqdn)
 add_net_test_case(connect_by_name_client_localhost)
+add_net_test_case(socket_bootstrap_connect_by_name_long_fqdn)
 endif()
 
 if(NOT AWS_USE_APPLE_NETWORK_FRAMEWORK)
@@ -219,10 +220,6 @@ if(NOT WIN32)
 endif()
 add_test_case(socket_pinned_event_loop)
 add_net_test_case(socket_pinned_event_loop_dns_failure)
-if(AWS_USE_APPLE_NETWORK_FRAMEWORK)
-# connect_by_name resolver-bypass path is Apple Network Framework only
-add_net_test_case(socket_bootstrap_connect_by_name_long_fqdn)
-endif()
 
 if(NOT BYO_CRYPTO)
     if(USE_S2N)
