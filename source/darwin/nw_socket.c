@@ -862,6 +862,17 @@ static int s_setup_socket_params(struct nw_socket *nw_socket, const struct aws_s
         return aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
     }
 
+    /* Optionally instruct Network Framework to ignore any system-configured proxies. */
+    if (options->prefer_no_proxy) {
+        nw_parameters_set_prefer_no_proxy(nw_socket->nw_parameters, true);
+    }
+
+    /* Optionally apply a caller-supplied privacy context. Ownership stays with the caller; Network
+     * framework retains its own reference. */
+    if (options->privacy_context != NULL) {
+        nw_parameters_set_privacy_context(nw_socket->nw_parameters, (nw_privacy_context_t)options->privacy_context);
+    }
+
     return AWS_OP_SUCCESS;
 }
 
@@ -1841,74 +1852,113 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
         goto error;
     }
 
-    /* fill in posix sock addr, and then let Network framework sort it out. */
-    size_t address_strlen;
-    if (aws_secure_strlen(remote_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
-        s_unlock_socket_synced_data(nw_socket);
-        AWS_LOGF_DEBUG(
-            AWS_LS_IO_SOCKET,
-            "id=%p: failed to parse address %s:%d.",
-            (void *)socket,
-            remote_endpoint->address,
-            (int)remote_endpoint->port);
-        aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
-        goto error;
-    }
+    nw_endpoint_t endpoint = NULL;
 
-    struct socket_address address;
-    AWS_ZERO_STRUCT(address);
-    int pton_err = 1;
-
-    switch (socket->options.domain) {
-        case AWS_SOCKET_IPV4: {
-            pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
-            address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
-            address.sock_addr_types.addr_in.sin_family = AF_INET;
-            address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
-            break;
-        }
-        case AWS_SOCKET_IPV6: {
-            pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
-            address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
-            address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
-            address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
-            break;
-        }
-        case AWS_SOCKET_LOCAL: {
-            address.sock_addr_types.un_addr.sun_family = AF_UNIX;
-            strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
-            address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
-            break;
-        }
-        default: {
-            AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: socket tried to bind to an unknown domain.", (void *)socket);
+    if (socket->options.connect_by_name) {
+        /* Connect-by-name: hand the hostname directly to Network Framework instead of a pre-resolved
+         * sockaddr, so the OS owns resolution and can supply to on-demand VPNs, content
+         * filters, and HTTP CONNECT proxies. Only valid for TCP over IPv4/IPv6. */
+        if (socket->options.type != AWS_SOCKET_STREAM ||
+            (socket->options.domain != AWS_SOCKET_IPV4 && socket->options.domain != AWS_SOCKET_IPV6)) {
             s_unlock_socket_synced_data(nw_socket);
-            aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
-
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p: connect_by_name is only supported for TCP (AWS_SOCKET_STREAM) over IPv4/IPv6.",
+                (void *)socket);
+            aws_raise_error(AWS_IO_SOCKET_INVALID_OPTIONS);
             goto error;
         }
-    }
 
-    if (pton_err != 1) {
-        AWS_LOGF_ERROR(
+        /* The full FQDN travels in a dedicated field so it is not bounded by the address[] buffer,
+         * which is sized for a sockaddr_un path. */
+        const char *host_name = remote_endpoint->host_name;
+        if (host_name == NULL) {
+            s_unlock_socket_synced_data(nw_socket);
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p: connect_by_name requires remote_endpoint->host_name to be set.",
+                (void *)socket);
+            aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+            goto error;
+        }
+
+        char port_string[16];
+        snprintf(port_string, sizeof(port_string), "%u", (unsigned)remote_endpoint->port);
+
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_SOCKET, "id=%p: connecting by name to endpoint %s:%s.", (void *)socket, host_name, port_string);
+
+        endpoint = nw_endpoint_create_host(host_name, port_string);
+    } else {
+        /* fill in posix sock addr, and then let Network framework sort it out. */
+        size_t address_strlen;
+        if (aws_secure_strlen(remote_endpoint->address, AWS_ADDRESS_MAX_LEN, &address_strlen)) {
+            s_unlock_socket_synced_data(nw_socket);
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_SOCKET,
+                "id=%p: failed to parse address %s:%d.",
+                (void *)socket,
+                remote_endpoint->address,
+                (int)remote_endpoint->port);
+            aws_raise_error(AWS_IO_SOCKET_INVALID_ADDRESS);
+            goto error;
+        }
+
+        struct socket_address address;
+        AWS_ZERO_STRUCT(address);
+        int pton_err = 1;
+
+        switch (socket->options.domain) {
+            case AWS_SOCKET_IPV4: {
+                pton_err = inet_pton(AF_INET, remote_endpoint->address, &address.sock_addr_types.addr_in.sin_addr);
+                address.sock_addr_types.addr_in.sin_port = htons((uint16_t)remote_endpoint->port);
+                address.sock_addr_types.addr_in.sin_family = AF_INET;
+                address.sock_addr_types.addr_in.sin_len = sizeof(struct sockaddr_in);
+                break;
+            }
+            case AWS_SOCKET_IPV6: {
+                pton_err = inet_pton(AF_INET6, remote_endpoint->address, &address.sock_addr_types.addr_in6.sin6_addr);
+                address.sock_addr_types.addr_in6.sin6_port = htons((uint16_t)remote_endpoint->port);
+                address.sock_addr_types.addr_in6.sin6_family = AF_INET6;
+                address.sock_addr_types.addr_in6.sin6_len = sizeof(struct sockaddr_in6);
+                break;
+            }
+            case AWS_SOCKET_LOCAL: {
+                address.sock_addr_types.un_addr.sun_family = AF_UNIX;
+                strncpy(address.sock_addr_types.un_addr.sun_path, remote_endpoint->address, AWS_ADDRESS_MAX_LEN);
+                address.sock_addr_types.un_addr.sun_len = sizeof(struct sockaddr_un);
+                break;
+            }
+            default: {
+                AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: socket tried to bind to an unknown domain.", (void *)socket);
+                s_unlock_socket_synced_data(nw_socket);
+                aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
+
+                goto error;
+            }
+        }
+
+        if (pton_err != 1) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_SOCKET,
+                "id=%p: failed to parse address %s:%d.",
+                (void *)socket,
+                remote_endpoint->address,
+                (int)remote_endpoint->port);
+            s_unlock_socket_synced_data(nw_socket);
+            aws_raise_error(s_convert_pton_error(pton_err));
+            goto error;
+        }
+
+        AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p: failed to parse address %s:%d.",
+            "id=%p: connecting to endpoint %s:%d.",
             (void *)socket,
             remote_endpoint->address,
             (int)remote_endpoint->port);
-        s_unlock_socket_synced_data(nw_socket);
-        aws_raise_error(s_convert_pton_error(pton_err));
-        goto error;
+
+        endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
     }
-
-    AWS_LOGF_DEBUG(
-        AWS_LS_IO_SOCKET,
-        "id=%p: connecting to endpoint %s:%d.",
-        (void *)socket,
-        remote_endpoint->address,
-        (int)remote_endpoint->port);
-
-    nw_endpoint_t endpoint = nw_endpoint_create_address(&address.sock_addr_types.addr_base);
 
     if (!endpoint) {
         AWS_LOGF_ERROR(

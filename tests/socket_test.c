@@ -2859,3 +2859,309 @@ static int s_test_parse_ipv6_invalid_addresses(struct aws_allocator *allocator, 
 }
 
 AWS_TEST_CASE(parse_ipv6_invalid_addresses, s_test_parse_ipv6_invalid_addresses)
+
+/* connect_by_name is only valid for TCP over IPv4/IPv6; a UDP socket must be rejected synchronously. */
+static int s_test_connect_by_name_invalid_options_udp(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
+    ASSERT_NOT_NULL(event_loop);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_DGRAM;
+    options.domain = AWS_SOCKET_IPV4;
+    options.connect_by_name = true;
+
+    /* host_name is set; the failure must come from the type/domain guard, not a missing name. */
+    struct aws_socket_endpoint endpoint;
+    AWS_ZERO_STRUCT(endpoint);
+    endpoint.host_name = "localhost";
+    endpoint.port = 80;
+
+    struct error_test_args args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_invoked = false,
+    };
+
+    struct aws_socket outgoing;
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .user_data = &args};
+
+    /* Must fail synchronously with INVALID_OPTIONS. */
+    ASSERT_FAILS(aws_socket_connect(&outgoing, &connect_options));
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_INVALID_OPTIONS, aws_last_error());
+
+    aws_socket_clean_up(&outgoing);
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_socket_error_shutdown_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+
+    aws_event_loop_group_release(el_group);
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(connect_by_name_invalid_options_udp, s_test_connect_by_name_invalid_options_udp)
+
+/* connect_by_name with no host_name set must be rejected synchronously by the NULL guard. */
+static int s_test_connect_by_name_null_hostname(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
+    ASSERT_NOT_NULL(event_loop);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    options.connect_by_name = true;
+
+    /* Valid type/domain but host_name left NULL; only address is populated. */
+    struct aws_socket_endpoint endpoint = {.address = "127.0.0.1", .port = 80};
+
+    struct error_test_args args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_invoked = false,
+    };
+
+    struct aws_socket outgoing;
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .user_data = &args};
+
+    /* Must fail synchronously with INVALID_ADDRESS. */
+    ASSERT_FAILS(aws_socket_connect(&outgoing, &connect_options));
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_INVALID_ADDRESS, aws_last_error());
+
+    aws_socket_clean_up(&outgoing);
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_socket_error_shutdown_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+
+    aws_event_loop_group_release(el_group);
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(connect_by_name_null_hostname, s_test_connect_by_name_null_hostname)
+
+/* Test for the FQDN host_name longer than AWS_ADDRESS_MAX_LEN must NOT be rejected on length. */
+static int s_test_connect_by_name_long_fqdn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
+    ASSERT_NOT_NULL(event_loop);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 5000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    options.connect_by_name = true;
+
+    /* 133-char syntactically valid FQDN (labels <= 63); exceeds AWS_ADDRESS_MAX_LEN (104 on macOS). */
+    static const char *long_fqdn = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa."
+                                   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb."
+                                   "example.com";
+    struct aws_socket_endpoint endpoint;
+    AWS_ZERO_STRUCT(endpoint);
+    endpoint.host_name = long_fqdn;
+    endpoint.port = 443;
+
+    struct error_test_args args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_invoked = false,
+    };
+
+    struct aws_socket outgoing;
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .user_data = &args};
+
+    /* The connect call itself must succeed (no length rejection); the bogus host fails later. */
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+    /* Any async error (resolution failure or timeout) is acceptable; the point is it was not INVALID_ADDRESS. */
+    ASSERT_TRUE(args.error_code != AWS_IO_SOCKET_INVALID_ADDRESS);
+
+    aws_socket_clean_up(&outgoing);
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_socket_error_shutdown_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+
+    aws_event_loop_group_release(el_group);
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(connect_by_name_long_fqdn, s_test_connect_by_name_long_fqdn)
+
+/* Client-side: connect_by_name resolves "localhost" and attempts a real TCP connection.
+ * This helps in  proving the host_name path reaches the OS resolver and connect rather than being rejected
+ * synchronously. */
+static int s_test_connect_by_name_client_localhost(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
+    ASSERT_NOT_NULL(event_loop);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    options.connect_by_name = true;
+
+    /* Loopback port with nothing listening; connect_by_name resolves "localhost". */
+    struct aws_socket_endpoint endpoint;
+    AWS_ZERO_STRUCT(endpoint);
+    endpoint.host_name = "localhost";
+    endpoint.port = 1567;
+
+    struct error_test_args args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_invoked = false,
+    };
+
+    struct aws_socket outgoing;
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .user_data = &args};
+
+    /* connect must not be rejected synchronously; the by-name path goes async. */
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
+
+    aws_socket_clean_up(&outgoing);
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_socket_error_shutdown_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+
+    aws_event_loop_group_release(el_group);
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(connect_by_name_client_localhost, s_test_connect_by_name_client_localhost)
+
+/* Validating that on enabling prefer_no_proxy does not break normal socket setup or connect: the socket must still
+ * init, connect asynchronously, and get refused on a dead loopback port (rather than failing at init/connect). */
+static int s_test_prefer_no_proxy_does_not_break_connect(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group_options elg_options = {.loop_count = 1};
+    struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
+    struct aws_event_loop *event_loop = aws_event_loop_group_get_next_loop(el_group);
+    ASSERT_NOT_NULL(event_loop);
+
+    struct aws_socket_options options;
+    AWS_ZERO_STRUCT(options);
+    options.connect_timeout_ms = 3000;
+    options.type = AWS_SOCKET_STREAM;
+    options.domain = AWS_SOCKET_IPV4;
+    options.prefer_no_proxy = true;
+
+    /* Loopback port with nothing listening. */
+    struct aws_socket_endpoint endpoint;
+    AWS_ZERO_STRUCT(endpoint);
+    snprintf(endpoint.address, sizeof(endpoint.address), "%s", "127.0.0.1");
+    endpoint.port = 1567;
+
+    struct error_test_args args = {
+        .error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .condition_variable = AWS_CONDITION_VARIABLE_INIT,
+        .shutdown_invoked = false,
+    };
+
+    struct aws_socket outgoing;
+    /* aws_socket_init() runs the ANW parameter setup that applies prefer_no_proxy. */
+    ASSERT_SUCCESS(aws_socket_init(&outgoing, allocator, &options));
+    aws_socket_set_cleanup_complete_callback(&outgoing, s_socket_error_shutdown_complete, &args);
+
+    struct aws_socket_connect_options connect_options = {
+        .remote_endpoint = &endpoint,
+        .event_loop = event_loop,
+        .on_connection_result = s_null_sock_connection,
+        .user_data = &args};
+
+    ASSERT_SUCCESS(aws_socket_connect(&outgoing, &connect_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_outgoing_tcp_error_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+    ASSERT_INT_EQUALS(AWS_IO_SOCKET_CONNECTION_REFUSED, args.error_code);
+
+    aws_socket_clean_up(&outgoing);
+    ASSERT_SUCCESS(aws_mutex_lock(&args.mutex));
+    aws_condition_variable_wait_pred(&args.condition_variable, &args.mutex, s_socket_error_shutdown_predicate, &args);
+    ASSERT_SUCCESS(aws_mutex_unlock(&args.mutex));
+
+    aws_event_loop_group_release(el_group);
+    aws_io_library_clean_up();
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(prefer_no_proxy_does_not_break_connect, s_test_prefer_no_proxy_does_not_break_connect)
