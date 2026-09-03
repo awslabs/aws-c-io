@@ -474,7 +474,7 @@ if(NOT AWS_USE_SECITEM)
     add_test_case(aws_socks5_server_create_destroy)
     add_test_case(aws_echo_server_create_destroy)
     add_test_case(aws_socks5_connect_success)
-    
+
     # variety of success tests - numbers refer to total-bytes-sent and outbound-chunk-size
     add_test_case(aws_socks5_echo_success_256_256)
     add_test_case(aws_socks5_echo_success_1024_256)

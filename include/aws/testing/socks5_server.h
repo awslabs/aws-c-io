@@ -209,13 +209,13 @@ static int aws_socks5_server_begin_accept(struct aws_socks5_server *server);
 static uint32_t aws_socks5_server_get_listener_port(struct aws_socks5_server *server);
 
 /**
- * Gets how many tunnels are currently active on the server.  Useful as a simple verification that a test
+ * Gets how many tunnels have been created over the server's lifetime.  Useful as a simple verification that a test
  * is actually connecting through the server and not skipping it.
  *
- * @param server server to check tunnel count for
- * @return current number of active tunnels
+ * @param server server to check tunnel creation count for
+ * @return total number of tunnels created so far
  */
-static size_t aws_socks5_server_get_connection_count(struct aws_socks5_server *server);
+static size_t aws_socks5_server_get_connections_created(struct aws_socks5_server *server);
 
 /**
  * Initialize a test context that wraps a socks5 server with wait functionality
@@ -308,6 +308,7 @@ struct aws_socks5_server {
         uint64_t next_id;
         struct aws_hash_table tunnels_by_id;
         struct aws_socket *listener_socket;
+        size_t connections_created_count;
     } sync;
 };
 
@@ -1276,6 +1277,7 @@ static void s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn(
     tunnel_options.id = server->sync.next_id++;
     struct aws_socks5_tunnel *tunnel = s_aws_socks5_tunnel_new(server->allocator, &tunnel_options);
     aws_hash_table_put(&server->sync.tunnels_by_id, &tunnel->id, tunnel, NULL);
+    server->sync.connections_created_count++;
 
     aws_mutex_unlock(&server->lock);
 
@@ -1374,11 +1376,11 @@ static uint32_t aws_socks5_server_get_listener_port(struct aws_socks5_server *se
     return port;
 }
 
-static size_t aws_socks5_server_get_connection_count(struct aws_socks5_server *server) {
+static size_t aws_socks5_server_get_connections_created(struct aws_socks5_server *server) {
     size_t count = 0;
 
     aws_mutex_lock(&server->lock);
-    count = aws_hash_table_get_entry_count(&server->sync.tunnels_by_id);
+    count = server->sync.connections_created_count;
     aws_mutex_unlock(&server->lock);
 
     return count;
