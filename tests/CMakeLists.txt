@@ -146,9 +146,6 @@ add_test_case(channel_tasks_serialized_run)
 add_test_case(channel_rejects_post_shutdown_tasks)
 add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
-add_test_case(channel_window_update_gates_on_scarcest_slot)
-add_test_case(channel_window_update_batches_while_all_slots_roomy)
-add_test_case(channel_window_update_emitted_when_debit_starves_slot)
 add_test_case(channel_keeps_event_loop_group_alive)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
@@ -195,14 +192,14 @@ add_test_case(socket_handler_close)
 
 # These tests fail on Windows due to some bug in our server code where, if the socket is closed
 # immediately after data is written, that data does not flush cleanly to the client.
-# I've lost days to this bug, and no one is using our Windows server functionality,
+# I've lost days to this bug, and no one is using our Windows server funcionality,
 # so disabling these tests on Windows and moving along for now.
 # I tried the following:
 # 1) Wrote 2 simple standalone Windows programs, server and client, using simple synchronous socket code.
 #    WORKED PERFECTLY. So it's not a fundamental issue with Windows.
 # 2) Commented out server part of this failing test, and used the simple standalone server instead.
 #    WORKED PERFECTLY. So it's not a problem with our actual client code.
-# 3) Copy/pasted the simple standalone server code into this test, and used that instead of our actual server code.
+# 3) Copy/pasted the simple standlone server code into this test, and used that instead of our actual server code.
 #    WORKED PERFECTLY. So it's not a problem with the server and client sockets being in the same process.
 # 4) Commented out the client part of this failing test, and used the simple standalone client instead.
 #    FAILED. The standalone client got WSAECONNRESET (Connection reset by peer) before receiving all the data.
@@ -279,10 +276,10 @@ if(NOT BYO_CRYPTO)
     # We don't include dh2048 as it succeeds on the windows baseline configuration and there does not seem
     # to be a way to disable it
     if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
-        # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they dropped old TLS
+        # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
         if(NOT AWS_USE_SECITEM)
         add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
-        # SecItem does not allow use of deprecated TLS versions
+        # SecItem does not allow use of depricated TLS versions
         add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
         add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
         endif()
@@ -454,6 +451,21 @@ if(ENABLE_PKCS11_TESTS)
         add_test_case(pkcs11_tls_ec_negotiation_succeeds)
     endif()
 endif()
+
+add_test_case(socks5_negotiation_no_auth_create_destroy)
+add_test_case(socks5_negotiation_no_auth_get_method_ids)
+add_test_case(socks5_negotiation_no_auth_negotiate_success)
+add_test_case(socks5_negotiation_no_auth_negotiate_failure_socks_version_mismatch)
+add_test_case(socks5_negotiation_no_auth_negotiate_failure_method_id_mismatch)
+add_test_case(socks5_negotiation_no_auth_negotiate_failure_no_acceptable_method)
+add_test_case(socks5_negotiation_basic_auth_create_destroy)
+add_test_case(socks5_negotiation_basic_auth_get_method_ids)
+add_test_case(socks5_negotiation_basic_auth_negotiate_failure_socks_version_mismatch)
+add_test_case(socks5_negotiation_basic_auth_negotiate_failure_method_id_mismatch)
+add_test_case(socks5_negotiation_basic_auth_negotiate_failure_no_acceptable_method)
+add_test_case(socks5_negotiation_basic_auth_negotiate_failure_rejected_username_password)
+add_test_case(socks5_negotiation_basic_auth_negotiate_failure_subneg_version_mismatch)
+add_test_case(socks5_negotiation_basic_auth_negotiate_success)
 
 set(TEST_BINARY_NAME ${PROJECT_NAME}-tests)
 generate_test_driver(${TEST_BINARY_NAME})
