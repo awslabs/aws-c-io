@@ -563,7 +563,7 @@ static bool s_aws_socket_domain_uses_dns(enum aws_socket_domain domain) {
 /* connect_by_name is only used on the Apple Network Framework backend (nw_endpoint_create_host). On every
  * other backend there is no OS-level connect-by-name path, so treat the flag as false to keep it a true no-op
  * rather than routing a hostname into a resolver-bypass that later fails address parsing. */
-static bool s_connect_by_name_is_supported(const struct aws_socket_options *socket_options) {
+static bool s_connect_by_name_is_enabled(const struct aws_socket_options *socket_options) {
     if (!socket_options->connect_by_name) {
         return false;
     }
@@ -656,7 +656,7 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
     struct aws_allocator *allocator = connection_args->bootstrap->allocator;
     /* In connect-by-name mode the OS owns resolution, so there is no resolved IP to feed back into the
      * host-resolver's bad-address cache.*/
-    if (s_connect_by_name_is_supported(&connection_args->outgoing_options) == false &&
+    if (s_connect_by_name_is_enabled(&connection_args->outgoing_options) == false &&
         s_aws_socket_domain_uses_dns(connection_args->outgoing_options.domain) && error_code) {
         struct aws_host_address host_address;
         host_address.host = connection_args->host_name;
@@ -1113,7 +1113,7 @@ int aws_client_bootstrap_new_socket_channel(struct aws_socket_channel_bootstrap_
     /* When connect-by-name is requested (Apple Network Framework), skip this library's internal DNS
      * resolution and hand the hostname straight to the socket layer so the OS can resolve it and
      * supply it to on-demand VPNs / content filters / HTTP CONNECT proxies.*/
-    const bool connect_by_name = s_connect_by_name_is_supported(socket_options);
+    const bool connect_by_name = s_connect_by_name_is_enabled(socket_options);
 
     if (connect_by_name == false && s_aws_socket_domain_uses_dns(socket_options->domain)) {
         client_connection_args->host_name = aws_string_new_from_c_str(bootstrap->allocator, host_name);
