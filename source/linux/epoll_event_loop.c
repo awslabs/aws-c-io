@@ -589,7 +589,6 @@ static void s_on_tasks_to_schedule(
     }
 }
 
-#if AWS_USE_BOOTTIME_TIMERFD
 static void s_on_timer_event(
     struct aws_event_loop *event_loop,
     struct aws_io_handle *handle,
@@ -606,7 +605,6 @@ static void s_on_timer_event(
         }
     }
 }
-#endif /* AWS_USE_BOOTTIME_TIMERFD */
 
 static void s_set_timer(struct epoll_loop *epoll_loop, uint64_t timeout_ns) {
 #if AWS_USE_BOOTTIME_TIMERFD
@@ -710,7 +708,6 @@ static void aws_event_loop_thread(void *args) {
         return;
     }
 
-#if AWS_USE_BOOTTIME_TIMERFD
     if (epoll_loop->timer_handle.data.fd >= 0) {
         if (s_subscribe_to_io_events(
                 event_loop, &epoll_loop->timer_handle, AWS_IO_EVENT_TYPE_READABLE, s_on_timer_event, NULL)) {
@@ -722,7 +719,6 @@ static void aws_event_loop_thread(void *args) {
             epoll_loop->timer_handle.data.fd = -1;
         }
     }
-#endif /* AWS_USE_BOOTTIME_TIMERFD */
 
     aws_thread_current_at_exit(s_aws_epoll_cleanup_aws_lc_thread_local_state, NULL);
 
@@ -845,11 +841,9 @@ static void aws_event_loop_thread(void *args) {
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
-#if AWS_USE_BOOTTIME_TIMERFD
     if (epoll_loop->timer_handle.data.fd >= 0) {
         s_unsubscribe_from_io_events(event_loop, &epoll_loop->timer_handle);
     }
-#endif
     /* set thread id back to NULL. This should be updated again in destroy, before tasks are canceled. */
     aws_atomic_store_ptr(&epoll_loop->running_thread_id, NULL);
 }
