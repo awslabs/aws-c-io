@@ -165,6 +165,8 @@ struct aws_socks5_server_test_context {
     struct aws_socks5_server *server;
 };
 
+AWS_EXTERN_C_BEGIN
+
 /****** Public API ******/
 
 /**
@@ -382,8 +384,8 @@ static struct aws_socks5_server_auth_config *s_aws_socks5_server_auth_config_new
     struct aws_allocator *allocator,
     struct aws_socks5_server_auth_options *options) {
 
-    struct aws_socks5_server_auth_config *config =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_server_auth_config));
+    struct aws_socks5_server_auth_config *config = (struct aws_socks5_server_auth_config *)aws_mem_calloc(
+        allocator, 1, sizeof(struct aws_socks5_server_auth_config));
 
     config->allocator = allocator;
 
@@ -420,7 +422,8 @@ static struct aws_socks5_server_config *s_aws_socks5_server_config_new(
     struct aws_allocator *allocator,
     struct aws_socks5_server_options *options) {
 
-    struct aws_socks5_server_config *config = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_server_config));
+    struct aws_socks5_server_config *config =
+        (struct aws_socks5_server_config *)aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_server_config));
 
     config->allocator = allocator;
     config->elg = aws_event_loop_group_acquire(options->elg);
@@ -499,13 +502,14 @@ static void s_aws_socks5_tunnel_shutdown_task_destroy(struct aws_socks5_tunnel_s
 static void s_aws_socks5_tunnel_shutdown_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
-    struct aws_socks5_tunnel_shutdown_task *shutdown_task = arg;
+    struct aws_socks5_tunnel_shutdown_task *shutdown_task = (struct aws_socks5_tunnel_shutdown_task *)arg;
+    struct aws_socks5_tunnel *tunnel = NULL;
 
     if (status == AWS_TASK_STATUS_CANCELED) {
         goto done;
     }
 
-    struct aws_socks5_tunnel *tunnel = shutdown_task->tunnel;
+    tunnel = shutdown_task->tunnel;
     AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(tunnel->event_loop));
 
     if (tunnel->state == AWS_SOCKS5_TS_SHUTTING_DOWN || tunnel->state == AWS_SOCKS5_TS_SHUTDOWN) {
@@ -536,8 +540,8 @@ static struct aws_socks5_tunnel_shutdown_task *s_aws_socks5_tunnel_shutdown_task
     struct aws_socks5_tunnel *tunnel,
     int error_code) {
 
-    struct aws_socks5_tunnel_shutdown_task *task =
-        aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_tunnel_shutdown_task));
+    struct aws_socks5_tunnel_shutdown_task *task = (struct aws_socks5_tunnel_shutdown_task *)aws_mem_calloc(
+        allocator, 1, sizeof(struct aws_socks5_tunnel_shutdown_task));
     task->allocator = allocator;
     task->tunnel = tunnel;
     aws_ref_count_acquire(&tunnel->ref_count);
@@ -602,7 +606,7 @@ static void s_shut_down_server(struct aws_socks5_server *server) {
 
     for (struct aws_hash_iter iter = aws_hash_iter_begin(&server->sync.tunnels_by_id); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
-        struct aws_socks5_tunnel *tunnel = iter.element.value;
+        struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)iter.element.value;
 
         aws_array_list_push_back(&tunnels, &tunnel);
         aws_ref_count_acquire(&tunnel->ref_count);
@@ -626,7 +630,7 @@ static void s_shut_down_server(struct aws_socks5_server *server) {
 }
 
 static void s_on_server_external_ref_count_zero(void *user_data) {
-    struct aws_socks5_server *server = user_data;
+    struct aws_socks5_server *server = (struct aws_socks5_server *)user_data;
 
     s_shut_down_server(server);
 
@@ -636,7 +640,7 @@ static void s_on_server_external_ref_count_zero(void *user_data) {
 
 static void s_on_server_internal_ref_count_zero(void *user_data) {
 
-    struct aws_socks5_server *server = user_data;
+    struct aws_socks5_server *server = (struct aws_socks5_server *)user_data;
 
     aws_mutex_clean_up(&server->lock);
 
@@ -657,7 +661,8 @@ static struct aws_socks5_server *aws_socks5_server_new(
     struct aws_allocator *allocator,
     struct aws_socks5_server_options *options) {
 
-    struct aws_socks5_server *server = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_server));
+    struct aws_socks5_server *server =
+        (struct aws_socks5_server *)aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_server));
 
     server->allocator = allocator;
 
@@ -700,7 +705,7 @@ static void s_aws_socks5_server_bootstrap_on_listener_setup_fn(
     void *user_data) {
     (void)bootstrap;
 
-    struct aws_socks5_server *server = user_data;
+    struct aws_socks5_server *server = (struct aws_socks5_server *)user_data;
     bool should_shutdown = false;
 
     aws_mutex_lock(&server->lock);
@@ -738,7 +743,7 @@ struct aws_socks5_tunnel_options {
 static void s_aws_socks5_server_on_tunnel_shutdown(struct aws_socks5_tunnel *tunnel, int error_code, void *user_data) {
     (void)error_code;
 
-    struct aws_socks5_server *server = user_data;
+    struct aws_socks5_server *server = (struct aws_socks5_server *)user_data;
 
     aws_mutex_lock(&server->lock);
 
@@ -753,7 +758,7 @@ static void s_aws_socks5_server_on_tunnel_shutdown(struct aws_socks5_tunnel *tun
 }
 
 static void s_aws_socks5_tunnel_destroy(void *user_data) {
-    struct aws_socks5_tunnel *tunnel = user_data;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)user_data;
 
     aws_string_destroy(tunnel->remote_host_name);
     aws_byte_buf_clean_up(&tunnel->handshake_data);
@@ -765,7 +770,8 @@ static void s_aws_socks5_tunnel_destroy(void *user_data) {
 static struct aws_socks5_tunnel *s_aws_socks5_tunnel_new(
     struct aws_allocator *allocator,
     struct aws_socks5_tunnel_options *options) {
-    struct aws_socks5_tunnel *tunnel = aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_tunnel));
+    struct aws_socks5_tunnel *tunnel =
+        (struct aws_socks5_tunnel *)aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_tunnel));
 
     tunnel->allocator = allocator;
     aws_ref_count_init(&tunnel->ref_count, tunnel, s_aws_socks5_tunnel_destroy);
@@ -810,7 +816,7 @@ static int s_send_method_selection(struct aws_socks5_tunnel *tunnel, enum aws_so
 
     uint8_t version_code = (tunnel->server->config->fault_mode == AWS_SOCKS5_SFM_BAD_VERSION) ? AWS_SOCKS5_VERSION_BAD
                                                                                               : AWS_SOCKS5_VERSION_5;
-    uint8_t method_selection_data[2] = {version_code, method};
+    uint8_t method_selection_data[2] = {version_code, (uint8_t)method};
 
     struct aws_byte_cursor method_selection_data_cursor =
         aws_byte_cursor_from_array(method_selection_data, AWS_ARRAY_SIZE(method_selection_data));
@@ -826,8 +832,8 @@ static int s_send_method_selection(struct aws_socks5_tunnel *tunnel, enum aws_so
 
 static int s_handle_pending_method_list(struct aws_socks5_tunnel *tunnel, struct aws_io_message *message) {
     struct aws_byte_cursor message_data = {
-        .ptr = message->message_data.buffer + message->copy_mark,
         .len = message->message_data.len - message->copy_mark,
+        .ptr = message->message_data.buffer + message->copy_mark,
     };
 
     aws_byte_buf_append_dynamic(&tunnel->handshake_data, &message_data);
@@ -878,8 +884,8 @@ static int s_handle_pending_method_list(struct aws_socks5_tunnel *tunnel, struct
 
 static int s_handle_basic_auth_record(struct aws_socks5_tunnel *tunnel, struct aws_io_message *message) {
     struct aws_byte_cursor message_data = {
-        .ptr = message->message_data.buffer + message->copy_mark,
         .len = message->message_data.len - message->copy_mark,
+        .ptr = message->message_data.buffer + message->copy_mark,
     };
 
     aws_byte_buf_append_dynamic(&tunnel->handshake_data, &message_data);
@@ -944,7 +950,7 @@ static int s_socks5_tunnel_to_remote_handler_process_read_message(
     struct aws_io_message *message) {
     (void)slot;
 
-    struct aws_socks5_tunnel *tunnel = handler->impl;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
     if (tunnel->state != AWS_SOCKS5_TS_PASS_THROUGH) {
         // not necessarily invalid, but we don't want to handle it (during shut down)
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
@@ -966,7 +972,7 @@ static int s_socks5_tunnel_to_remote_handler_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    struct aws_socks5_tunnel *tunnel = handler->impl;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
     s_aws_socks5_tunnel_update_error_code(tunnel, error_code);
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
@@ -985,7 +991,7 @@ static size_t s_socks5_tunnel_to_remote_handler_message_overhead(struct aws_chan
 }
 
 static void s_socks5_tunnel_to_remote_handler_destroy(struct aws_channel_handler *handler) {
-    struct aws_socks5_tunnel *tunnel = handler->impl;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
     s_aws_socks5_tunnel_on_channel_destroyed(tunnel, tunnel->to_remote);
 }
 
@@ -1006,7 +1012,7 @@ static void s_send_connect_response(struct aws_socks5_tunnel *tunnel, enum aws_s
     struct aws_io_message *message =
         aws_channel_acquire_message_from_pool(tunnel->to_client, AWS_IO_MESSAGE_APPLICATION_DATA, 256);
 
-    uint8_t response_data[] = {0x05, code, 0x00, AWS_SOCKS5_AT_IPV4, 0x7F, 0x00, 0x00, 0x01, 0x00, 0x00};
+    uint8_t response_data[] = {0x05, (uint8_t)code, 0x00, AWS_SOCKS5_AT_IPV4, 0x7F, 0x00, 0x00, 0x01, 0x00, 0x00};
 
     struct aws_byte_cursor response_cursor = aws_byte_cursor_from_array(response_data, AWS_ARRAY_SIZE(response_data));
     aws_byte_buf_append(&message->message_data, &response_cursor);
@@ -1023,7 +1029,7 @@ static void s_aws_socks5_tunnel_on_remote_channel_setup_fn(
     void *user_data) {
     (void)bootstrap;
 
-    struct aws_socks5_tunnel *tunnel = user_data;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)user_data;
     tunnel->pending_remote = false;
 
     if (error_code != AWS_OP_SUCCESS) {
@@ -1066,7 +1072,7 @@ static void s_aws_client_bootstrap_on_channel_shutdown_fn(
     (void)bootstrap;
     (void)channel;
 
-    struct aws_socks5_tunnel *tunnel = user_data;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)user_data;
     s_aws_socks5_tunnel_update_error_code(tunnel, error_code);
 }
 
@@ -1104,8 +1110,8 @@ static int s_aws_socks5_tunnel_connect_to_remote(struct aws_socks5_tunnel *tunne
 
 static int s_handle_command(struct aws_socks5_tunnel *tunnel, struct aws_io_message *message) {
     struct aws_byte_cursor message_data = {
-        .ptr = message->message_data.buffer + message->copy_mark,
         .len = message->message_data.len - message->copy_mark,
+        .ptr = message->message_data.buffer + message->copy_mark,
     };
 
     aws_byte_buf_append_dynamic(&tunnel->handshake_data, &message_data);
@@ -1166,7 +1172,7 @@ static int s_socks5_tunnel_to_client_handler_process_read_message(
     struct aws_io_message *message) {
     (void)slot;
 
-    struct aws_socks5_tunnel *tunnel = handler->impl;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
     int result = AWS_OP_SUCCESS;
     switch (tunnel->state) {
         case AWS_SOCKS5_TS_PENDING_METHOD_LIST:
@@ -1216,7 +1222,7 @@ static int s_socks5_tunnel_to_client_handler_shutdown(
     int error_code,
     bool free_scarce_resources_immediately) {
 
-    struct aws_socks5_tunnel *tunnel = handler->impl;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
     s_aws_socks5_tunnel_update_error_code(tunnel, error_code);
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
@@ -1235,7 +1241,7 @@ static size_t s_socks5_tunnel_to_client_handler_message_overhead(struct aws_chan
 }
 
 static void s_socks5_tunnel_to_client_handler_destroy(struct aws_channel_handler *handler) {
-    struct aws_socks5_tunnel *tunnel = handler->impl;
+    struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
     s_aws_socks5_tunnel_on_channel_destroyed(tunnel, tunnel->to_client);
 }
 
@@ -1264,12 +1270,12 @@ static void s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn(
         return; // Nothing to do
     }
 
-    struct aws_socks5_server *server = user_data;
+    struct aws_socks5_server *server = (struct aws_socks5_server *)user_data;
 
     struct aws_socks5_tunnel_options tunnel_options = {
         .server = server,
-        .id = 0,
         .to_client_channel = channel,
+        .id = 0,
     };
 
     aws_mutex_lock(&server->lock);
@@ -1310,7 +1316,7 @@ static void s_aws_socks5_server_bootstrap_on_server_listener_destroy_fn(
     void *user_data) {
     (void)bootstrap;
 
-    struct aws_socks5_server *server = user_data;
+    struct aws_socks5_server *server = (struct aws_socks5_server *)user_data;
 
     aws_ref_count_release(&server->internal_ref_count); // Internal Ref Case 2
 }
@@ -1393,7 +1399,7 @@ static void s_aws_socks5_server_test_context_on_server_setup(
     (void)server;
     (void)error_code;
 
-    struct aws_socks5_server_test_context *context = user_data;
+    struct aws_socks5_server_test_context *context = (struct aws_socks5_server_test_context *)user_data;
 
     aws_mutex_lock(&context->lock);
     context->sync.server_setup = true;
@@ -1408,7 +1414,7 @@ static void s_aws_socks5_server_test_context_on_server_setup(
 static void s_aws_socks5_server_test_context_on_server_destroy(struct aws_socks5_server *server, void *user_data) {
     (void)server;
 
-    struct aws_socks5_server_test_context *context = user_data;
+    struct aws_socks5_server_test_context *context = (struct aws_socks5_server_test_context *)user_data;
 
     aws_mutex_lock(&context->lock);
     context->sync.server_shutdown = true;
@@ -1434,9 +1440,8 @@ static void aws_socks5_server_test_context_init(
     }
 
     struct aws_host_resolver_default_options hr_options = {
-        .el_group = context->elg,
         .max_entries = 32,
-
+        .el_group = context->elg,
     };
     context->resolver = aws_host_resolver_new_default(allocator, &hr_options);
 
@@ -1487,7 +1492,7 @@ static void aws_socks5_server_test_context_init(
 }
 
 static bool s_check_server_setup(void *user_data) {
-    struct aws_socks5_server_test_context *context = user_data;
+    struct aws_socks5_server_test_context *context = (struct aws_socks5_server_test_context *)user_data;
 
     return context->sync.server_setup;
 }
@@ -1499,7 +1504,7 @@ static void aws_socks5_server_test_context_wait_on_server_setup(struct aws_socks
 }
 
 static bool s_check_server_destroyed(void *user_data) {
-    struct aws_socks5_server_test_context *context = user_data;
+    struct aws_socks5_server_test_context *context = (struct aws_socks5_server_test_context *)user_data;
 
     return context->sync.server_shutdown;
 }
@@ -1524,5 +1529,7 @@ static void aws_socks5_server_test_context_clean_up(struct aws_socks5_server_tes
     aws_condition_variable_clean_up(&context->signal);
     aws_mutex_clean_up(&context->lock);
 }
+
+AWS_EXTERN_C_END
 
 #endif /* SOCKS5_SERVER_H */
