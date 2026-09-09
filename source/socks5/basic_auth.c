@@ -255,6 +255,8 @@ static void s_aws_socks5_proxy_negotiation_strategy_instance_basic_auth_drive_ne
     struct aws_socks5_proxy_negotiation_strategy_instance_basic_auth *basic_auth_instance = instance->impl;
 
     context->status = AWS_L4PPS_IN_PROGRESS;
+    context->error_code = AWS_ERROR_SUCCESS;
+
     enum aws_socks5_basic_auth_negotiation_state last_state = AWS_S5BANS_INVALID;
     while (last_state != basic_auth_instance->state) {
         last_state = basic_auth_instance->state;

@@ -25,6 +25,7 @@ set -e
 # mtls_server.key:     private key for mtls_server
 # mtls_device.pem.crt: device certificate signed by mtls_device_root_ca
 # mtls_device.key:     private key for mtls_device
+# mtls_device_pkcs1.key: PKCS1 re-encoding of mtls_device.key (Apple SecItem keychain-less mTLS test)
 # mtls_untrusted_server_root_ca.pem.crt: self-signed root CA for untrusted mTLS server
 # mtls_untrusted_server_root_ca.key:     private key for mtls_untrusted_server_root_ca
 # mtls_untrusted_server.pem.crt: server certificate signed by mtls_untrusted_server_root_ca
@@ -203,6 +204,9 @@ openssl req -new -key mtls_device.key -subj "$SUBJ" | \
 openssl x509 -req -CA mtls_device_root_ca.pem.crt -CAkey mtls_device_root_ca.key \
   -CAcreateserial -days 824 -sha256 -out mtls_device.pem.crt
 
+# Generate mtls_device_pkcs1 key: PKCS1 re-encoding of mtls_device.key
+openssl rsa -in mtls_device.key -traditional -out mtls_device_pkcs1.key
+
 # Generate mtls_untrusted_server_root_ca key and self-signed cert
 openssl genrsa -out mtls_untrusted_server_root_ca.key 2048
 openssl req -new -x509 -days 824 -sha256 \
@@ -240,6 +244,8 @@ for base in mtls_server mtls_device mtls_untrusted_server; do
   cp certGeneration/$base.pem.crt ./$base.pem.crt
   cp certGeneration/$base.key ./$base.key
 done
+
+cp certGeneration/mtls_device_pkcs1.key ./mtls_device_pkcs1.key
 
 cp certGeneration/mtls_server_root_ca_trust_settings.plist ./mtls_server_root_ca_trust_settings.plist
 
