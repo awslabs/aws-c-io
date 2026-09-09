@@ -568,12 +568,18 @@ static struct aws_l4_proxy_channel_handler *s_aws_l4_proxy_channel_handler_new_s
     struct aws_l4_proxy_config *config,
     struct aws_l4_proxy_channel_handler_options *options) {
     struct aws_allocator *allocator = config->allocator;
+
+    struct aws_socks5_proxy_config *socks5_config = config->impl;
+    struct aws_socks5_proxy_impl *impl = aws_socks5_proxy_impl_new(allocator, socks5_config, options);
+    if (impl == NULL) {
+        return NULL;
+    }
+
     struct aws_socks5_channel_handler *socks5_handler =
         aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_channel_handler));
-    struct aws_socks5_proxy_config *socks5_config = config->impl;
 
     socks5_handler->allocator = allocator;
-    socks5_handler->negotiation_impl = aws_socks5_proxy_impl_new(allocator, socks5_config, options);
+    socks5_handler->negotiation_impl = impl;
 
     aws_l4_proxy_channel_handler_init(&socks5_handler->base, allocator, config, options);
     socks5_handler->base.vtable = &s_l4_proxy_channel_handler_vtable;

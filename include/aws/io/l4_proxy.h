@@ -36,27 +36,6 @@ AWS_IO_API struct aws_l4_proxy_config *aws_l4_proxy_config_acquire(struct aws_l4
  */
 AWS_IO_API struct aws_l4_proxy_config *aws_l4_proxy_config_release(struct aws_l4_proxy_config *config);
 
-/**
- * Creates a new channel handler that will negotiate a tunnel based on the proxy config
- *
- * @param config proxy config to use for tunnel negotiation
- * @param options additional channel handle options
- * @return a new channel handler for proxy negotiation
- */
-AWS_IO_API struct aws_l4_proxy_channel_handler *aws_l4_proxy_config_new_channel_handler(
-    struct aws_l4_proxy_config *config,
-    struct aws_l4_proxy_channel_handler_options *options);
-
-/**
- * Retrieves the configured proxy endpoint information
- *
- * @param config proxy configuration to query
- * @param new_remote output parameter containing the proxy remote information
- */
-AWS_IO_API void aws_l4_proxy_config_get_proxy_address(
-    struct aws_l4_proxy_config *config,
-    struct aws_connection_remote *new_remote);
-
 AWS_EXTERN_C_END
 
 #endif /* AWS_IO_L4PROXY_H */
