@@ -128,6 +128,13 @@ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
     add_net_test_case(tls_client_channel_negotiation_success_mtls_from_keychain)
     add_net_test_case(tls_client_channel_negotiation_failure_mtls_untrusted_server_from_keychain)
     add_net_test_case(tls_client_channel_negotiation_failure_tls13_to_tls12_server)
+
+    if(AWS_SECITEM_NO_KEYCHAIN)
+        # This test uses the keychain-less SecItem path (SecIdentityCreate), which does not require the
+        # test binary to be codesigned with an Apple Developer account and entitlements. It is the only
+        # macOS mTLS path that can run in CI, so it is gated on AWS_SECITEM_NO_KEYCHAIN.
+        add_net_test_case(tls_client_channel_negotiation_success_mtls_secitem_no_keychain)
+    endif()
 endif()
 
 add_test_case(channel_setup)
@@ -139,6 +146,9 @@ add_test_case(channel_tasks_serialized_run)
 add_test_case(channel_rejects_post_shutdown_tasks)
 add_test_case(channel_cancels_pending_tasks)
 add_test_case(channel_duplicate_shutdown)
+add_test_case(channel_window_update_gates_on_scarcest_slot)
+add_test_case(channel_window_update_batches_while_all_slots_roomy)
+add_test_case(channel_window_update_emitted_when_debit_starves_slot)
 add_test_case(channel_keeps_event_loop_group_alive)
 add_net_test_case(channel_connect_some_hosts_timeout)
 
@@ -185,14 +195,14 @@ add_test_case(socket_handler_close)
 
 # These tests fail on Windows due to some bug in our server code where, if the socket is closed
 # immediately after data is written, that data does not flush cleanly to the client.
-# I've lost days to this bug, and no one is using our Windows server funcionality,
+# I've lost days to this bug, and no one is using our Windows server functionality,
 # so disabling these tests on Windows and moving along for now.
 # I tried the following:
 # 1) Wrote 2 simple standalone Windows programs, server and client, using simple synchronous socket code.
 #    WORKED PERFECTLY. So it's not a fundamental issue with Windows.
 # 2) Commented out server part of this failing test, and used the simple standalone server instead.
 #    WORKED PERFECTLY. So it's not a problem with our actual client code.
-# 3) Copy/pasted the simple standlone server code into this test, and used that instead of our actual server code.
+# 3) Copy/pasted the simple standalone server code into this test, and used that instead of our actual server code.
 #    WORKED PERFECTLY. So it's not a problem with the server and client sockets being in the same process.
 # 4) Commented out the client part of this failing test, and used the simple standalone client instead.
 #    FAILED. The standalone client got WSAECONNRESET (Connection reset by peer) before receiving all the data.
@@ -269,10 +279,10 @@ if(NOT BYO_CRYPTO)
     # We don't include dh2048 as it succeeds on the windows baseline configuration and there does not seem
     # to be a way to disable it
     if(NOT(WIN32 AND NOT CMAKE_SYSTEM_VERSION MATCHES "10\.0\.1.*"))
-        # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they droped old TLS
+        # Skip TLS 1.0 and TLS 1.1 test for windows later than windows server 2022, as they dropped old TLS
         if(NOT AWS_USE_SECITEM)
         add_net_test_case(tls_client_channel_negotiation_error_legacy_crypto_tls10)
-        # SecItem does not allow use of depricated TLS versions
+        # SecItem does not allow use of deprecated TLS versions
         add_net_test_case(tls_client_channel_negotiation_override_legacy_crypto_tls10)
         add_net_test_case(tls_client_channel_negotiation_success_legacy_crypto_tls11)
         endif()
