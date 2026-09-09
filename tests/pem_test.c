@@ -59,6 +59,36 @@ static int s_test_pem_sanitize_empty_file_rejected(struct aws_allocator *allocat
 
 AWS_TEST_CASE(pem_sanitize_empty_file_rejected, s_test_pem_sanitize_empty_file_rejected)
 
+static int s_test_pem_sanitize_empty_cert_rejected(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    /* Valid BEGIN/END markers with an empty or space-only body. It must be rejected as malformed rather than parsed
+     * into an object with a zero-length data buffer. */
+    static const char *s_empty_body_pems[] = {
+        "-----BEGIN CERTIFICATE-----\n"
+        "-----END CERTIFICATE-----",
+
+        "-----BEGIN CERTIFICATE-----\n"
+        "   \n"
+        "\t\n"
+        "-----END CERTIFICATE-----",
+    };
+
+    for (size_t i = 0; i < AWS_ARRAY_SIZE(s_empty_body_pems); ++i) {
+        struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_empty_body_pems[i]);
+        struct aws_array_list output_list;
+
+        ASSERT_ERROR(
+            AWS_ERROR_PEM_MALFORMED, aws_pem_objects_init_from_file_contents(&output_list, allocator, pem_data));
+        ASSERT_UINT_EQUALS(0, aws_array_list_length(&output_list));
+
+        aws_array_list_clean_up(&output_list);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+AWS_TEST_CASE(pem_sanitize_empty_cert_rejected, s_test_pem_sanitize_empty_cert_rejected)
+
 static int s_test_pem_sanitize_bad_format_rejected(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     struct aws_byte_buf pem = aws_byte_buf_from_c_str("aaaaa-");
@@ -822,6 +852,7 @@ AWS_TEST_CASE(test_pem_private_key_parse, s_test_pem_private_key_parse)
 static int s_test_pem_dsa_private_key_parse(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     static const char *s_private_key_pem = "-----BEGIN DSA PRIVATE KEY-----\n"
+                                           "AAAA\n"
                                            "-----END DSA PRIVATE KEY-----";
 
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_private_key_pem);
@@ -844,6 +875,7 @@ AWS_TEST_CASE(test_pem_dsa_private_key_parse, s_test_pem_dsa_private_key_parse)
 static int s_test_pem_dsa_public_key_parse(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
     static const char *s_public_key_pem = "-----BEGIN DSA PUBLIC KEY-----\n"
+                                          "AAAA\n"
                                           "-----END DSA PUBLIC KEY-----";
 
     struct aws_byte_cursor pem_data = aws_byte_cursor_from_c_str(s_public_key_pem);
