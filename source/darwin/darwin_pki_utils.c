@@ -363,6 +363,11 @@ void aws_cf_release(CFTypeRef obj) {
     }
 }
 
+#ifdef AWS_SECITEM_NO_KEYCHAIN
+/* SecIdentityCreate became a public documented security API in the macOS 26 SDK (in October 2025).Earlier SDKs do not
+ * declare it in the Security.framework headers, so we forward-declare it here to build against them.*/
+extern SecIdentityRef SecIdentityCreate(CFAllocatorRef allocator, SecCertificateRef certificate, SecKeyRef privateKey);
+#else
 static int s_aws_secitem_add_certificate_to_keychain(
     CFAllocatorRef cf_alloc,
     SecCertificateRef cert_ref,
@@ -615,6 +620,7 @@ done:
 
     return result;
 }
+#endif /* !AWS_SECITEM_NO_KEYCHAIN */
 
 int aws_secitem_import_cert_and_key(
     struct aws_allocator *alloc,
@@ -798,6 +804,27 @@ int aws_secitem_import_cert_and_key(
         goto done;
     }
 
+#ifdef AWS_SECITEM_NO_KEYCHAIN
+    SecIdentityRef identity_ref = NULL;
+    sec_identity_t identity = NULL;
+
+    if ((identity_ref = SecIdentityCreate(cf_alloc, cert_ref, key_ref)) == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI,
+            "SecIdentityCreate failed to create a SecIdentityRef from provided certificate and private key.");
+    } else if ((identity = sec_identity_create(identity_ref)) == NULL) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_PKI, "sec_identity_create failed to create a sec_identity_t from provided SecIdentityRef.");
+    } else {
+        AWS_LOGF_INFO(AWS_LS_IO_PKI, "Successfully created identity using SecIdentityCreate.");
+        *secitem_identity = identity;
+        result = AWS_OP_SUCCESS;
+    }
+
+    if (identity_ref != NULL) {
+        aws_cf_release(identity_ref);
+    }
+#else
     // Add the certificate and private key to keychain then retrieve identity
 
     if (s_aws_secitem_add_certificate_to_keychain(cf_alloc, cert_ref, cert_serial_data, cert_label_ref)) {
@@ -813,6 +840,7 @@ int aws_secitem_import_cert_and_key(
     }
 
     result = AWS_OP_SUCCESS;
+#endif
 
 done:
     // cleanup
