@@ -28,7 +28,7 @@ struct aws_socks5_proxy_negotiation_basic_auth_options {
     struct aws_byte_cursor username;
 
     /**
-     * Password to use in the basic auth sub-inegotiation
+     * Password to use in the basic auth sub-negotiation
      */
     struct aws_byte_cursor password;
 };
