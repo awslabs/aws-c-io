@@ -360,7 +360,7 @@ AWS_TEST_CASE(aws_socks5_echo_success_basic_auth_256_256, s_aws_socks5_echo_succ
 static int s_aws_socks5_echo_success_basic_auth_65536_16384_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
-    ASSERT_SUCCESS(s_aws_socks5_do_no_auth_echo_success_test(allocator, 65536, 16384, 0));
+    ASSERT_SUCCESS(s_aws_socks5_do_basic_auth_echo_success_test(allocator, 65536, 16384, 0));
 
     return AWS_OP_SUCCESS;
 }
