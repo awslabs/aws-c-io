@@ -19,6 +19,12 @@
 
 #include <inttypes.h>
 
+/* In AIX, time.h provided NS_PER_SEC as macro, which causes compilation
+ * error, so need to undefine it.
+ */
+#if defined (AWS_OS_AIX) && defined (NS_PER_SEC)
+#undef NS_PER_SEC
+#endif
 const uint64_t NS_PER_SEC = 1000000000;
 const size_t AWS_DEFAULT_DNS_TTL = 30;
 
