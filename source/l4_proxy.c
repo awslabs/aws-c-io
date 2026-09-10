@@ -130,6 +130,14 @@ static void s_service_l4_proxy_negotiation(
 
     if (message) {
         aws_mem_release(message->allocator, message);
+        if (fragment_cursor.len > 0 && negotiation_result == AWS_OP_SUCCESS) {
+            AWS_LOGF_ERROR(
+                AWS_LS_IO_L4_PROXY,
+                "L4 proxy channel handler implementation did not consume all incoming bytes.  The common runtime does "
+                "not support server-first data through a proxy.");
+            negotiation_result = AWS_OP_ERR;
+            aws_raise_error(AWS_IO_L4_PROXY_SERVER_FIRST_DATA);
+        }
     }
 
     if (negotiation_result == AWS_OP_SUCCESS) {
@@ -220,7 +228,7 @@ error:
     ; // should never reach here
     int error_code = aws_last_error();
     AWS_LOGF_ERROR(
-        AWS_LS_IO_SOCKS5,
+        AWS_LS_IO_L4_PROXY,
         "id=%p: Destroying write message without passing it along, error %d (%s)",
         (void *)l4_proxy_handler,
         error_code,
