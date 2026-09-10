@@ -509,6 +509,15 @@ struct aws_channel_slot *aws_channel_get_first_slot(struct aws_channel *channel)
 AWS_IO_API
 int aws_channel_trigger_read(struct aws_channel *channel);
 
+/**
+ * Returns true if aws_channel_shutdown() has been called on this channel.
+ * This is set immediately when shutdown is requested (before the shutdown task runs),
+ * so it can be used to detect the pending-shutdown window. Uses an atomic internally,
+ * safe to call from any thread.
+ */
+AWS_IO_API
+bool aws_channel_is_shutdown_pending(const struct aws_channel *channel);
+
 AWS_EXTERN_C_END
 AWS_POP_SANE_WARNING_LEVEL
 
