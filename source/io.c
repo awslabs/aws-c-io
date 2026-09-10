@@ -381,6 +381,9 @@ static struct aws_error_info s_errors[] = {
     AWS_DEFINE_ERROR_INFO_IO(
         AWS_IO_SOCKS5_NEGOTIATION_TIMEOUT,
         "Socks5 protocol negotiation took too long"),
+    AWS_DEFINE_ERROR_INFO_IO(
+        AWS_IO_L4_PROXY_SERVER_FIRST_DATA,
+        "Server-first data was received after l4 proxy negotiation completed"),
 
 };
 /* clang-format on */
@@ -419,7 +422,8 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         "Subject for standard retry strategy"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKCS11, "pkcs11", "Subject for PKCS#11 library operations"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PEM, "pem", "Subject for pem operations"),
-    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SOCKS5, "socks5", "Subject for socks5 proxy connection establishment")};
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SOCKS5, "socks5", "Subject for socks5 proxy connection establishment"),
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_L4_PROXY, "l4proxy", "Subject for l4 proxy connection establishment")};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
     .subject_list = s_io_log_subject_infos,
