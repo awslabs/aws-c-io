@@ -136,19 +136,15 @@ static void s_do_read(struct socket_handler *socket_handler) {
         return;
     }
 
-    /* When using Apple SECITEM with only TLS, the channel may have a socket handler slot
-     * without a downstream application handler installed. For that case, we still read
-     * from the socket, but never pass the message to downstream slots. */
     size_t downstream_window = socket_handler->max_rw_size;
     if (socket_handler->slot->adj_right != NULL) {
         downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     } else {
 #if !defined(AWS_USE_SECITEM)
-        AWS_LOGF_WARN(
-            AWS_LS_IO_SOCKET_HANDLER,
-            "id=%p: no downstream handler (adj_right is NULL) and not using SECITEM, skipping read.",
-            (void *)socket_handler->slot->handler);
-        return;
+        /* When using Apple SECITEM with only TLS, the channel may have a socket handler slot
+         * without a downstream application handler installed. Otherwise, we should always have 
+         * a downstream handler. */
+        AWS_ASSERT(socket_handler->slot->adj_right);
 #endif
     }
     size_t max_to_read =
@@ -187,6 +183,9 @@ static void s_do_read(struct socket_handler *socket_handler) {
             (void *)socket_handler->slot->handler,
             (unsigned long long)read);
 
+        /* When using Apple SECITEM with only TLS, the channel may have a socket handler slot
+         * without a downstream application handler installed. For the case, we still read
+         * from the socket, but never pass the message to downstream slots. */
 #if defined(AWS_USE_SECITEM)
         if (socket_handler->slot->adj_right == NULL) {
             aws_mem_release(message->allocator, message);
