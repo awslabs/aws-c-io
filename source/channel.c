@@ -60,7 +60,6 @@ struct aws_channel {
     aws_channel_on_shutdown_completed_fn *on_shutdown_completed;
     void *shutdown_user_data;
     struct aws_atomic_var refcount;
-    struct aws_atomic_var shutdown_requested;
     struct aws_task deletion_task;
 
     struct aws_task statistics_task;
@@ -232,7 +231,6 @@ struct aws_channel *aws_channel_new(struct aws_allocator *alloc, const struct aw
      * 1 for self-reference, released from aws_channel_destroy()
      * 1 for the setup task, released when task executes */
     aws_atomic_init_int(&channel->refcount, 2);
-    aws_atomic_init_int(&channel->shutdown_requested, 0);
 
     struct channel_setup_args *setup_args = aws_mem_calloc(alloc, 1, sizeof(struct channel_setup_args));
     if (!setup_args) {
@@ -398,9 +396,6 @@ static void s_shutdown_task(struct aws_channel_task *task, void *arg, enum aws_t
 }
 
 static int s_channel_shutdown(struct aws_channel *channel, int error_code, bool shutdown_immediately) {
-    /* Mark shutdown as requested immediately (atomic, visible to any thread without lock) */
-    aws_atomic_store_int(&channel->shutdown_requested, 1);
-
     bool need_to_schedule = true;
     aws_mutex_lock(&channel->cross_thread_tasks.lock);
     if (channel->cross_thread_tasks.shutdown_task.task.task_fn) {
@@ -1261,8 +1256,4 @@ int aws_channel_trigger_read(struct aws_channel *channel) {
     }
 
     return AWS_OP_SUCCESS;
-}
-
-bool aws_channel_is_shutdown_pending(const struct aws_channel *channel) {
-    return aws_atomic_load_int((struct aws_atomic_var *)&channel->shutdown_requested) != 0;
 }

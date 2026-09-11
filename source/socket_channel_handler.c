@@ -126,25 +126,29 @@ static void s_do_read(struct socket_handler *socket_handler) {
         return;
     }
 
-    /* If channel shutdown has been requested but the shutdown task hasn't run yet,
-     * skip the read and let the pending shutdown task handle cleanup. */
-    if (aws_channel_is_shutdown_pending(socket_handler->slot->channel)) {
-        AWS_LOGF_TRACE(
-            AWS_LS_IO_SOCKET_HANDLER,
-            "id=%p: channel shutdown is pending, skipping read.",
-            (void *)socket_handler->slot->handler);
-        return;
-    }
-
+    /* In most cases, we will have the right handler (adj_right) installed in the slot
+     * before read call. However, there are a couple of corner cases where adj_right
+     * is NULL:
+     * 1. Race condition: a readable event fires after the setup callback calls
+     *    aws_channel_shutdown but before the shutdown task runs. In this window,
+     *    no downstream handler was added yet.
+     *    We will directly return and waiting for the shutdown task process.
+     *
+     * 2. When using Apple SECITEM with only TLS : the channel may have a
+     *    socket handler slot without a downstream application handler installed.
+     *.   For the case, we still read from the socket, but never pass down the message to
+     *    the downstream slots (there is no downstream slots)
+     * */
     size_t downstream_window = socket_handler->max_rw_size;
     if (socket_handler->slot->adj_right != NULL) {
         downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
     } else {
 #if !defined(AWS_USE_SECITEM)
-        /* When using Apple SECITEM with only TLS, the channel may have a socket handler slot
-         * without a downstream application handler installed. Otherwise, we should always have
-         * a downstream handler. */
-        AWS_ASSERT(socket_handler->slot->adj_right);
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET_HANDLER,
+            "id=%p: no downstream handler (adj_right is NULL) and not using SECITEM, skipping read.",
+            (void *)socket_handler->slot->handler);
+        return;
 #endif
     }
     size_t max_to_read =
