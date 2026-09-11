@@ -1600,3 +1600,32 @@ static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocat
 }
 
 AWS_TEST_CASE(event_loop_serialized_scheduling, s_test_event_loop_serialized_scheduling)
+
+void aws_set_default_thread_options(struct aws_thread_options *options);
+
+/*
+ * Catches https://github.com/awslabs/aws-c-io/issues/841 by causing thread creation to fail due to excessive stack
+ * size request.
+ */
+static int s_event_loop_creation_failure_fn(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+
+    aws_io_library_init(allocator);
+
+    struct aws_thread_options default_options = *aws_default_thread_options();
+    struct aws_thread_options bad_options = default_options;
+    bad_options.stack_size = (size_t)UINT64_MAX;
+
+    aws_set_default_thread_options(&bad_options);
+
+    struct aws_event_loop_group_options elg_options = {};
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
+
+    aws_event_loop_group_release(event_loop_group);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_creation_failure, s_event_loop_creation_failure_fn)
