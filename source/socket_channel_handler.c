@@ -142,7 +142,7 @@ static void s_do_read(struct socket_handler *socket_handler) {
     } else {
 #if !defined(AWS_USE_SECITEM)
         /* When using Apple SECITEM with only TLS, the channel may have a socket handler slot
-         * without a downstream application handler installed. Otherwise, we should always have 
+         * without a downstream application handler installed. Otherwise, we should always have
          * a downstream handler. */
         AWS_ASSERT(socket_handler->slot->adj_right);
 #endif
