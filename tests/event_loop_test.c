@@ -1618,7 +1618,9 @@ static int s_event_loop_creation_failure_fn(struct aws_allocator *allocator, voi
 
     aws_set_default_thread_options(&bad_options);
 
-    struct aws_event_loop_group_options elg_options = {};
+    struct aws_event_loop_group_options elg_options = {
+        .loop_count = 0,
+    };
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
     aws_event_loop_group_release(event_loop_group);
