@@ -499,6 +499,28 @@ static void s_aws_socks5_tunnel_shutdown_task_destroy(struct aws_socks5_tunnel_s
     aws_mem_release(task->allocator, task);
 }
 
+static void s_aws_socks5_tunnel_shut_down(struct aws_socks5_tunnel *tunnel, int error_code) {
+    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(tunnel->event_loop));
+
+    if (tunnel->state == AWS_SOCKS5_TS_SHUTTING_DOWN || tunnel->state == AWS_SOCKS5_TS_SHUTDOWN) {
+        return;
+    }
+
+    tunnel->state = AWS_SOCKS5_TS_SHUTTING_DOWN;
+
+    s_aws_socks5_tunnel_update_error_code(tunnel, error_code);
+
+    if (tunnel->to_remote) {
+        aws_channel_shutdown(tunnel->to_remote, tunnel->shutdown_error_code);
+    }
+
+    if (tunnel->to_client) {
+        aws_channel_shutdown(tunnel->to_client, tunnel->shutdown_error_code);
+    }
+
+    s_aws_socks5_tunnel_on_channel_destroyed(tunnel, NULL);
+}
+
 static void s_aws_socks5_tunnel_shutdown_task_fn(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
@@ -510,25 +532,8 @@ static void s_aws_socks5_tunnel_shutdown_task_fn(struct aws_task *task, void *ar
     }
 
     tunnel = shutdown_task->tunnel;
-    AWS_FATAL_ASSERT(aws_event_loop_thread_is_callers_thread(tunnel->event_loop));
 
-    if (tunnel->state == AWS_SOCKS5_TS_SHUTTING_DOWN || tunnel->state == AWS_SOCKS5_TS_SHUTDOWN) {
-        goto done;
-    }
-
-    tunnel->state = AWS_SOCKS5_TS_SHUTTING_DOWN;
-
-    s_aws_socks5_tunnel_update_error_code(tunnel, shutdown_task->error_code);
-
-    if (tunnel->to_remote) {
-        aws_channel_shutdown(tunnel->to_remote, tunnel->shutdown_error_code);
-    }
-
-    if (tunnel->to_client) {
-        aws_channel_shutdown(tunnel->to_client, tunnel->shutdown_error_code);
-    }
-
-    s_aws_socks5_tunnel_on_channel_destroyed(tunnel, NULL);
+    s_aws_socks5_tunnel_shut_down(tunnel, shutdown_task->error_code);
 
 done:
 
@@ -973,7 +978,7 @@ static int s_socks5_tunnel_to_remote_handler_shutdown(
     bool free_scarce_resources_immediately) {
 
     struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
-    s_aws_socks5_tunnel_update_error_code(tunnel, error_code);
+    s_aws_socks5_tunnel_shut_down(tunnel, error_code);
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
@@ -1223,7 +1228,7 @@ static int s_socks5_tunnel_to_client_handler_shutdown(
     bool free_scarce_resources_immediately) {
 
     struct aws_socks5_tunnel *tunnel = (struct aws_socks5_tunnel *)handler->impl;
-    s_aws_socks5_tunnel_update_error_code(tunnel, error_code);
+    s_aws_socks5_tunnel_shut_down(tunnel, error_code);
 
     return aws_channel_slot_on_handler_shutdown_complete(slot, dir, error_code, free_scarce_resources_immediately);
 }
