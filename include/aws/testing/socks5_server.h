@@ -836,10 +836,10 @@ static int s_send_method_selection(struct aws_socks5_tunnel *tunnel, enum aws_so
 }
 
 static int s_handle_pending_method_list(struct aws_socks5_tunnel *tunnel, struct aws_io_message *message) {
-    struct aws_byte_cursor message_data = {
-        .len = message->message_data.len - message->copy_mark,
-        .ptr = message->message_data.buffer + message->copy_mark,
-    };
+    struct aws_byte_cursor message_data;
+    AWS_ZERO_STRUCT(message_data);
+    message_data.len = message->message_data.len - message->copy_mark;
+    message_data.ptr = message->message_data.buffer + message->copy_mark;
 
     aws_byte_buf_append_dynamic(&tunnel->handshake_data, &message_data);
 
@@ -888,10 +888,10 @@ static int s_handle_pending_method_list(struct aws_socks5_tunnel *tunnel, struct
 }
 
 static int s_handle_basic_auth_record(struct aws_socks5_tunnel *tunnel, struct aws_io_message *message) {
-    struct aws_byte_cursor message_data = {
-        .len = message->message_data.len - message->copy_mark,
-        .ptr = message->message_data.buffer + message->copy_mark,
-    };
+    struct aws_byte_cursor message_data;
+    AWS_ZERO_STRUCT(message_data);
+    message_data.len = message->message_data.len - message->copy_mark;
+    message_data.ptr = message->message_data.buffer + message->copy_mark;
 
     aws_byte_buf_append_dynamic(&tunnel->handshake_data, &message_data);
 
@@ -1082,25 +1082,25 @@ static void s_aws_client_bootstrap_on_channel_shutdown_fn(
 }
 
 static int s_aws_socks5_tunnel_connect_to_remote(struct aws_socks5_tunnel *tunnel) {
-    struct aws_socket_options socket_options = {
-        .type = AWS_SOCKET_STREAM,
-        .domain = AWS_SOCKET_IPV4,
-        .connect_timeout_ms = 10000,
-    };
+    struct aws_socket_options socket_options;
+    AWS_ZERO_STRUCT(socket_options);
+    socket_options.type = AWS_SOCKET_STREAM;
+    socket_options.domain = AWS_SOCKET_IPV4;
+    socket_options.connect_timeout_ms = 10000;
 
-    struct aws_socket_channel_bootstrap_options connect_options = {
-        .bootstrap = tunnel->server->config->to_remote_bootstrap,
-        .host_name = aws_string_c_str(tunnel->remote_host_name),
-        .port = tunnel->remote_port,
-        .socket_options = &socket_options,
-        .tls_options = NULL,
-        .creation_callback = NULL,
-        .setup_callback = s_aws_socks5_tunnel_on_remote_channel_setup_fn,
-        .shutdown_callback = s_aws_client_bootstrap_on_channel_shutdown_fn,
-        .enable_read_back_pressure = false,
-        .user_data = tunnel,
-        .requested_event_loop = tunnel->event_loop,
-    };
+    struct aws_socket_channel_bootstrap_options connect_options;
+    AWS_ZERO_STRUCT(connect_options);
+    connect_options.bootstrap = tunnel->server->config->to_remote_bootstrap;
+    connect_options.host_name = aws_string_c_str(tunnel->remote_host_name);
+    connect_options.port = tunnel->remote_port;
+    connect_options.socket_options = &socket_options;
+    connect_options.tls_options = NULL;
+    connect_options.creation_callback = NULL;
+    connect_options.setup_callback = s_aws_socks5_tunnel_on_remote_channel_setup_fn;
+    connect_options.shutdown_callback = s_aws_client_bootstrap_on_channel_shutdown_fn;
+    connect_options.enable_read_back_pressure = false;
+    connect_options.user_data = tunnel;
+    connect_options.requested_event_loop = tunnel->event_loop;
 
     tunnel->pending_remote = true;
     if (aws_client_bootstrap_new_socket_channel(&connect_options)) {
@@ -1114,10 +1114,10 @@ static int s_aws_socks5_tunnel_connect_to_remote(struct aws_socks5_tunnel *tunne
 }
 
 static int s_handle_command(struct aws_socks5_tunnel *tunnel, struct aws_io_message *message) {
-    struct aws_byte_cursor message_data = {
-        .len = message->message_data.len - message->copy_mark,
-        .ptr = message->message_data.buffer + message->copy_mark,
-    };
+    struct aws_byte_cursor message_data;
+    AWS_ZERO_STRUCT(message_data);
+    message_data.len = message->message_data.len - message->copy_mark;
+    message_data.ptr = message->message_data.buffer + message->copy_mark;
 
     aws_byte_buf_append_dynamic(&tunnel->handshake_data, &message_data);
 
@@ -1277,11 +1277,11 @@ static void s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn(
 
     struct aws_socks5_server *server = (struct aws_socks5_server *)user_data;
 
-    struct aws_socks5_tunnel_options tunnel_options = {
-        .server = server,
-        .to_client_channel = channel,
-        .id = 0,
-    };
+    struct aws_socks5_tunnel_options tunnel_options;
+    AWS_ZERO_STRUCT(tunnel_options);
+    tunnel_options.server = server;
+    tunnel_options.to_client_channel = channel;
+    tunnel_options.id = 0;
 
     aws_mutex_lock(&server->lock);
 
@@ -1345,19 +1345,19 @@ static int aws_socks5_server_begin_accept(struct aws_socks5_server *server) {
 
     aws_ref_count_acquire(&server->internal_ref_count); // Internal Ref Case 2
 
-    struct aws_server_socket_channel_bootstrap_options listener_options = {
-        .bootstrap = server->config->listener_bootstrap,
-        .host_name = aws_string_c_str(server->config->host_name),
-        .port = server->config->port,
-        .socket_options = &server->config->socket_options,
-        .tls_options = NULL,
-        .setup_callback = s_aws_socks5_server_bootstrap_on_listener_setup_fn,
-        .incoming_callback = s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn,
-        .shutdown_callback = s_aws_socks5_server_bootstrap_on_accept_channel_shutdown_fn,
-        .destroy_callback = s_aws_socks5_server_bootstrap_on_server_listener_destroy_fn,
-        .enable_read_back_pressure = false,
-        .user_data = server,
-    };
+    struct aws_server_socket_channel_bootstrap_options listener_options;
+    AWS_ZERO_STRUCT(listener_options);
+    listener_options.bootstrap = server->config->listener_bootstrap;
+    listener_options.host_name = aws_string_c_str(server->config->host_name);
+    listener_options.port = server->config->port;
+    listener_options.socket_options = &server->config->socket_options;
+    listener_options.tls_options = NULL;
+    listener_options.setup_callback = s_aws_socks5_server_bootstrap_on_listener_setup_fn;
+    listener_options.incoming_callback = s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn;
+    listener_options.shutdown_callback = s_aws_socks5_server_bootstrap_on_accept_channel_shutdown_fn;
+    listener_options.destroy_callback = s_aws_socks5_server_bootstrap_on_server_listener_destroy_fn;
+    listener_options.enable_read_back_pressure = false;
+    listener_options.user_data = server;
 
     struct aws_socket *listener = aws_server_bootstrap_new_socket_listener(&listener_options);
     if (!listener) {
@@ -1444,16 +1444,18 @@ static void aws_socks5_server_test_context_init(
         context->elg = aws_event_loop_group_new(allocator, &elg_options);
     }
 
-    struct aws_host_resolver_default_options hr_options = {
-        .max_entries = 32,
-        .el_group = context->elg,
-    };
+    struct aws_host_resolver_default_options hr_options;
+    AWS_ZERO_STRUCT(hr_options);
+    hr_options.max_entries = 32;
+    hr_options.el_group = context->elg;
+
     context->resolver = aws_host_resolver_new_default(allocator, &hr_options);
 
-    struct aws_client_bootstrap_options client_bootstrap_options = {
-        .event_loop_group = context->elg,
-        .host_resolver = context->resolver,
-    };
+    struct aws_client_bootstrap_options client_bootstrap_options;
+    AWS_ZERO_STRUCT(client_bootstrap_options);
+    client_bootstrap_options.event_loop_group = context->elg;
+    client_bootstrap_options.host_resolver = context->resolver;
+
     context->client_bootstrap = aws_client_bootstrap_new(context->allocator, &client_bootstrap_options);
 
     context->server_bootstrap = aws_server_bootstrap_new(context->allocator, context->elg);
@@ -1461,27 +1463,21 @@ static void aws_socks5_server_test_context_init(
     aws_mutex_init(&context->lock);
     aws_condition_variable_init(&context->signal);
 
-    struct aws_socks5_server_options server_options = {
-        .elg = context->elg,
-        .to_remote_bootstrap = context->client_bootstrap,
-        .listener_bootstrap = context->server_bootstrap,
-        .host_name = "127.0.0.1",
-        .port = 0,
-        .socket_options =
-            {
-                .type = AWS_SOCKET_STREAM,
-                .domain = AWS_SOCKET_IPV4,
-            },
-        .auth_options =
-            {
-                .allow_no_auth = true,
-                .allow_basic_auth = false,
-            },
-        .fault_mode = options != NULL ? options->fault_mode : AWS_SOCKS5_SFM_NONE,
-        .on_setup = s_aws_socks5_server_test_context_on_server_setup,
-        .on_destroy = s_aws_socks5_server_test_context_on_server_destroy,
-        .user_data = context,
-    };
+    struct aws_socks5_server_options server_options;
+    AWS_ZERO_STRUCT(server_options);
+    server_options.elg = context->elg;
+    server_options.to_remote_bootstrap = context->client_bootstrap;
+    server_options.listener_bootstrap = context->server_bootstrap;
+    server_options.host_name = "127.0.0.1";
+    server_options.port = 0;
+    server_options.socket_options.type = AWS_SOCKET_STREAM;
+    server_options.socket_options.domain = AWS_SOCKET_IPV4;
+    server_options.auth_options.allow_no_auth = true;
+    server_options.auth_options.allow_basic_auth = false;
+    server_options.fault_mode = options != NULL ? options->fault_mode : AWS_SOCKS5_SFM_NONE;
+    server_options.on_setup = s_aws_socks5_server_test_context_on_server_setup;
+    server_options.on_destroy = s_aws_socks5_server_test_context_on_server_destroy;
+    server_options.user_data = context;
 
     if (options && options->override_auth_options) {
         server_options.auth_options = *options->override_auth_options;
