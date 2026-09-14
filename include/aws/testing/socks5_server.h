@@ -819,8 +819,9 @@ static int s_send_method_selection(struct aws_socks5_tunnel *tunnel, enum aws_so
     struct aws_io_message *message =
         aws_channel_acquire_message_from_pool(tunnel->to_client, AWS_IO_MESSAGE_APPLICATION_DATA, 2);
 
-    uint8_t version_code = (tunnel->server->config->fault_mode == AWS_SOCKS5_SFM_BAD_VERSION) ? AWS_SOCKS5_VERSION_BAD
-                                                                                              : AWS_SOCKS5_VERSION_5;
+    uint8_t version_code = (tunnel->server->config->fault_mode == AWS_SOCKS5_SFM_BAD_VERSION)
+                               ? (uint8_t)AWS_SOCKS5_VERSION_BAD
+                               : (uint8_t)AWS_SOCKS5_VERSION_5;
     uint8_t method_selection_data[2] = {version_code, (uint8_t)method};
 
     struct aws_byte_cursor method_selection_data_cursor =
