@@ -662,9 +662,13 @@ static void s_on_server_internal_ref_count_zero(void *user_data) {
     aws_mem_release(server->allocator, server);
 }
 
+static void s_aws_socks5_server_init_vtables(void);
+
 static struct aws_socks5_server *aws_socks5_server_new(
     struct aws_allocator *allocator,
     struct aws_socks5_server_options *options) {
+
+    s_aws_socks5_server_init_vtables();
 
     struct aws_socks5_server *server =
         (struct aws_socks5_server *)aws_mem_calloc(allocator, 1, sizeof(struct aws_socks5_server));
@@ -1001,18 +1005,7 @@ static void s_socks5_tunnel_to_remote_handler_destroy(struct aws_channel_handler
     s_aws_socks5_tunnel_on_channel_destroyed(tunnel, tunnel->to_remote);
 }
 
-static struct aws_channel_handler_vtable s_socks5_tunnel_to_remote_handler_vtable = {
-    .process_read_message = s_socks5_tunnel_to_remote_handler_process_read_message,
-    .process_write_message = NULL,
-    .increment_read_window = NULL,
-    .shutdown = s_socks5_tunnel_to_remote_handler_shutdown,
-    .initial_window_size = s_socks5_tunnel_to_remote_handler_initial_window_size,
-    .message_overhead = s_socks5_tunnel_to_remote_handler_message_overhead,
-    .destroy = s_socks5_tunnel_to_remote_handler_destroy,
-    .reset_statistics = NULL,
-    .gather_statistics = NULL,
-    .trigger_read = NULL,
-};
+static struct aws_channel_handler_vtable s_socks5_tunnel_to_remote_handler_vtable;
 
 static void s_send_connect_response(struct aws_socks5_tunnel *tunnel, enum aws_socks5_connect_response_code code) {
     struct aws_io_message *message =
@@ -1251,18 +1244,37 @@ static void s_socks5_tunnel_to_client_handler_destroy(struct aws_channel_handler
     s_aws_socks5_tunnel_on_channel_destroyed(tunnel, tunnel->to_client);
 }
 
-static struct aws_channel_handler_vtable s_socks5_tunnel_to_client_handler_vtable = {
-    .process_read_message = s_socks5_tunnel_to_client_handler_process_read_message,
-    .process_write_message = NULL,
-    .increment_read_window = NULL,
-    .shutdown = s_socks5_tunnel_to_client_handler_shutdown,
-    .initial_window_size = s_socks5_tunnel_to_client_handler_initial_window_size,
-    .message_overhead = s_socks5_tunnel_to_client_handler_message_overhead,
-    .destroy = s_socks5_tunnel_to_client_handler_destroy,
-    .reset_statistics = NULL,
-    .gather_statistics = NULL,
-    .trigger_read = NULL,
-};
+static struct aws_channel_handler_vtable s_socks5_tunnel_to_client_handler_vtable;
+
+static void s_aws_socks5_server_init_vtables(void) {
+    AWS_ZERO_STRUCT(s_socks5_tunnel_to_remote_handler_vtable);
+    s_socks5_tunnel_to_remote_handler_vtable.process_read_message =
+        s_socks5_tunnel_to_remote_handler_process_read_message;
+    s_socks5_tunnel_to_remote_handler_vtable.process_write_message = NULL;
+    s_socks5_tunnel_to_remote_handler_vtable.increment_read_window = NULL;
+    s_socks5_tunnel_to_remote_handler_vtable.shutdown = s_socks5_tunnel_to_remote_handler_shutdown;
+    s_socks5_tunnel_to_remote_handler_vtable.initial_window_size =
+        s_socks5_tunnel_to_remote_handler_initial_window_size;
+    s_socks5_tunnel_to_remote_handler_vtable.message_overhead = s_socks5_tunnel_to_remote_handler_message_overhead;
+    s_socks5_tunnel_to_remote_handler_vtable.destroy = s_socks5_tunnel_to_remote_handler_destroy;
+    s_socks5_tunnel_to_remote_handler_vtable.reset_statistics = NULL;
+    s_socks5_tunnel_to_remote_handler_vtable.gather_statistics = NULL;
+    s_socks5_tunnel_to_remote_handler_vtable.trigger_read = NULL;
+
+    AWS_ZERO_STRUCT(s_socks5_tunnel_to_client_handler_vtable);
+    s_socks5_tunnel_to_client_handler_vtable.process_read_message =
+        s_socks5_tunnel_to_client_handler_process_read_message;
+    s_socks5_tunnel_to_client_handler_vtable.process_write_message = NULL;
+    s_socks5_tunnel_to_client_handler_vtable.increment_read_window = NULL;
+    s_socks5_tunnel_to_client_handler_vtable.shutdown = s_socks5_tunnel_to_client_handler_shutdown;
+    s_socks5_tunnel_to_client_handler_vtable.initial_window_size =
+        s_socks5_tunnel_to_client_handler_initial_window_size;
+    s_socks5_tunnel_to_client_handler_vtable.message_overhead = s_socks5_tunnel_to_client_handler_message_overhead;
+    s_socks5_tunnel_to_client_handler_vtable.destroy = s_socks5_tunnel_to_client_handler_destroy;
+    s_socks5_tunnel_to_client_handler_vtable.reset_statistics = NULL;
+    s_socks5_tunnel_to_client_handler_vtable.gather_statistics = NULL;
+    s_socks5_tunnel_to_client_handler_vtable.trigger_read = NULL;
+}
 
 static void s_aws_socks5_server_bootstrap_on_accept_channel_setup_fn(
     struct aws_server_bootstrap *bootstrap,
