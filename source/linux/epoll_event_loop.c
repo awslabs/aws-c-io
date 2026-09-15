@@ -724,8 +724,8 @@ static void aws_event_loop_thread(void *args) {
             timeout = timeout_ms64 > INT_MAX ? INT_MAX : (int)timeout_ms64;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
-                "id=%p: detected more scheduled tasks with the next occurring at "
-                "%llu, using timeout of %d.",
+                "id=%p: detected more scheduled tasks with the next occurring in "
+                "%llu nanos, using timeout of %d millis.",
                 (void *)event_loop,
                 (unsigned long long)timeout_ns,
                 timeout);
