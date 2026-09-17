@@ -1612,7 +1612,7 @@ static int s_event_loop_creation_failure_fn(struct aws_allocator *allocator, voi
 
     struct aws_thread_options default_options = *aws_default_thread_options();
     struct aws_thread_options bad_options = default_options;
-    bad_options.stack_size = (size_t)UINT64_MAX;
+    bad_options.stack_size = SIZE_MAX;
 
     aws_set_default_thread_options(&bad_options);
 
