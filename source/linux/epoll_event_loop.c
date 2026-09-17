@@ -731,7 +731,7 @@ static void aws_event_loop_thread(void *args) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
                 "id=%p: detected more scheduled tasks with the next occurring in "
-                "%llu nanos, using timeout of %d millis.",
+                "%llu ns, using timeout of %d ms.",
                 (void *)event_loop,
                 (unsigned long long)timeout_ns,
                 timeout);
