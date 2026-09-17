@@ -134,10 +134,13 @@ static void s_do_read(struct socket_handler *socket_handler) {
      *    no downstream handler was added yet.
      *    We will directly return and waiting for the shutdown task process.
      *
-     * 2. When using Apple SECITEM with only TLS : the channel may have a
-     *    socket handler slot without a downstream application handler installed.
-     *.   For the case, we still read from the socket, but never pass down the message to
-     *    the downstream slots (there is no downstream slots)
+     * 2. When using Apple SecItem for TLS: the channel has only a socket slot
+     *    with no downstream application handler (adj_right is NULL). We should
+     *    still read from the socket so that the OS network stack can process
+     *    incoming data (e.g. connection close, errors).
+     *    The read message is released immediately since there are no downstream
+     *    slots to pass it to.
+     *
      * */
     size_t downstream_window = socket_handler->max_rw_size;
     if (socket_handler->slot->adj_right != NULL) {
@@ -187,9 +190,9 @@ static void s_do_read(struct socket_handler *socket_handler) {
             (void *)socket_handler->slot->handler,
             (unsigned long long)read);
 
-        /* When using Apple SECITEM with only TLS, the channel may have a socket handler slot
-         * without a downstream application handler installed. For the case, we still read
-         * from the socket, but never pass the message to downstream slots. */
+        /* When using Apple SecItem for TLS, the channel has no downstream application handler.
+         * We still read from the socket (to let the OS process incoming data), but release
+         * the message immediately instead of passing it downstream. */
 #if defined(AWS_USE_SECITEM)
         if (socket_handler->slot->adj_right == NULL) {
             aws_mem_release(message->allocator, message);
