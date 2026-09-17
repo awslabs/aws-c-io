@@ -2321,8 +2321,7 @@ static int s_local_start_accept(
                 AWS_LS_IO_SOCKET,
                 "id=%p handle=%p: Pipe connected immediately, scheduling task for setup.",
                 (void *)socket,
-                (void *)socket->io_handle.data.handle,
-                error_code);
+                (void *)socket->io_handle.data.handle);
             /* There will be no IO-completion event in the case of ERROR_PIPE_CONNECTED,
             so schedule a task to finish the connection */
             socket_impl->read_io_data->sequential_task_storage.fn = s_named_pipe_is_ridiculous_task;
