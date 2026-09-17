@@ -1621,6 +1621,12 @@ static int s_event_loop_creation_failure_fn(struct aws_allocator *allocator, voi
     };
     struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new(allocator, &elg_options);
 
+    // delays to make sure start and stop of threads doesn't overlap switching default options
+    uint64_t sleep_nanos = aws_timestamp_convert(1, AWS_TIMESTAMP_SECS, AWS_TIMESTAMP_NANOS, NULL);
+    aws_thread_current_sleep(sleep_nanos);
+    aws_set_default_thread_options(&default_options);
+    aws_thread_current_sleep(sleep_nanos);
+
     aws_event_loop_group_release(event_loop_group);
 
     aws_io_library_clean_up();
