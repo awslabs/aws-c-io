@@ -1601,8 +1601,6 @@ static int s_test_event_loop_serialized_scheduling(struct aws_allocator *allocat
 
 AWS_TEST_CASE(event_loop_serialized_scheduling, s_test_event_loop_serialized_scheduling)
 
-void aws_set_default_thread_options(struct aws_thread_options *options);
-
 /*
  * Catches https://github.com/awslabs/aws-c-io/issues/841 by causing thread creation to fail due to excessive stack
  * size request.
