@@ -99,6 +99,40 @@ struct aws_socket_options {
      * unsupported platforms.
      */
     char network_interface_name[AWS_NETWORK_INTERFACE_NAME_MAX];
+
+    /**
+     * (Optional)
+     * Apple Network Framework only. TCP over IPv4/IPv6 only. Defaults to false.
+     *
+     * When false (the default), behavior is unchanged.
+     *
+     * When true, the connection is established by passing the destination hostname directly to the
+     * operating system instead of pre-resolving it.
+     *
+     * On platforms other than the Apple Network Framework backend, this field has no effect and is ignored.
+     */
+    bool connect_by_name;
+
+    /**
+     * (Optional)
+     * Apple Network Framework only. Defaults to false.
+     *
+     * When true, connections created from these options ignore any proxies configured on the system,
+     * Use this when the caller must reach the destination directly regardless of system proxy configuration.
+     *
+     * On platforms other than the Apple Network Framework backend this field has no effect and is ignored
+     */
+    bool prefer_no_proxy;
+
+    /**
+     * (Optional)
+     * Apple Network Framework only. Defaults to NULL.
+     *
+     * An opaque pointer to an Apple `nw_privacy_context_t` used to configure privacy settings (for
+     * example disabling connection logging or requiring encrypted name resolution) for connections.
+     *
+     */
+    void *privacy_context;
 };
 
 struct aws_socket;
@@ -168,6 +202,15 @@ typedef void(aws_socket_on_readable_fn)(struct aws_socket *socket, int error_cod
 struct aws_socket_endpoint {
     char address[AWS_ADDRESS_MAX_LEN];
     uint32_t port;
+
+    /**
+     * (Optional) Full destination hostname (FQDN) for the connect-by-name path. Defaults to NULL.
+     *
+     * Only read by backends that support connect-by-name (Apple Network Framework) when
+     * aws_socket_options.connect_by_name is true. This is not bounded by AWS_ADDRESS_MAX_LEN
+     * On the normal resolve-then-connect path this is NULL and the resolved IP in address[] is used instead.
+     */
+    const char *host_name;
 };
 
 struct aws_socket {

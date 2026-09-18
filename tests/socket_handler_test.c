@@ -586,6 +586,67 @@ static int s_socket_pinned_event_loop_dns_failure_test(struct aws_allocator *all
 
 AWS_TEST_CASE(socket_pinned_event_loop_dns_failure, s_socket_pinned_event_loop_dns_failure_test)
 
+/* connect_by_name at the bootstrap layer must NOT reject a long FQDN on length. */
+static int s_socket_bootstrap_connect_by_name_long_fqdn_test(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    if (aws_socket_get_default_impl_type() != AWS_SOCKET_IMPL_APPLE_NETWORK_FRAMEWORK) {
+        return AWS_OP_SUCCESS;
+    }
+
+    s_socket_common_tester_init(allocator, &c_tester);
+
+    struct aws_client_bootstrap_options client_bootstrap_options = {
+        .event_loop_group = c_tester.el_group,
+        .host_resolver = c_tester.resolver,
+    };
+    struct aws_client_bootstrap *client_bootstrap = aws_client_bootstrap_new(allocator, &client_bootstrap_options);
+    ASSERT_NOT_NULL(client_bootstrap);
+
+    struct aws_event_loop *pinned_event_loop = aws_event_loop_group_get_next_loop(c_tester.el_group);
+    c_tester.requested_callback_event_loop = pinned_event_loop;
+
+    struct aws_socket_options socket_options = {
+        .domain = AWS_SOCKET_IPV4,
+        .type = AWS_SOCKET_STREAM,
+        .connect_timeout_ms = 10000,
+        .connect_by_name = true,
+    };
+
+    /* 133-char syntactically valid FQDN (labels <= 63); exceeds AWS_ADDRESS_MAX_LEN (104 on macOS). */
+    static const char *long_fqdn = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa."
+                                   "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb."
+                                   "example.com";
+
+    struct aws_socket_channel_bootstrap_options client_channel_options;
+    AWS_ZERO_STRUCT(client_channel_options);
+    client_channel_options.bootstrap = client_bootstrap;
+    client_channel_options.host_name = long_fqdn;
+    client_channel_options.port = 443;
+    client_channel_options.socket_options = &socket_options;
+    client_channel_options.setup_callback = s_dns_failure_test_client_setup_callback;
+    client_channel_options.shutdown_callback = s_dns_failure_handler_test_client_shutdown_callback;
+    client_channel_options.enable_read_back_pressure = false;
+    client_channel_options.requested_event_loop = pinned_event_loop;
+    client_channel_options.user_data = &c_tester;
+
+    /* The key assertion: connect-by-name must not be rejected synchronously on length. */
+    ASSERT_SUCCESS(aws_client_bootstrap_new_socket_channel(&client_channel_options));
+
+    ASSERT_SUCCESS(aws_mutex_lock(&c_tester.mutex));
+    ASSERT_SUCCESS(aws_condition_variable_wait_for_pred(
+        &c_tester.condition_variable, &c_tester.mutex, TIMEOUT, s_dns_failure_channel_setup_predicate, &c_tester));
+    ASSERT_TRUE(c_tester.setup_error_code != 0);
+    ASSERT_TRUE(c_tester.setup_error_code != AWS_IO_SOCKET_INVALID_ADDRESS);
+    aws_mutex_unlock(&c_tester.mutex);
+
+    aws_client_bootstrap_release(client_bootstrap);
+    ASSERT_SUCCESS(s_socket_common_tester_clean_up(&c_tester));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(socket_bootstrap_connect_by_name_long_fqdn, s_socket_bootstrap_connect_by_name_long_fqdn_test)
+
 static int s_socket_echo_and_backpressure_test(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
