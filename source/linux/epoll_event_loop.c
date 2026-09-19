@@ -18,7 +18,29 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <time.h>
 #include <unistd.h>
+
+#if defined(COMPAT_MODE) || !defined(CLOCK_BOOTTIME)
+/* The target kernels for COMPAT_MODE predate CLOCK_BOOTTIME timerfd. */
+#    define AWS_USE_BOOTTIME_TIMERFD 0
+#elif defined(__has_include)
+#    if __has_include(<sys/timerfd.h>)
+#        define AWS_USE_BOOTTIME_TIMERFD 1
+#    else
+#        define AWS_USE_BOOTTIME_TIMERFD 0
+#    endif
+#elif !defined(__GLIBC__) || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 8) || __GLIBC__ > 2
+/* Fallback for toolchains without __has_include (e.g. GCC < 5): timerfd is present on glibc >= 2.8 and on
+ * the non-glibc libcs we support (bionic, musl). */
+#    define AWS_USE_BOOTTIME_TIMERFD 1
+#else
+#    define AWS_USE_BOOTTIME_TIMERFD 0
+#endif
+
+#if AWS_USE_BOOTTIME_TIMERFD
+#    include <sys/timerfd.h>
+#endif
 
 #if !defined(COMPAT_MODE) && defined(__GLIBC__) && ((__GLIBC__ == 2 && __GLIBC_MINOR__ >= 8) || __GLIBC__ > 2)
 #    define USE_EFD 1
@@ -98,6 +120,8 @@ struct epoll_loop {
     struct aws_atomic_var running_thread_id;
     struct aws_io_handle read_task_handle;
     struct aws_io_handle write_task_handle;
+    /* CLOCK_BOOTTIME timer used to wake epoll_wait for scheduled tasks. */
+    struct aws_io_handle timer_handle;
     struct aws_mutex task_pre_queue_mutex;
     struct aws_linked_list task_pre_queue;
     struct aws_task stop_task;
@@ -206,6 +230,25 @@ struct aws_event_loop *aws_event_loop_new_with_epoll(
         goto clean_up_pipe;
     }
 
+    /* epoll_wait's timeout is measured on CLOCK_MONOTONIC, which does not advance while the device is suspended.
+     * An additional timerfd is measured on CLOCK_BOOTTIME, which does account for time spent in suspend. */
+    epoll_loop->timer_handle.data.fd = -1;
+#if AWS_USE_BOOTTIME_TIMERFD
+    int timer_fd = timerfd_create(CLOCK_BOOTTIME, TFD_NONBLOCK | TFD_CLOEXEC);
+    if (timer_fd >= 0) {
+        AWS_LOGF_TRACE(AWS_LS_IO_EVENT_LOOP, "id=%p: timerfd descriptor %d", (void *)loop, timer_fd);
+        epoll_loop->timer_handle.data.fd = timer_fd;
+    } else {
+        int errno_value = errno;
+        AWS_LOGF_WARN(
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p: failed to create CLOCK_BOOTTIME timerfd (errno %d); scheduled tasks may be delayed across "
+            "device suspend",
+            (void *)loop,
+            errno_value);
+    }
+#endif
+
     epoll_loop->should_continue = false;
 
     loop->impl_data = epoll_loop;
@@ -277,6 +320,11 @@ static void s_complete_destroy(struct aws_event_loop *event_loop) {
     close(epoll_loop->read_task_handle.data.fd);
     close(epoll_loop->write_task_handle.data.fd);
 #endif
+
+    if (epoll_loop->timer_handle.data.fd >= 0) {
+        close(epoll_loop->timer_handle.data.fd);
+        epoll_loop->timer_handle.data.fd = -1;
+    }
 
     close(epoll_loop->epoll_fd);
     aws_mem_release(event_loop->alloc, epoll_loop);
@@ -541,6 +589,48 @@ static void s_on_tasks_to_schedule(
     }
 }
 
+static void s_on_timer_event(
+    struct aws_event_loop *event_loop,
+    struct aws_io_handle *handle,
+    int events,
+    void *user_data) {
+
+    (void)event_loop;
+    (void)user_data;
+
+    if (events & AWS_IO_EVENT_TYPE_READABLE) {
+        uint64_t expirations = 0;
+        /* The event itself is what's needed, so just drain the fd. */
+        while (read(handle->data.fd, &expirations, sizeof(expirations)) > 0) {
+        }
+    }
+}
+
+static void s_set_timer(struct epoll_loop *epoll_loop, uint64_t timeout_ns) {
+#if AWS_USE_BOOTTIME_TIMERFD
+    if (epoll_loop->timer_handle.data.fd < 0) {
+        return;
+    }
+
+    /* NOTE: it_value of 0 disarms the timer. */
+    struct itimerspec timer_value = {
+        .it_value =
+            {
+                .tv_sec = (time_t)(timeout_ns / 1000000000ULL),
+                .tv_nsec = (long)(timeout_ns % 1000000000ULL),
+            },
+    };
+
+    int rc = timerfd_settime(epoll_loop->timer_handle.data.fd, 0 /* relative */, &timer_value, NULL);
+    /* timerfd_settime fails on bad input data, which should never happen. */
+    AWS_ASSERT(rc == 0 && "timerfd_settime failed");
+    (void)rc;
+#else
+    (void)epoll_loop;
+    (void)timeout_ns;
+#endif /* AWS_USE_BOOTTIME_TIMERFD */
+}
+
 static void s_process_task_pre_queue(struct aws_event_loop *event_loop) {
     struct epoll_loop *epoll_loop = event_loop->impl_data;
 
@@ -616,6 +706,18 @@ static void aws_event_loop_thread(void *args) {
         event_loop, &epoll_loop->read_task_handle, AWS_IO_EVENT_TYPE_READABLE, s_on_tasks_to_schedule, NULL);
     if (err) {
         return;
+    }
+
+    if (epoll_loop->timer_handle.data.fd >= 0) {
+        if (s_subscribe_to_io_events(
+                event_loop, &epoll_loop->timer_handle, AWS_IO_EVENT_TYPE_READABLE, s_on_timer_event, NULL)) {
+            AWS_LOGF_WARN(
+                AWS_LS_IO_EVENT_LOOP,
+                "id=%p: failed to register timerfd with epoll; falling back to epoll timeout.",
+                (void *)event_loop);
+            close(epoll_loop->timer_handle.data.fd);
+            epoll_loop->timer_handle.data.fd = -1;
+        }
     }
 
     aws_thread_current_at_exit(s_aws_epoll_cleanup_aws_lc_thread_local_state, NULL);
@@ -713,29 +815,35 @@ static void aws_event_loop_thread(void *args) {
             use_default_timeout = true;
         }
 
+        uint64_t timeout_ns;
         if (use_default_timeout) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP, "id=%p: no more scheduled tasks using default timeout.", (void *)event_loop);
             timeout = DEFAULT_TIMEOUT;
+            timeout_ns = aws_timestamp_convert(DEFAULT_TIMEOUT, AWS_TIMESTAMP_MILLIS, AWS_TIMESTAMP_NANOS, NULL);
         } else {
-            /* Translate timestamp (in nanoseconds) to timeout (in milliseconds) */
-            uint64_t timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
+            timeout_ns = (next_run_time_ns > now_ns) ? (next_run_time_ns - now_ns) : 0;
             uint64_t timeout_ms64 = aws_timestamp_convert(timeout_ns, AWS_TIMESTAMP_NANOS, AWS_TIMESTAMP_MILLIS, NULL);
             timeout = timeout_ms64 > INT_MAX ? INT_MAX : (int)timeout_ms64;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
-                "id=%p: detected more scheduled tasks with the next occurring at "
-                "%llu, using timeout of %d.",
+                "id=%p: detected more scheduled tasks with the next occurring in %llu ns, using timeout of %d ms.",
                 (void *)event_loop,
                 (unsigned long long)timeout_ns,
                 timeout);
         }
+
+        /* Arm the timerfd that will handle any suspend happening during the wait. */
+        s_set_timer(epoll_loop, timeout_ns);
 
         aws_event_loop_register_tick_end(event_loop);
     }
 
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "id=%p: exiting main loop", (void *)event_loop);
     s_unsubscribe_from_io_events(event_loop, &epoll_loop->read_task_handle);
+    if (epoll_loop->timer_handle.data.fd >= 0) {
+        s_unsubscribe_from_io_events(event_loop, &epoll_loop->timer_handle);
+    }
     /* set thread id back to NULL. This should be updated again in destroy, before tasks are canceled. */
     aws_atomic_store_ptr(&epoll_loop->running_thread_id, NULL);
 }
