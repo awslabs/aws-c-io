@@ -47,7 +47,7 @@ enum aws_tls_cipher_pref {
     AWS_IO_TLS_CIPHER_PREF_PQ_DEFAULT = 8,
 
     /* This security policy is based on AWS-CRT-SDK-TLSv1.2-2023 (the default when a minimum TLS version is TLS 1.2),
-     * with tightened security. This security policy is FIPS-complaint.
+     * with tightened security. This security policy is FIPS-compliant.
      */
     AWS_IO_TLS_CIPHER_PREF_TLSV1_2_2025_07 = 9,
 
@@ -104,7 +104,7 @@ struct aws_tls_ctx {
  * the negotiation failed and immediately after this function is invoked, the channel will be shutting down.
  *
  * NOTE: When using SecItem the handler and slot arguments will be pointers to the socket slot and socket handler. This
- * is due to TLS negotiaion being handled by the Apple Network Framework connection in the socket slot/handler.
+ * is due to TLS negotiation being handled by the Apple Network Framework connection in the socket slot/handler.
  */
 typedef void(aws_tls_on_negotiation_result_fn)(
     struct aws_channel_handler *handler,
@@ -224,7 +224,7 @@ struct aws_tls_ctx_options {
 #ifdef _WIN32
     /** The path to a system
      * installed certficate/private key pair. Example:
-     * CurrentUser\\MY\\<thumprint>
+     * CurrentUser\\MY\\<thumbprint>
      */
     const char *system_certificate_path;
 #endif
@@ -233,7 +233,7 @@ struct aws_tls_ctx_options {
      * A PEM armored PKCS#7 private key as a string.
      *
      * On windows, this field should be NULL only if you are
-     * using a system installed certficate.
+     * using a system installed certificate.
      */
     struct aws_byte_buf private_key;
 
@@ -607,7 +607,7 @@ AWS_IO_API int aws_tls_ctx_options_init_default_server(
  * Initializes options for use with mutual tls in client mode.
  * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
- * CurrentUser\\MY\\<thumprint>
+ * CurrentUser\\MY\\<thumbprint>
  *
  * NOTE: This only works on Windows.
  */
@@ -620,7 +620,7 @@ AWS_IO_API int aws_tls_ctx_options_init_client_mtls_from_system_path(
  * Initializes options for use with server mode.
  * cert_reg_path is the path to a system
  * installed certficate/private key pair. Example:
- * CurrentUser\\MY\\<thumprint>
+ * CurrentUser\\MY\\<thumbprint>
  *
  * NOTE: This only works on Windows.
  */
@@ -937,7 +937,7 @@ struct aws_byte_cursor aws_tls_key_operation_get_input(const struct aws_tls_key_
 /**
  * Returns the type of operation that needs to be performed by the custom key operation.
  * If the implementation cannot perform the operation,
- * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ * use aws_tls_key_operation_complete_with_error() to prevent stalling the TLS connection.
  */
 AWS_IO_API
 enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_tls_key_operation *operation);
@@ -945,7 +945,7 @@ enum aws_tls_key_operation_type aws_tls_key_operation_get_type(const struct aws_
 /**
  * Returns the algorithm the operation is expected to be operated with.
  * If the implementation does not support the signature algorithm,
- * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ * use aws_tls_key_operation_complete_with_error() to prevent stalling the TLS connection.
  */
 AWS_IO_API
 enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
@@ -954,7 +954,7 @@ enum aws_tls_signature_algorithm aws_tls_key_operation_get_signature_algorithm(
 /**
  * Returns the algorithm the operation digest is signed with.
  * If the implementation does not support the digest algorithm,
- * use aws_tls_key_operation_complete_with_error() to preventing stalling the TLS connection.
+ * use aws_tls_key_operation_complete_with_error() to prevent stalling the TLS connection.
  */
 AWS_IO_API
 enum aws_tls_hash_algorithm aws_tls_key_operation_get_digest_algorithm(const struct aws_tls_key_operation *operation);
@@ -984,7 +984,7 @@ AWS_IO_API
 const char *aws_tls_signature_algorithm_str(enum aws_tls_signature_algorithm signature);
 
 /**
- * Given enum, return string like: AWS_TLS_SIGNATURE_RSA -> "RSA"
+ * Given enum, return string like: AWS_TLS_KEY_OPERATION_SIGN -> "SIGN"
  */
 AWS_IO_API
 const char *aws_tls_key_operation_type_str(enum aws_tls_key_operation_type operation_type);

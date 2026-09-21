@@ -38,7 +38,7 @@ static const uint8_t SHA512_PREFIX_TO_RSA_SIG[] = { 0x30, 0x51, 0x30, 0x0d, 0x06
 static const uint8_t SHA224_PREFIX_TO_RSA_SIG[] = { 0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c };
 /* clang-format on */
 
-/* Return c-string for PKCS#11 CKR_* contants. */
+/* Return c-string for PKCS#11 CKR_* constants. */
 const char *aws_pkcs11_ckr_str(CK_RV rv) {
     /* clang-format off */
     switch (rv) {
@@ -244,7 +244,7 @@ static int s_ck_to_aws_error(CK_RV rv) {
     /* clang-format on */
 }
 
-/* Return c-string for PKCS#11 CKK_* contants. */
+/* Return c-string for PKCS#11 CKK_* constants. */
 static const char *s_ckk_str(CK_KEY_TYPE key_type) {
     /* clang-format off */
     switch(key_type) {
@@ -338,7 +338,7 @@ static bool s_is_padding(uint8_t c) {
 }
 
 /* Return byte-cursor to string with ' ' padding trimmed off.
- * PKCS#11 structs commonly stores strings in fixed-width arrays, padded by ' ' instead of null-terminator */
+ * PKCS#11 structs commonly store strings in fixed-width arrays, padded by ' ' instead of null-terminator */
 static struct aws_byte_cursor s_trim_padding(const uint8_t *str, size_t len) {
     const struct aws_byte_cursor src = aws_byte_cursor_from_array(str, len);
     return aws_byte_cursor_right_trim_pred(&src, s_is_padding);
@@ -404,7 +404,7 @@ static CK_RV s_pkcs11_unlock_mutex(CK_VOID_PTR mutex_ptr) {
 
     struct aws_mutex *mutex = mutex_ptr;
     if (aws_mutex_unlock(mutex)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "PKCS#11 LockMutex() failed, error %s", aws_error_name(aws_last_error()));
+        AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "PKCS#11 UnlockMutex() failed, error %s", aws_error_name(aws_last_error()));
 
         /* NOTE: Cryptoki has a CKR_MUTEX_NOT_LOCKED error code.
          * But posix doesn't treat this as an error and neither does windows so ¯\_(ツ)_/¯
@@ -1265,7 +1265,7 @@ static int s_pkcs11_sign_ecdsa(
         AWS_LOGF_ERROR(
             AWS_LS_IO_PKCS11,
             "PKCS11 library returned an invalid length, unable to interpret ECDSA signature to encode correctly.");
-        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
+        aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
         goto error;
     }
     size_t num_bytes = part_signature.len / 2;
@@ -1287,12 +1287,12 @@ static int s_pkcs11_sign_ecdsa(
     }
     if (!aws_byte_buf_write_from_whole_buffer(out_signature, r_part)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Insufficient buffer to ASN.1 (DER) encode ECDSA signature R-part.");
-        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
+        aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
         goto error;
     }
     if (!aws_byte_buf_write_from_whole_buffer(out_signature, s_part)) {
         AWS_LOGF_ERROR(AWS_LS_IO_PKCS11, "Insufficient buffer to ASN.1 (DER) encode ECDSA signature S-part.");
-        return aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
+        aws_raise_error(AWS_ERROR_PKCS11_ENCODING_ERROR);
         goto error;
     }
     success = true;

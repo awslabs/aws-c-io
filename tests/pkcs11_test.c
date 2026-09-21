@@ -1620,7 +1620,7 @@ static void s_on_tls_server_channel_shutdown(
     aws_condition_variable_notify_all(&s_tls_tester.synced.cvar);
 }
 
-/* Connect a client client and server, where the client is using PKCS#11 for private key operations */
+/* Connect a client and server, where the client is using PKCS#11 for private key operations */
 static int s_test_pkcs11_tls_negotiation_succeeds_common(
     struct aws_allocator *allocator,
     const char *token_label,

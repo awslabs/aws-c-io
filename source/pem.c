@@ -350,7 +350,7 @@ int aws_pem_objects_init_from_file_contents(
     AWS_PRECONDITION(allocator);
     AWS_PRECONDITION(pem_objects != NULL);
 
-    /* Init empty array list, ideally, the PEM should only has one key included. */
+    /* Init empty array list, ideally, the PEM should only have one key included. */
     if (aws_array_list_init_dynamic(pem_objects, allocator, 1, sizeof(struct aws_pem_object))) {
         return AWS_OP_ERR;
     }

@@ -67,7 +67,7 @@ struct aws_channel_handler_vtable {
     /**
      * Called by the channel when a message is available for processing in the write direction. It is your
      * responsibility to call aws_mem_release(message->allocator, message); on message when you are finished with it.
-     * You must only call `aws_mem_release(message->allocator, message);` if the `process_read_message`
+     * You must only call `aws_mem_release(message->allocator, message);` if the `process_write_message`
      * returns AWS_OP_SUCCESS. In case of an error, you must not clean up the message and should just raise the error.
      */
     int (*process_write_message)(
@@ -472,7 +472,7 @@ int aws_channel_handler_process_write_message(
     struct aws_io_message *message);
 
 /**
- * Calls on_window_update on handler's vtable.
+ * Calls increment_read_window on handler's vtable.
  */
 AWS_IO_API
 int aws_channel_handler_increment_read_window(

@@ -273,7 +273,7 @@ table_locked:
     return AWS_OP_ERR;
 }
 
-void s_standard_retry_strategy_on_retry_ready(struct aws_retry_token *token, int error_code, void *user_data) {
+static void s_standard_retry_strategy_on_retry_ready(struct aws_retry_token *token, int error_code, void *user_data) {
     (void)token;
 
     struct aws_retry_token *standard_retry_token = user_data;

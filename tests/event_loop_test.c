@@ -565,7 +565,7 @@ static bool s_unsubrace_predicate(void *arg) {
 }
 
 /* Regression test: Ensure that a handle cannot receive an event after it's been unsubscribed.
- * This was occuring in the case that there were events on two handles in the same event-loop tick,
+ * This was occurring in the case that there were events on two handles in the same event-loop tick,
  * and the first handle to receive its event unsubscribed the other handle.
  * Shortname: unsubrace */
 static int s_test_event_loop_no_events_after_unsubscribe(struct aws_allocator *allocator, void *ctx) {
@@ -603,7 +603,7 @@ AWS_TEST_CASE(event_loop_no_events_after_unsubscribe, s_test_event_loop_no_event
  * then kick off the tester and then wait for it to be done.
  * Each function should return one of:
  * - AWS_OP_SUCCESS: continue to next state function
- * - AWS_OP_ERRROR: fail the test
+ * - AWS_OP_ERR: fail the test
  * - REMAIN_IN_STATE: try this state function again next time
  */
 struct thread_tester;
@@ -887,7 +887,7 @@ static int s_state_wait_1sec(struct thread_tester *tester) {
     }
 }
 
-/* Test that subscribe/unubscribe work at all */
+/* Test that subscribe/unsubscribe work at all */
 static int s_test_event_loop_subscribe_unsubscribe(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 

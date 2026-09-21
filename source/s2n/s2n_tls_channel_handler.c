@@ -266,9 +266,9 @@ static void s_tls_init_static_state(struct aws_allocator *alloc) {
 
     /* Disable atexit behavior, so that s2n_cleanup() fully cleans things up.
      *
-     * By default, s2n uses an ataexit handler and doesn't fully clean up until the program exits.
+     * By default, s2n uses an atexit handler and doesn't fully clean up until the program exits.
      * This can cause a crash if s2n is compiled into a shared library and
-     * that library is unloaded before the appexit handler runs. */
+     * that library is unloaded before the atexit handler runs. */
     if (s2n_disable_atexit() != S2N_SUCCESS) {
         /* If this call fails, then s2n is already initialized
          * https://github.com/aws/s2n-tls/blob/2ad65c11a96368591fe809cd27fd1e390b2c8ce3/api/s2n.h#L211-L212 */

@@ -674,13 +674,13 @@ static void s_on_client_connection_established(struct aws_socket *socket, int er
                  * TCP connection that subsequently failed its TLS negotiation handshake. If the error_code indicates a
                  * TLS related failure we store it to properly handle TLS failure rather than treating it as a TCP
                  * connection failure. We also assign the socket and flip the connection_chosen to true as a TCP
-                 * connection must sucessfully be established before a TLS failure can occur.
+                 * connection must successfully be established before a TLS failure can occur.
                  */
                 if (aws_error_code_is_tls(error_code)) {
                     AWS_LOGF_DEBUG(
                         AWS_LS_IO_CHANNEL_BOOTSTRAP,
                         "id=%p: Storing socket %p error_code %d as this socket's TCP connection has succeeded but was "
-                        "followed up by a TLS neotiation error.",
+                        "followed up by a TLS negotiation error.",
                         (void *)connection_args->bootstrap,
                         (void *)socket,
                         error_code);

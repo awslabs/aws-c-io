@@ -10,6 +10,12 @@ with TLS already baked in. All of the platform and security concerns are already
 It is designed to be light-weight, fast, portable, and flexible for multiple domain use-cases such as:
 embedded, server, client, and mobile.
 
+## Versioning
+
+This library uses a three-part `Major.Minor.Patch` version scheme. See
+[VERSIONING.md](VERSIONING.md) for what each part means and our API/ABI
+stability policy.
+
 ## License
 
 This library is licensed under the Apache 2.0 License.
@@ -141,7 +147,7 @@ Typical Server API Usage Pattern:
         aws_io_library_clean_up();
 
 If you are building a protocol on top of sockets without the use of TLS, you can still use this pattern as your starting point.
-Simply call the `aws_client_bootstrap_new_socket_channel` `aws_server_bootstrap_add_socket_listener` respectively: instead of the TLS variants.
+Simply call the `aws_client_bootstrap_new_socket_channel` and `aws_server_bootstrap_add_socket_listener` respectively, instead of the TLS variants.
 
 ## Concepts
 
@@ -320,7 +326,7 @@ This means that the API is driven by a virtual-table. This is simply a struct of
 a c extern style API, but ultimately those public functions simply invoke the corresponding function in the v-table.
 
 These are reserved for types that:
-a.) Need to be configurable, changable at runtime
+a.) Need to be configurable, changeable at runtime
 b.) Do not have immediate performance concerns caused by an indirect function call.
 
 ### Compile-time Polymorphic
@@ -428,7 +434,7 @@ appropriately.**
 
     int (*unsubscribe_from_io_events) (struct aws_event_loop *, struct aws_io_handle *);
 
-A subscriber will call this function to remove its io handle from the monitored events. For example, it would may this immediately before calling
+A subscriber will call this function to remove its io handle from the monitored events. For example, it would call this immediately before calling
 close() on a socket or pipe. `on_event` will still be invoked with `AWS_IO_EVENT_HANDLE_REMOVED` when this occurs.
 
     BOOL (*is_on_callers_thread) (struct aws_event_loop *);
@@ -460,7 +466,7 @@ the caller must first schedule a task on the event-loop to enter the correct thr
     int aws_event_loop_put_local_object ( struct aws_event_loop *, void *key, void *item);
 
 All event-loops contain local storage for all users of the event-loop to store common data into. This function is for putting one of those objects by key. The key for this
-store is of type `size_t`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
+store is of type `void *`. This function is NOT thread safe, and it expects the caller to be calling from the event-loop's thread. If this is not the case,
 the caller must first schedule a task on the event-loop to enter the correct thread.
 
     int aws_event_loop_remove_local_object ( struct aws_event_loop *, void *key, void **item);
@@ -646,7 +652,7 @@ All exported functions, simply shim into the v-table and return.
 
 We include a cross-platform API for sockets. We support TCP and UDP using IPv4 and IPv6, and Unix Domain sockets. On Windows,
 we use Named Pipes to support the functionality of Unix Domain sockets. On Windows, this is implemented with winsock2, and on
-all unix platforms we use the posix API. We also provides options to use Apple Network Framework on Apple.
+all unix platforms we use the posix API. We also provide options to use Apple Network Framework on Apple.
 
 Upon a connection being established, the new socket (either as the result of a `connect()` or `start_accept()` call)
 will not be attached to any event loops. It is your responsibility to register it with an event loop to begin receiving
@@ -724,15 +730,15 @@ Sets the clean up completion callback. The callback will be invoked if `aws_sock
 
 Connects to a remote endpoint. In TCP and all Apple Network Framework connections (regardless it is UDP, TCP or LOCAL), when the connection succeed, you still must wait on  the `on_connection_result()` callback to be invoked before using the socket.
 
-In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`, and if the operation is successful, 
+In UDP, this simply binds the socket to a remote address for use with `aws_socket_write()`, and if the operation is successful,
 the socket can immediately be used for write operations.
 
 For LOCAL (Unix Domain Sockets or Named Pipes), the socket will be immediately ready for use upon a successful return.
 
     int aws_socket_bind(struct aws_socket *socket, struct aws_socket_endpoint *local_endpoint);
 
-Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In connection oriented 
-modes or if you are using Apple Network Framework (regardless it is UDP or TCP), you still must call `aws_socket_listen()` and 
+Binds the socket to a local address. In UDP mode, the socket is ready for `aws_socket_read()` operations. In connection oriented
+modes or if you are using Apple Network Framework (regardless it is UDP or TCP), you still must call `aws_socket_listen()` and
 `aws_socket_start_accept()` before using the socket.
 
     int aws_socket_listen(struct aws_socket *socket, int backlog_size);
@@ -741,11 +747,11 @@ TCP, LOCAL, and Apple Network Framework only. Sets up the socket to listen on th
 
     int aws_socket_start_accept(struct aws_socket *socket, struct aws_event_loop *accept_loop, struct aws_socket_listener_options options);
 
-TCP, LOCAL, and Apple Network Framework only. The socket will begin accepting new connections. This is an asynchronous operation. `on_accept_start()` will be invoked when the listener is ready to accept new connection. New connections will arrive via the `on_accept_result()` callback. 
+TCP, LOCAL, and Apple Network Framework only. The socket will begin accepting new connections. This is an asynchronous operation. `on_accept_start()` will be invoked when the listener is ready to accept new connection. New connections will arrive via the `on_accept_result()` callback.
 
     int aws_socket_stop_accept(struct aws_socket *socket);
 
-TCP, LOCAL, and Apple Network Framework only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()` 
+TCP, LOCAL, and Apple Network Framework only. The socket will shutdown the listener. It is safe to call `aws_socket_start_accept()`
 again after this operation.
 
     int aws_socket_close(struct aws_socket *socket);
@@ -784,6 +790,7 @@ Option | Platform | Description                                                 
 --- | --- |--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------| ---
 `USE_S2N` | macOS | Compiles s2n-tls in as an available TLS implementation. User-overridable via `-DUSE_S2N=ON/OFF`.<br>Note that Apple Secure Transport remains the default backend even when `ON` (s2n-tls is only selected when `AWS_CRT_USE_NON_FIPS_TLS_13` is set); setting `OFF` removes s2n-tls from the macOS build entirely.<br>If `AWS_USE_SECITEM` is defined, s2n-tls is never used at runtime, so `USE_S2N` is forced to `OFF` (with a warning) even if explicitly set to `ON`, to avoid linking an unused s2n dependency. | ON when `AWS_USE_SECITEM` is not defined, otherwise OFF
 `AWS_USE_SECITEM` | Apple | Uses Apple's SecItem/Secure Transport API instead of s2n-tls. When defined (regardless of value), the Apple Dispatch Queue event loop is used instead of kqueue.                                                                                                                                                   | Not defined
+`AWS_SECITEM_NO_KEYCHAIN` | Apple | Builds the mTLS identity (`SecIdentityRef`) in memory from the provided certificate and private key via `SecIdentityCreate`, instead of adding them to the shared macOS Keychain and reading the identity back out. Intended for products whose security requirements forbid persisting certificates and private keys in the system Keychain. Only effective when `AWS_USE_SECITEM` is enabled. | Not defined
 `USE_VSOCK` | Linux | Enables VSOCK socket domain support. Requires an appropriate VSOCK kernel driver.                                                                                                                                                                                                                                  | OFF
 `BYO_CRYPTO` | Linux/Non-Apple Unix | Disables the built-in TLS implementation and crypto linkage. Your application must provide its own `aws_tls_ctx` and `aws_channel_handler` implementations.                                                                                                                                                        | OFF
 

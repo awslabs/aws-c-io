@@ -427,7 +427,7 @@ AWS_IO_API int aws_socket_validate_port_for_connect(uint32_t port, enum aws_sock
 
 /**
  * Raises AWS_IO_SOCKET_INVALID_ADDRESS and logs an error if binding to this port is illegal.
- * For example, port must in range 0-65535 to bind with IPv4.
+ * For example, port must be in range 0-65535 to bind with IPv4.
  * These port values would fail eventually in aws_socket_bind(),
  * but you can use this function to validate earlier.
  */
@@ -446,7 +446,7 @@ AWS_IO_API bool aws_is_network_interface_name_valid(const char *interface_name);
 
 /**
  * Get default impl type based on the platform.
- * For user in internal tests only.
+ * For use in internal tests only.
  */
 AWS_IO_API enum aws_socket_impl_type aws_socket_get_default_impl_type(void);
 

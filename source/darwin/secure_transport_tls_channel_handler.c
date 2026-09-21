@@ -957,7 +957,7 @@ static struct aws_channel_handler *s_tls_handler_new(
             SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol1);
             break;
         case AWS_IO_TLSv1_1:
-            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);
+            SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol11);
             break;
         case AWS_IO_TLSv1_2:
             SSLSetProtocolVersionMin(secure_transport_handler->ctx, kTLSProtocol12);

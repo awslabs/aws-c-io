@@ -60,7 +60,7 @@ static void s_no_retry_release_token(struct aws_retry_token *token) {
     AWS_FATAL_ASSERT(0 && "release_token must not be called for no_retries retry strategy");
 }
 
-static struct aws_retry_strategy_vtable s_exponential_retry_vtable = {
+static struct aws_retry_strategy_vtable s_no_retry_vtable = {
     .destroy = s_no_retry_destroy,
     .acquire_token = s_no_retry_acquire_token,
     .schedule_retry = s_no_retry_schedule_retry,
@@ -75,7 +75,7 @@ struct aws_retry_strategy *aws_retry_strategy_new_no_retry(
         aws_mem_calloc(allocator, 1, sizeof(struct aws_retry_strategy_no_retries));
     strategy->base.allocator = allocator;
     strategy->base.impl = strategy;
-    strategy->base.vtable = &s_exponential_retry_vtable;
+    strategy->base.vtable = &s_no_retry_vtable;
     aws_atomic_init_int(&strategy->base.ref_count, 1);
 
     if (config != NULL && config->shutdown_options) {

@@ -911,7 +911,7 @@ error:
 
 /* Perform an enormous write that can't possibly complete without a bit of reading.
  * After kicking off the write operation, close the write-end.
- * The write operation chould complete with an error status */
+ * The write operation should complete with an error status */
 static int test_pipe_clean_up_cancels_pending_writes(struct pipe_state *state) {
     /* capture the status code from the on-write-complete callback */
     int write_status_code = 0;

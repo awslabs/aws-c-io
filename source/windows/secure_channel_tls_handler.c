@@ -281,7 +281,7 @@ static bool s_tls_is_cipher_pref_supported(enum aws_tls_cipher_pref cipher_pref)
 static int s_manually_verify_peer_cert(struct aws_channel_handler *handler) {
     AWS_LOGF_DEBUG(
         AWS_LS_IO_TLS,
-        "id=%p: manually verifying certifcate chain because a custom CA is configured.",
+        "id=%p: manually verifying certificate chain because a custom CA is configured.",
         (void *)handler);
     struct secure_channel_handler *sc_handler = handler->impl;
 
@@ -643,7 +643,7 @@ static int s_do_server_side_negotiation_step_1(struct aws_channel_handler *handl
     if (sc_handler->verify_peer) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS,
-            "id=%p: server configured to use mutual tls, expecting a certficate from client.",
+            "id=%p: server configured to use mutual tls, expecting a certificate from client.",
             (void *)handler);
         sc_handler->ctx_req |= ASC_REQ_MUTUAL_AUTH;
     }
@@ -792,7 +792,7 @@ static int s_do_server_side_negotiation_step_2(struct aws_channel_handler *handl
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
-                "id=%p: Extra data recieved. Extra size is %lu",
+                "id=%p: Extra data received. Extra size is %lu",
                 (void *)handler,
                 input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
@@ -1075,7 +1075,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         sc_handler->estimated_incomplete_size = input_buffers[1].cbBuffer;
         AWS_LOGF_TRACE(
             AWS_LS_IO_TLS,
-            "id=%p: Incomplete buffer recieved. Incomplete size is %zu. Waiting for more data.",
+            "id=%p: Incomplete buffer received. Incomplete size is %zu. Waiting for more data.",
             (void *)handler,
             sc_handler->estimated_incomplete_size);
         aws_error = AWS_IO_READ_WOULD_BLOCK;
@@ -1105,7 +1105,7 @@ static int s_do_client_side_negotiation_step_2(struct aws_channel_handler *handl
         if (input_buffers[1].BufferType == SECBUFFER_EXTRA && input_buffers[1].cbBuffer > 0) {
             AWS_LOGF_TRACE(
                 AWS_LS_IO_TLS,
-                "id=%p: Extra data recieved. Extra data size is %lu.",
+                "id=%p: Extra data received. Extra data size is %lu.",
                 (void *)handler,
                 input_buffers[1].cbBuffer);
             sc_handler->read_extra = input_buffers[1].cbBuffer;
@@ -1427,7 +1427,7 @@ static int s_process_pending_output_messages(struct aws_channel_handler *handler
 
     AWS_LOGF_TRACE(
         AWS_LS_IO_TLS,
-        "id=%p: Processing incomming messages. Downstream window is %zu",
+        "id=%p: Processing incoming messages. Downstream window is %zu",
         (void *)handler,
         downstream_window);
     while (sc_handler->buffered_read_out_data_buf.len && downstream_window) {
@@ -1614,7 +1614,10 @@ static int s_process_write_message(
 
     if (message) {
         AWS_LOGF_TRACE(
-            AWS_LS_IO_TLS, "id=%p: processing ougoing message of size %zu", (void *)handler, message->message_data.len);
+            AWS_LS_IO_TLS,
+            "id=%p: processing outgoing message of size %zu",
+            (void *)handler,
+            message->message_data.len);
 
         struct aws_byte_cursor message_cursor = aws_byte_cursor_from_buf(&message->message_data);
 
@@ -1880,7 +1883,7 @@ static int s_handler_shutdown(
             AWS_ZERO_ARRAY(server_name_cstr);
             AWS_FATAL_ASSERT(server_name.len < sizeof(server_name_cstr));
             memcpy(server_name_cstr, server_name.buffer, server_name.len);
-            /* this acutally gives us an Alert record to send. */
+            /* this actually gives us an Alert record to send. */
             status = InitializeSecurityContextA(
                 &sc_handler->creds,
                 &sc_handler->sec_handle,
@@ -2006,7 +2009,7 @@ static int s_tls_client_handler_start_negotiation(struct aws_channel_handler *ha
         &sc_handler->sequential_task_storage,
         s_do_negotiation_task,
         handler,
-        "secure_channel_handler_start_negotation");
+        "secure_channel_handler_start_negotiation");
     aws_channel_schedule_task_now(sc_handler->slot->channel, &sc_handler->sequential_task_storage);
     return AWS_OP_SUCCESS;
 }

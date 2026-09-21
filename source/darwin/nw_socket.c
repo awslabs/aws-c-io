@@ -709,7 +709,7 @@ static void s_setup_tls_options(
             aws_byte_cursor_split_on_char(&alpn_data, ';', &alpn_list_array)) {
             /*
              * We cannot throw or fail from within a tls options block. We will log the error and in the event an ALPN
-             * was required for this connection to succeeed, the connection's state change handler will catch the
+             * was required for this connection to succeed, the connection's state change handler will catch the
              * connection failure.
              */
             AWS_LOGF_ERROR(
@@ -1764,7 +1764,7 @@ static int s_setup_tls_options_from_tls_connection_options(
         if (nw_socket->host_name == NULL) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "nw_socket=%p: Error encounterd during setup of host name from tls connection options.",
+                "nw_socket=%p: Error encountered during setup of host name from tls connection options.",
                 (void *)nw_socket);
             return AWS_OP_ERR;
         }
@@ -1794,7 +1794,7 @@ static int s_setup_tls_options_from_tls_connection_options(
         if (nw_socket->alpn_list == NULL) {
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
-                "nw_socket=%p: Error encounterd during setup of alpn list from tls context.",
+                "nw_socket=%p: Error encountered during setup of alpn list from tls context.",
                 (void *)nw_socket);
             return AWS_OP_ERR;
         }
@@ -1881,7 +1881,7 @@ static int s_socket_connect_fn(struct aws_socket *socket, struct aws_socket_conn
             break;
         }
         default: {
-            AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: socket tried to bind to an unknow domain.", (void *)socket);
+            AWS_LOGF_ERROR(AWS_LS_IO_SOCKET, "id=%p: socket tried to bind to an unknown domain.", (void *)socket);
             s_unlock_socket_synced_data(nw_socket);
             aws_raise_error(AWS_IO_SOCKET_UNSUPPORTED_ADDRESS_FAMILY);
 
@@ -2153,7 +2153,7 @@ static int s_socket_listen_fn(struct aws_socket *socket, int backlog_size) {
     if (!socket->io_handle.data.handle) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p:  listener creation failed, please verify the socket options are setup properly.",
+            "id=%p: listener creation failed, please verify the socket options are setup properly.",
             (void *)socket);
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         goto done;
@@ -2788,7 +2788,7 @@ static int s_socket_write_fn(
     if (!(nw_socket->synced_data.state & AWS_NW_SOCKET_STATE_CONNECTED_WRITE)) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_SOCKET,
-            "id=%p handle=%p: cannot write to because it is not connected",
+            "id=%p handle=%p: cannot write because it is not connected",
             (void *)socket,
             socket->io_handle.data.handle);
         s_unlock_socket_synced_data(nw_socket);

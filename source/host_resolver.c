@@ -266,7 +266,7 @@ static void s_purge_host_cache_callback_task(struct aws_task *task, void *arg, e
     aws_ref_count_release(&options->ref_count);
 }
 
-static void s_sechdule_purge_cache_callback_async(
+static void s_schedule_purge_cache_callback_async(
     struct default_host_resolver *default_host_resolver,
     struct host_purge_callback_options *purge_callback_options) {
 
@@ -298,7 +298,7 @@ static int s_resolver_purge_cache_with_callback(
     for (struct aws_hash_iter iter = aws_hash_iter_begin(table); !aws_hash_iter_done(&iter);
          aws_hash_iter_next(&iter)) {
         struct host_entry *entry = iter.element.value;
-        /* acquire a refernce to wait for the callback to trigger */
+        /* acquire a reference to wait for the callback to trigger */
         aws_ref_count_acquire(&purge_callback_options->ref_count);
         aws_mutex_lock(&entry->entry_lock);
         entry->on_host_purge_complete = s_purge_cache_callback;
@@ -311,7 +311,7 @@ static int s_resolver_purge_cache_with_callback(
     aws_mutex_unlock(&default_host_resolver->resolver_lock);
 
     /* release the original reference async */
-    s_sechdule_purge_cache_callback_async(default_host_resolver, purge_callback_options);
+    s_schedule_purge_cache_callback_async(default_host_resolver, purge_callback_options);
     return AWS_OP_SUCCESS;
 }
 
@@ -581,11 +581,11 @@ static int s_resolver_purge_host_cache(
     if (element == NULL) {
         aws_mutex_unlock(&default_host_resolver->resolver_lock);
         if (options->on_host_purge_complete_callback != NULL) {
-            /* Schedule completion callback asynchronouly */
+            /* Schedule completion callback asynchronously */
             struct host_purge_callback_options *purge_callback_options = s_host_purge_callback_options_new(
                 default_host_resolver->allocator, options->on_host_purge_complete_callback, options->user_data);
 
-            s_sechdule_purge_cache_callback_async(default_host_resolver, purge_callback_options);
+            s_schedule_purge_cache_callback_async(default_host_resolver, purge_callback_options);
         }
         return AWS_OP_SUCCESS;
     }
@@ -1368,7 +1368,7 @@ static int default_resolve_host(
     aws_mutex_lock(&host_entry->entry_lock);
 
     /*
-     * We don't need to make any resolver side-affects in the remaining logic and it's impossible for the entry
+     * We don't need to make any resolver side-effects in the remaining logic and it's impossible for the entry
      * to disappear underneath us while holding its lock, so its safe to release the resolver lock and let other
      * things query other entries.
      */

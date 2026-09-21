@@ -756,7 +756,7 @@ struct aws_channel_handler *aws_tls_server_handler_new(
     struct aws_tls_connection_options *options,
     struct aws_channel_slot *slot) {
     AWS_FATAL_ASSERT(
-        s_client_handler_new &&
+        s_server_handler_new &&
         "For BYO_CRYPTO, you must call aws_tls_server_handler_new_set_callback() with a non-null value.");
     return s_server_handler_new(allocator, options, slot, s_server_user_data);
 }

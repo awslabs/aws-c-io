@@ -358,7 +358,7 @@ static void s_complete_destroy(struct aws_event_loop *event_loop) {
 }
 
 /* Called from any thread.
-/* Signal to the event-loop thread that synced_data has changed.
+ * Signal to the event-loop thread that synced_data has changed.
  * This should only be called after changing synced_data.thread_signaled from false to true. */
 static void s_signal_synced_data_changed(struct aws_event_loop *event_loop) {
     struct iocp_loop *impl = event_loop->impl_data;

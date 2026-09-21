@@ -643,7 +643,7 @@ static inline int s_convert_pton_error(int pton_code, int errno_value) {
 }
 
 #ifdef USE_VSOCK
-/** Convert a string to a VSOCK CID. Respects the calling convetion of inet_pton:
+/** Convert a string to a VSOCK CID. Respects the calling convention of inet_pton:
  * 0 on error, 1 on success. */
 static int parse_cid(const char *cid_str, unsigned int *value) {
     if (cid_str == NULL || value == NULL) {
@@ -1966,7 +1966,7 @@ static int s_socket_subscribe_to_readable_events(
     void *user_data) {
 
     AWS_LOGF_TRACE(
-        AWS_LS_IO_SOCKET, " id=%p fd=%d: subscribing to readable events", (void *)socket, socket->io_handle.data.fd);
+        AWS_LS_IO_SOCKET, "id=%p fd=%d: subscribing to readable events", (void *)socket, socket->io_handle.data.fd);
     if (!(socket->state & CONNECTED_READ)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
@@ -2079,7 +2079,7 @@ static int s_socket_write(
     if (!(socket->state & CONNECTED_WRITE)) {
         AWS_LOGF_ERROR(
             AWS_LS_IO_SOCKET,
-            "id=%p fd=%d: cannot write to because it is not connected",
+            "id=%p fd=%d: cannot write because it is not connected",
             (void *)socket,
             socket->io_handle.data.fd);
         return aws_raise_error(AWS_IO_SOCKET_NOT_CONNECTED);

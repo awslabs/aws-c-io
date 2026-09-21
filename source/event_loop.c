@@ -70,7 +70,7 @@ struct aws_event_loop *aws_event_loop_new_with_kqueue(
     aws_raise_error(AWS_ERROR_PLATFORM_NOT_SUPPORTED);
     return NULL;
 }
-#endif // AWS_ENABLE_EPOLL
+#endif // AWS_ENABLE_KQUEUE
 
 #ifndef AWS_ENABLE_EPOLL
 struct aws_event_loop *aws_event_loop_new_with_epoll(
@@ -82,7 +82,7 @@ struct aws_event_loop *aws_event_loop_new_with_epoll(
     AWS_LOGF_DEBUG(AWS_LS_IO_EVENT_LOOP, "Epoll is not supported on the platform");
     return NULL;
 }
-#endif // AWS_ENABLE_KQUEUE
+#endif // AWS_ENABLE_EPOLL
 
 /**
  * Return the default event loop type. If the return value is `AWS_EVENT_LOOP_PLATFORM_DEFAULT`, the function failed to

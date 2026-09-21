@@ -687,7 +687,7 @@ int aws_import_key_pair_to_cert_context(
 
         BOOL add_result = CertAddCertificateContextToStore(*store, cert_context, CERT_STORE_ADD_ALWAYS, NULL);
         if (!add_result) {
-            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add , error code %d.", GetLastError());
+            AWS_LOGF_ERROR(AWS_LS_IO_PKI, "static: unable to add certificate to store, error code %d.", GetLastError());
             aws_raise_error(AWS_ERROR_SYS_CALL_FAILURE);
         }
 
