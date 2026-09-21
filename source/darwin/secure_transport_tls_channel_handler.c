@@ -1120,10 +1120,8 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
 
     struct secure_transport_ctx *secure_transport_ctx = aws_mem_calloc(alloc, 1, sizeof(struct secure_transport_ctx));
 
+    secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->wrapped_allocator = aws_wrapped_cf_allocator_new(alloc);
-    if (!secure_transport_ctx->wrapped_allocator) {
-        goto cleanup_secure_transport_ctx;
-    }
 
     secure_transport_ctx->minimum_tls_version = options->minimum_tls_version;
 
@@ -1131,7 +1129,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         secure_transport_ctx->alpn_list = aws_string_new_from_string(alloc, options->alpn_list);
 
         if (!secure_transport_ctx->alpn_list) {
-            goto cleanup_secure_transport_ctx;
+            goto error;
         }
     }
 
@@ -1140,7 +1138,6 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->certs = NULL;
     secure_transport_ctx->cleanup_cert = false;
     secure_transport_ctx->secitem_identity = NULL;
-    secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
     aws_ref_count_init(
         &secure_transport_ctx->ctx.ref_count,
@@ -1153,13 +1150,13 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         if (!aws_text_is_utf8(options->certificate.buffer, options->certificate.len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import certificate, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-            goto cleanup_wrapped_allocator;
+            goto error;
         }
 
         if (!aws_text_is_utf8(options->private_key.buffer, options->private_key.len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import private key, must be ASCII/UTF-8 encoded");
             aws_raise_error(AWS_IO_FILE_VALIDATION_FAILURE);
-            goto cleanup_wrapped_allocator;
+            goto error;
         }
 
         struct aws_byte_cursor cert_chain_cur = aws_byte_cursor_from_buf(&options->certificate);
@@ -1176,7 +1173,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                     AWS_LS_IO_TLS,
                     "static: failed to import certificate and private key with error %d.",
                     aws_last_error());
-                goto cleanup_wrapped_allocator;
+                goto error;
             }
         } else {
             if (aws_import_public_and_private_keys_to_identity(
@@ -1190,7 +1187,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                     AWS_LS_IO_TLS,
                     "static: failed to import certificate and private key with error %d.",
                     aws_last_error());
-                goto cleanup_wrapped_allocator;
+                goto error;
             }
             secure_transport_ctx->cleanup_cert = true;
         }
@@ -1208,7 +1205,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                     &secure_transport_ctx->secitem_identity)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
-                goto cleanup_wrapped_allocator;
+                goto error;
             }
         } else {
             AWS_LOGF_DEBUG(
@@ -1220,7 +1217,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
                     &secure_transport_ctx->certs)) {
                 AWS_LOGF_ERROR(
                     AWS_LS_IO_TLS, "static: failed to import pkcs#12 certificate with error %d.", aws_last_error());
-                goto cleanup_wrapped_allocator;
+                goto error;
             }
         }
     }
@@ -1232,22 +1229,14 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
         if (aws_import_trusted_certificates(
                 alloc, secure_transport_ctx->wrapped_allocator, &ca_cursor, &secure_transport_ctx->ca_cert)) {
             AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: failed to import custom CA with error %d", aws_last_error());
-            goto cleanup_wrapped_allocator;
+            goto error;
         }
     }
 
     return &secure_transport_ctx->ctx;
 
-cleanup_wrapped_allocator:
-    aws_wrapped_cf_allocator_destroy(secure_transport_ctx->wrapped_allocator);
-
-    if (secure_transport_ctx->alpn_list) {
-        aws_string_destroy(secure_transport_ctx->alpn_list);
-    }
-
-cleanup_secure_transport_ctx:
-    aws_mem_release(alloc, secure_transport_ctx);
-
+error:
+    s_aws_secure_transport_ctx_destroy(secure_transport_ctx);
     return NULL;
 }
 
