@@ -527,10 +527,16 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
 #define AWS_FUTURE_T_BY_VALUE_WITH_CLEAN_UP_IMPLEMENTATION(FUTURE, T, CLEAN_UP_FN)                                     \
     AWS_FUTURE_T_IMPLEMENTATION_BEGIN(FUTURE)                                                                          \
                                                                                                                        \
-    struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                                         \
+    /* Wrapper with the exact aws_future_impl_result_clean_up_fn signature, so the future invokes it through a         \
+     * matching function-pointer type. */                                                                              \
+    static void FUTURE##_clean_up_wrapper(void *result_addr) {                                                         \
         void (*clean_up_fn)(T *) = CLEAN_UP_FN; /* check clean_up() function signature */                              \
+        clean_up_fn((T *)result_addr);                                                                                 \
+    }                                                                                                                  \
+                                                                                                                       \
+    struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                                         \
         return (struct FUTURE *)aws_future_impl_new_by_value_with_clean_up(                                            \
-            alloc, sizeof(T), (aws_future_impl_result_clean_up_fn)clean_up_fn);                                        \
+            alloc, sizeof(T), FUTURE##_clean_up_wrapper);                                                              \
     }                                                                                                                  \
                                                                                                                        \
     void FUTURE##_set_result_by_move(struct FUTURE *future, T *value_address) {                                        \
@@ -595,10 +601,15 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
 #define AWS_FUTURE_T_POINTER_WITH_DESTROY_IMPLEMENTATION(FUTURE, T, DESTROY_FN)                                        \
     AWS_FUTURE_T_IMPLEMENTATION_BEGIN(FUTURE)                                                                          \
                                                                                                                        \
-    struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                                         \
+    /* Wrapper with the exact aws_future_impl_result_destroy_fn signature, so the future invokes it through a          \
+     * matching function-pointer type. */                                \
+    static void FUTURE##_destroy_wrapper(void *result) {                                                               \
         void (*destroy_fn)(T *) = DESTROY_FN; /* check destroy() function signature */                                 \
-        return (struct FUTURE *)aws_future_impl_new_pointer_with_destroy(                                              \
-            alloc, (aws_future_impl_result_destroy_fn *)destroy_fn);                                                   \
+        destroy_fn((T *)result);                                                                                       \
+    }                                                                                                                  \
+                                                                                                                       \
+    struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                                         \
+        return (struct FUTURE *)aws_future_impl_new_pointer_with_destroy(alloc, FUTURE##_destroy_wrapper);             \
     }                                                                                                                  \
                                                                                                                        \
     void FUTURE##_set_result_by_move(struct FUTURE *future, T **pointer_address) {                                     \
@@ -634,10 +645,15 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
 #define AWS_FUTURE_T_POINTER_WITH_RELEASE_IMPLEMENTATION(FUTURE, T, RELEASE_FN)                                        \
     AWS_FUTURE_T_IMPLEMENTATION_BEGIN(FUTURE)                                                                          \
                                                                                                                        \
-    struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                                         \
+    /* Wrapper with the exact aws_future_impl_result_release_fn signature, so the future invokes it through a          \
+     * matching function-pointer type. */                                \
+    static void *FUTURE##_release_wrapper(void *result) {                                                              \
         T *(*release_fn)(T *) = RELEASE_FN; /* check release() function signature */                                   \
-        return (struct FUTURE *)aws_future_impl_new_pointer_with_release(                                              \
-            alloc, (aws_future_impl_result_release_fn *)release_fn);                                                   \
+        return release_fn((T *)result);                                                                                \
+    }                                                                                                                  \
+                                                                                                                       \
+    struct FUTURE *FUTURE##_new(struct aws_allocator *alloc) {                                                         \
+        return (struct FUTURE *)aws_future_impl_new_pointer_with_release(alloc, FUTURE##_release_wrapper);             \
     }                                                                                                                  \
                                                                                                                        \
     void FUTURE##_set_result_by_move(struct FUTURE *future, T **pointer_address) {                                     \
