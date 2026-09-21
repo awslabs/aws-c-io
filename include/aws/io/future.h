@@ -602,7 +602,7 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
     AWS_FUTURE_T_IMPLEMENTATION_BEGIN(FUTURE)                                                                          \
                                                                                                                        \
     /* Wrapper with the exact aws_future_impl_result_destroy_fn signature, so the future invokes it through a          \
-     * matching function-pointer type. */                                \
+     * matching function-pointer type. */                                                                              \
     static void FUTURE##_destroy_wrapper(void *result) {                                                               \
         void (*destroy_fn)(T *) = DESTROY_FN; /* check destroy() function signature */                                 \
         destroy_fn((T *)result);                                                                                       \
@@ -646,7 +646,7 @@ void aws_future_impl_get_result_by_move(struct aws_future_impl *future, void *ds
     AWS_FUTURE_T_IMPLEMENTATION_BEGIN(FUTURE)                                                                          \
                                                                                                                        \
     /* Wrapper with the exact aws_future_impl_result_release_fn signature, so the future invokes it through a          \
-     * matching function-pointer type. */                                \
+     * matching function-pointer type. */                                                                              \
     static void *FUTURE##_release_wrapper(void *result) {                                                              \
         T *(*release_fn)(T *) = RELEASE_FN; /* check release() function signature */                                   \
         return release_fn((T *)result);                                                                                \
