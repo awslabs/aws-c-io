@@ -459,6 +459,7 @@ static int s_wait_for_stop_completion(struct aws_event_loop *event_loop) {
 
     int err = aws_thread_join(&impl->thread_created_on);
     aws_thread_decrement_unjoined_count();
+    
     if (err) {
         return AWS_OP_ERR;
     }
