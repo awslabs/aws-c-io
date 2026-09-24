@@ -531,6 +531,7 @@ static int s_setup_client_l4_proxy_negotiation(
 
     struct aws_channel_handler *channel_handler = &proxy_channel_handler->channel_handler;
     if (aws_channel_slot_set_handler(proxy_slot, channel_handler) != AWS_OP_SUCCESS) {
+        aws_channel_slot_remove(proxy_slot);
         channel_handler->vtable->destroy(channel_handler);
         return AWS_OP_ERR;
     }
@@ -1473,9 +1474,8 @@ static void s_server_incoming_callback(
      * of handling the data.
      */
     if (channel_data->socket && error_code == AWS_ERROR_SUCCESS) {
-        struct aws_socket *socket = channel_data->socket;
-        if (socket->readable_fn) {
-            socket->readable_fn(socket, AWS_ERROR_SUCCESS, socket->readable_user_data);
+        if (aws_channel_trigger_read(channel)) {
+            aws_channel_shutdown(channel, aws_last_error_or_unknown_error());
         }
     }
 }
