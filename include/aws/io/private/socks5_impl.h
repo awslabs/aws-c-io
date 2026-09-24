@@ -80,6 +80,12 @@ struct aws_socks5_proxy_negotiation_strategy {
     void *impl;
 };
 
+struct aws_socks5_proxy_config {
+    struct aws_l4_proxy_config base;
+
+    struct aws_socks5_proxy_negotiation_strategy *negotiation_strategy;
+};
+
 struct aws_socks5_proxy_impl;
 
 AWS_EXTERN_C_BEGIN
@@ -97,6 +103,17 @@ AWS_IO_API int aws_socks5_proxy_negotiation_strategy_instance_get_auth_methods(
 
 AWS_IO_API struct aws_socks5_proxy_negotiation_strategy_instance *aws_socks5_proxy_negotiation_strategy_new_instance(
     struct aws_socks5_proxy_negotiation_strategy *strategy);
+
+AWS_IO_API struct aws_socks5_proxy_impl *aws_socks5_proxy_impl_new(
+    struct aws_allocator *allocator,
+    struct aws_socks5_proxy_config *config,
+    struct aws_l4_proxy_channel_handler_options *options);
+
+AWS_IO_API void aws_socks5_proxy_impl_destroy(struct aws_socks5_proxy_impl *impl);
+
+AWS_IO_API void aws_socks5_proxy_impl_drive_negotiation(
+    struct aws_socks5_proxy_impl *impl,
+    struct aws_l4_proxy_negotiation_context *context);
 
 AWS_EXTERN_C_END
 
