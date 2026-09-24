@@ -60,6 +60,7 @@ struct aws_event_loop_vtable {
  * BSD Variants| AWS_EVENT_LOOP_KQUEUE
  * macOS       | AWS_EVENT_LOOP_KQUEUE
  * iOS         | AWS_EVENT_LOOP_DISPATCH_QUEUE
+ * AIX         | AWS_EVENT_LOOP_POLLSET
  */
 enum aws_event_loop_type {
     AWS_EVENT_LOOP_PLATFORM_DEFAULT = 0,
@@ -67,6 +68,7 @@ enum aws_event_loop_type {
     AWS_EVENT_LOOP_IOCP,
     AWS_EVENT_LOOP_KQUEUE,
     AWS_EVENT_LOOP_DISPATCH_QUEUE,
+    AWS_EVENT_LOOP_POLLSET,
 };
 
 /**
