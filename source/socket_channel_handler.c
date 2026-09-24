@@ -126,7 +126,34 @@ static void s_do_read(struct socket_handler *socket_handler) {
         return;
     }
 
-    size_t downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
+    /* In most cases, we will have the right handler (adj_right) installed in the slot
+     * before read call. However, there are a couple of corner cases where adj_right
+     * is NULL:
+     * 1. Race condition: a readable event fires after the setup callback calls
+     *    aws_channel_shutdown but before the shutdown task runs. In this window,
+     *    no downstream handler was added yet.
+     *    We will directly return and waiting for the shutdown task process.
+     *
+     * 2. When using Apple SecItem for TLS: the channel has only a socket slot
+     *    with no downstream application handler (adj_right is NULL). We should
+     *    still read from the socket so that the OS network stack can process
+     *    incoming data (e.g. connection close, errors).
+     *    The read message is released immediately since there are no downstream
+     *    slots to pass it to.
+     *
+     * */
+    size_t downstream_window = socket_handler->max_rw_size;
+    if (socket_handler->slot->adj_right != NULL) {
+        downstream_window = aws_channel_slot_downstream_read_window(socket_handler->slot);
+    } else {
+#if !defined(AWS_USE_SECITEM)
+        AWS_LOGF_WARN(
+            AWS_LS_IO_SOCKET_HANDLER,
+            "id=%p: no downstream handler (adj_right is NULL) and not using SECITEM, skipping read.",
+            (void *)socket_handler->slot->handler);
+        return;
+#endif
+    }
     size_t max_to_read =
         downstream_window > socket_handler->max_rw_size ? socket_handler->max_rw_size : downstream_window;
 
@@ -162,6 +189,16 @@ static void s_do_read(struct socket_handler *socket_handler) {
             "id=%p: read %llu from socket",
             (void *)socket_handler->slot->handler,
             (unsigned long long)read);
+
+        /* When using Apple SecItem for TLS, the channel has no downstream application handler.
+         * We still read from the socket (to let the OS process incoming data), but release
+         * the message immediately instead of passing it downstream. */
+#if defined(AWS_USE_SECITEM)
+        if (socket_handler->slot->adj_right == NULL) {
+            aws_mem_release(message->allocator, message);
+            continue;
+        }
+#endif
 
         if (aws_channel_slot_send_message(socket_handler->slot, message, AWS_CHANNEL_DIR_READ)) {
             last_error = aws_last_error();
