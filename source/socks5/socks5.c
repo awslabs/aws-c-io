@@ -248,8 +248,6 @@ static void s_socks5_apply_error(
     }
 }
 
-static const uint8_t SOCKS5_VERSION_BYTE = 0x05;
-
 static const uint8_t SOCKS_COMMAND_TYPE_CONNECT = 0x01;
 static const uint8_t SOCKS_COMMAND_RESERVED_VALUE = 0x00;
 
@@ -290,7 +288,7 @@ static void s_handle_socks5_impl_state_start(
     // failure is a crash
     aws_byte_buf_reserve(&impl->write_buffer, 2 + num_methods);
 
-    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS5_VERSION_BYTE);
+    aws_byte_buf_write_u8(&impl->write_buffer, SOCKS5_VERSION_VALUE);
     aws_byte_buf_write_u8(&impl->write_buffer, (uint8_t)num_methods);
     for (size_t i = 0; i < num_methods; ++i) {
         uint8_t method_byte = 0xFF;
