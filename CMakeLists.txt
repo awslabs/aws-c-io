@@ -182,6 +182,10 @@ if (USE_S2N)
         endif()
 endif()
 
+file(GLOB AWS_IO_SOCKS5_SRC
+        "source/socks5/*.c"
+)
+
 file(GLOB IO_HEADERS
         ${AWS_IO_HEADERS}
         ${AWS_IO_OS_HEADERS}
@@ -192,6 +196,7 @@ file(GLOB IO_SRC
         ${AWS_IO_SRC}
         ${AWS_IO_OS_SRC}
         ${AWS_IO_TLS_SRC}
+        ${AWS_IO_SOCKS5_SRC}
         )
 
 add_library(${PROJECT_NAME} ${LIBTYPE} ${IO_HEADERS} ${IO_SRC})

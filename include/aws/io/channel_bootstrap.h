@@ -12,6 +12,7 @@
 AWS_PUSH_SANE_WARNING_LEVEL
 
 struct aws_client_bootstrap;
+struct aws_l4_proxy_config;
 struct aws_socket;
 struct aws_socket_options;
 struct aws_socket_endpoint;
@@ -195,6 +196,7 @@ struct aws_socket_channel_bootstrap_options {
     void *user_data;
     struct aws_event_loop *requested_event_loop;
     const struct aws_host_resolution_config *host_resolution_override_config;
+    struct aws_l4_proxy_config *l4_proxy_config;
 };
 
 /**
