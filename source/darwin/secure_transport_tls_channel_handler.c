@@ -1084,7 +1084,8 @@ void s_aws_release_cert(const void *val, void *context) {
     CFRelease(cert);
 }
 
-static void s_aws_secure_transport_ctx_destroy(struct secure_transport_ctx *secure_transport_ctx) {
+static void s_aws_secure_transport_ctx_destroy(void *data) {
+    struct secure_transport_ctx *secure_transport_ctx = data;
     if (secure_transport_ctx == NULL) {
         return;
     }
@@ -1142,10 +1143,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(struct aws_allocator *alloc, const stru
     secure_transport_ctx->secitem_identity = NULL;
     secure_transport_ctx->ctx.alloc = alloc;
     secure_transport_ctx->ctx.impl = secure_transport_ctx;
-    aws_ref_count_init(
-        &secure_transport_ctx->ctx.ref_count,
-        secure_transport_ctx,
-        (aws_simple_completion_callback *)s_aws_secure_transport_ctx_destroy);
+    aws_ref_count_init(&secure_transport_ctx->ctx.ref_count, secure_transport_ctx, s_aws_secure_transport_ctx_destroy);
 
     if (aws_tls_options_buf_is_set(&options->certificate) && aws_tls_options_buf_is_set(&options->private_key)) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "static: certificate and key have been set, setting them up now.");
