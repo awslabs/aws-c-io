@@ -654,8 +654,15 @@ static void aws_event_loop_thread(void *args) {
         int event_count = aws_event_loop_listen_for_io_events(epoll_loop->epoll_fd, events, timeout);
         aws_event_loop_register_tick_start(event_loop);
 
+        uint64_t now_ns = 0;
+        event_loop->clock(&now_ns);
+
         AWS_LOGF_TRACE(
-            AWS_LS_IO_EVENT_LOOP, "id=%p: wake up with %d events to process.", (void *)event_loop, event_count);
+            AWS_LS_IO_EVENT_LOOP,
+            "id=%p, time=%llu: wake up with %d events to process.",
+            (void *)event_loop,
+            (unsigned long long)now_ns,
+            event_count);
 
         __itt_task_begin(io_tracing_domain, __itt_null, __itt_null, tracing_event_loop_events);
         for (int i = 0; i < event_count; ++i) {
@@ -698,7 +705,6 @@ static void aws_event_loop_thread(void *args) {
         /* run scheduled tasks */
         s_process_task_pre_queue(event_loop);
 
-        uint64_t now_ns = 0;
         event_loop->clock(&now_ns); /* if clock fails, now_ns will be 0 and tasks scheduled for a specific time
                                        will not be run. That's ok, we'll handle them next time around. */
         AWS_LOGF_TRACE(
@@ -734,11 +740,12 @@ static void aws_event_loop_thread(void *args) {
             timeout = timeout_ms64 > INT_MAX ? INT_MAX : (int)timeout_ms64;
             AWS_LOGF_TRACE(
                 AWS_LS_IO_EVENT_LOOP,
-                "id=%p time=%llu: detected more scheduled tasks with the next occurring at "
-                "%llu, using timeout of %d.",
+                "id=%p time=%llu: detected more scheduled tasks with the next occurring in "
+                "%llu(%llu), using timeout of %d.",
                 (void *)event_loop,
-                (unsigned long long)next_run_time_ns,
+                (unsigned long long)now_ns,
                 (unsigned long long)timeout_ns,
+                (unsigned long long)next_run_time_ns,
                 timeout);
         }
 
