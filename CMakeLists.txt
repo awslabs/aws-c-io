@@ -165,14 +165,24 @@ if (BYO_CRYPTO)
 endif()
 
 if (USE_S2N)
-        file(GLOB AWS_IO_TLS_SRC
-                "source/s2n/*.c"
-                )
-        aws_use_package(s2n)
-        if (IN_SOURCE_BUILD)
-            # s2n built in-tree: use in-source path to <s2n/unstable/*.h> headers.
+    file(GLOB AWS_IO_TLS_SRC "source/s2n/*.c")
+
+    if (IN_SOURCE_BUILD)
+        if (TARGET s2n)
+            # add_subdirectory(crt/s2n): link the in-tree target, use in-tree header layout
+            aws_use_package(s2n)
             add_definitions(-DAWS_S2N_INSOURCE_PATH)
+        elseif (S2N_PREBUILT)
+            # aws_prebuild_dependency(S2N): installed layout, found via the prepended CMAKE_PREFIX_PATH
+            find_package(s2n REQUIRED)
+            list(APPEND DEP_AWS_LIBS AWS::s2n)
+        else()
+            message(FATAL_ERROR "IN_SOURCE_BUILD is ON but s2n is neither an in-tree target nor prebuilt.")
         endif()
+    else()
+        find_package(s2n REQUIRED)
+        list(APPEND DEP_AWS_LIBS AWS::s2n)
+    endif()
 endif()
 
 file(GLOB AWS_IO_SOCKS5_SRC
