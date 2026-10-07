@@ -29,3 +29,5 @@ much effort an upgrade requires:
 - **Major (X):** expect adoption effort; review the release notes.
 - **Minor (Y):** low effort; rebuild against the new headers when the ABI changes.
 - **Patch (Z):** pick up automatically.
+
+'
