@@ -165,21 +165,24 @@ if (BYO_CRYPTO)
 endif()
 
 if (USE_S2N)
-        file(GLOB AWS_IO_TLS_SRC
-                "source/s2n/*.c"
-                )
-        # Prefer find_package() because it's the normal CMake way to do dependencies.
-        # But fall back on aws_use_package() because some projects still need to do an IN_SOURCE_BUILD of S2N.
-        # (e.g. aws-crt-java until this is resolved: https://github.com/awslabs/aws-crt-java/pull/817)
-        find_package(s2n QUIET)
+    file(GLOB AWS_IO_TLS_SRC "source/s2n/*.c")
 
-        if (s2n_FOUND)
-            list(APPEND DEP_AWS_LIBS AWS::s2n)
-        else()
-            # Set flag to use in-source path to  <s2n/unstable/*.h> headers if we do an IN_SOURCE_BUILD.
+    if (IN_SOURCE_BUILD)
+        if (TARGET s2n)
+            # add_subdirectory(crt/s2n): link the in-tree target, use in-tree header layout
             aws_use_package(s2n)
             add_definitions(-DAWS_S2N_INSOURCE_PATH)
+        elseif (S2N_PREBUILT)
+            # aws_prebuild_dependency(S2N): installed layout, found via the prepended CMAKE_PREFIX_PATH
+            find_package(s2n REQUIRED)
+            list(APPEND DEP_AWS_LIBS AWS::s2n)
+        else()
+            message(FATAL_ERROR "IN_SOURCE_BUILD is ON but s2n is neither an in-tree target nor prebuilt.")
         endif()
+    else()
+        find_package(s2n REQUIRED)
+        list(APPEND DEP_AWS_LIBS AWS::s2n)
+    endif()
 endif()
 
 file(GLOB AWS_IO_SOCKS5_SRC
