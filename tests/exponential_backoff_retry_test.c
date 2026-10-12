@@ -316,8 +316,8 @@ static int s_test_exponential_max_backoff_retry_no_jitter_fn(struct aws_allocato
 }
 AWS_TEST_CASE(test_exponential_max_backoff_retry_no_jitter, s_test_exponential_max_backoff_retry_no_jitter_fn)
 
-/* verify that invalid options cause a failure at creation time. */
-static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_allocator *allocator, void *ctx) {
+/* verify that max_retries greater than 63 is accepted and the full retry budget is honored. */
+static int s_test_exponential_backoff_retry_max_retries_above_63_fn(struct aws_allocator *allocator, void *ctx) {
     (void)ctx;
 
     aws_io_library_init(allocator);
@@ -327,18 +327,39 @@ static int s_test_exponential_backoff_retry_invalid_options_fn(struct aws_alloca
     };
     struct aws_event_loop_group *el_group = aws_event_loop_group_new(allocator, &elg_options);
     struct aws_exponential_backoff_retry_options config = {
-        .max_retries = 64,
+        .max_retries = 100,
+        .jitter_mode = AWS_EXPONENTIAL_BACKOFF_JITTER_NONE,
         .el_group = el_group,
+        .backoff_scale_factor_ms = 1,
+        .max_backoff_secs = 1,
     };
 
     struct aws_retry_strategy *retry_strategy = aws_retry_strategy_new_exponential_backoff(allocator, &config);
-    ASSERT_NULL(retry_strategy);
-    ASSERT_UINT_EQUALS(AWS_ERROR_INVALID_ARGUMENT, aws_last_error());
+    ASSERT_NOT_NULL(retry_strategy);
 
+    struct exponential_backoff_test_data test_data = {
+        .retry_count = 0,
+        .failure_error_code = 0,
+        .mutex = AWS_MUTEX_INIT,
+        .cvar = AWS_CONDITION_VARIABLE_INIT,
+    };
+
+    ASSERT_SUCCESS(aws_mutex_lock(&test_data.mutex));
+    ASSERT_SUCCESS(aws_retry_strategy_acquire_retry_token(
+        retry_strategy, NULL, s_too_many_retries_test_token_acquired, &test_data, 0));
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(&test_data.cvar, &test_data.mutex, s_retry_has_failed, &test_data));
+    aws_mutex_unlock(&test_data.mutex);
+
+    ASSERT_UINT_EQUALS(config.max_retries, test_data.retry_count);
+    ASSERT_UINT_EQUALS(AWS_IO_MAX_RETRIES_EXCEEDED, test_data.failure_error_code);
+
+    aws_retry_strategy_release(retry_strategy);
     aws_event_loop_group_release(el_group);
 
     aws_io_library_clean_up();
 
     return AWS_OP_SUCCESS;
 }
-AWS_TEST_CASE(test_exponential_backoff_retry_invalid_options, s_test_exponential_backoff_retry_invalid_options_fn)
+AWS_TEST_CASE(
+    test_exponential_backoff_retry_max_retries_above_63,
+    s_test_exponential_backoff_retry_max_retries_above_63_fn)
