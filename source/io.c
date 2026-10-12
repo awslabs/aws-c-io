@@ -420,6 +420,10 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
         AWS_LS_IO_STANDARD_RETRY_STRATEGY,
         "standard-retry-strategy",
         "Subject for standard retry strategy"),
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+        "adaptive-retry-strategy",
+        "Subject for adaptive retry strategy"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKCS11, "pkcs11", "Subject for PKCS#11 library operations"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PEM, "pem", "Subject for pem operations"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SOCKS5, "socks5", "Subject for socks5 proxy connection establishment"),
