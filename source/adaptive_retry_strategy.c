@@ -23,9 +23,10 @@
  *   - GetSendToken: a token-bucket gate run before each send (acquire + retry-ready). When the limiter reports
  *     a wait, the send is DEFERRED on an event loop ; if fast_fail_if_no_token is set, the
  *     send fails fast with AWS_IO_RETRY_PERMISSION_DENIED instead of waiting.
- *   - Bookkeeping: _UpdateClientSendingRate run after each response. A successful response increases the rate
- *     (record_success); a throttling response decreases it and enables the limiter (schedule_retry with
- *     AWS_RETRY_ERROR_TYPE_THROTTLING). Transient / server / client errors do not move the rate.
+ *   - Bookkeeping: _UpdateClientSendingRate run after each response. A throttling response decreases the rate
+ *     and enables the limiter (schedule_retry with AWS_RETRY_ERROR_TYPE_THROTTLING). Every other RECEIVED
+ *     response grows the rate along the CUBIC curve: a success (record_success) and the retryable received
+ *     errors SERVER_ERROR / CLIENT_ERROR (schedule_retry). TRANSIENT errors do not affect the rte limiter
  *
  * The rate limiter is a single-threaded state machine; this wrapper owns a mutex and takes it around every
  * limiter call so capacity is never observed < 0 across threads.
@@ -125,6 +126,15 @@ static void s_adaptive_gate_task(struct aws_task *task, void *arg, enum aws_task
 
     s_fire_gate_callback(token, is_acquire, error_code);
 
+    /*
+     * On an acquire that was cancelled the caller received a NULL token and cannot release it, so drop the
+     * creation ref here. (On success the caller owns the delivered token; on the retry path the caller always
+     * receives the real token.)
+     */
+    if (error_code && is_acquire) {
+        aws_retry_token_release(&token->base);
+    }
+
     /* release the acquire taken before scheduling this task. */
     aws_retry_token_release(&token->base);
 }
@@ -151,6 +161,14 @@ static void s_apply_gate(struct adaptive_retry_token *token, bool is_acquire) {
             (void *)token->base.retry_strategy);
         aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
         s_fire_gate_callback(token, is_acquire, AWS_IO_RETRY_PERMISSION_DENIED);
+        /*
+         * On the acquire path the caller received a NULL token (per the on_acquired contract) and can never
+         * release it, so drop the creation ref here. On the retry path the caller received the real token and
+         * owns that release, so we must not drop it.
+         */
+        if (is_acquire) {
+            aws_retry_token_release(&token->base);
+        }
         return;
     }
 
@@ -207,6 +225,8 @@ static void s_on_adaptive_token_acquired(
         /* Inner acquisition failed; the limiter is not consulted. Propagate the error straight through. */
         adaptive_token->original_on_acquired(
             adaptive_token->base.retry_strategy, error_code, NULL, adaptive_token->original_user_data);
+        /* The caller received a NULL token and cannot release it, so drop the creation ref here. */
+        aws_retry_token_release(&adaptive_token->base);
     }
     aws_retry_token_release(&adaptive_token->base);
 }
@@ -282,13 +302,18 @@ static int s_adaptive_retry_schedule_retry(
     struct adaptive_strategy *strategy = token->retry_strategy->impl;
 
     /*
-     * Bookkeeping first (update the rate limiter whenever a response is received). A throttling response
-     * moves the rate down and enables the limiter; transient / server / client are neutral. This runs whenever
-     * a throttle is reported, regardless of whether the inner strategy ultimately schedules the retry, because
-     * the service response occurred either way.
+     * Bookkeeping (_UpdateClientSendingRate) runs whenever a response is RECEIVED from the service, before the
+     * inner strategy decides whether to schedule the retry, because the response happened either way.
+     *
+     * The update is binary on a received response: a THROTTLING response takes the throttle branch (rate
+     * down + enable the limiter); every OTHER received response takes the success/growth branch
+     * (_UpdateMeasuredRate + the CUBIC _CUBICSuccess climb). SERVER_ERROR and CLIENT_ERROR are received
+     * responses, so they grow the rate just like a success does. TRANSIENT_ERROR does not affect the rate limiter
      */
     if (error_type == AWS_RETRY_ERROR_TYPE_THROTTLING) {
         s_rate_limiter_update(strategy, true /*is_throttling_error*/);
+    } else if (error_type != AWS_RETRY_ERROR_TYPE_TRANSIENT) {
+        s_rate_limiter_update(strategy, false /*is_throttling_error*/);
     }
 
     impl->original_user_data = user_data;
