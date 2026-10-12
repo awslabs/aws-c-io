@@ -61,7 +61,7 @@ static int s_test_rate_limiter_first_throttle_enables_and_cuts(struct aws_alloca
 
 AWS_TEST_CASE(test_rate_limiter_first_throttle_enables_and_cuts, s_test_rate_limiter_first_throttle_enables_and_cuts)
 
-/* Once enabled, an over-budget acquire returns a positive wait and capacity goes negative. */
+/* Once enabled, an over-budget acquire returns a positive wait and does NOT deduct; a fitting one grants. */
 static int s_test_rate_limiter_enabled_acquire_paces(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     (void)ctx;
@@ -73,11 +73,21 @@ static int s_test_rate_limiter_enabled_acquire_paces(struct aws_allocator *alloc
     aws_rate_limiter_token_bucket_update_sending_rate(&limiter, true, s_seconds_to_ns(1.0));
     ASSERT_TRUE(limiter.enabled);
 
-    /* Drain whatever capacity exists, then an over-budget acquire must report a wait. */
+    /* An over-budget acquire reports a wait and leaves capacity untouched (debit only happens on a grant). */
+    double before = limiter.current_capacity;
     double big = limiter.max_capacity + 100.0;
     uint64_t wait_ns = aws_rate_limiter_token_bucket_acquire(&limiter, big, s_seconds_to_ns(1.0));
     ASSERT_TRUE(wait_ns > 0);
-    ASSERT_TRUE(limiter.current_capacity < 0.0);
+    ASSERT_TRUE(limiter.current_capacity == before);
+    ASSERT_FALSE(limiter.current_capacity < 0.0);
+
+    /*
+     * After a throttle current_capacity starts at 0, so a grant needs refill. At fill_rate 0.5/s, 4 seconds
+     * accrues ~2.0 (capped at max_capacity 1.0). A unit acquire then grants immediately (wait 0) and debits.
+     */
+    uint64_t grant_wait = aws_rate_limiter_token_bucket_acquire(&limiter, 1.0, s_seconds_to_ns(5.0));
+    ASSERT_UINT_EQUALS(0, grant_wait);
+    ASSERT_TRUE(limiter.current_capacity == 0.0);
 
     return AWS_OP_SUCCESS;
 }
@@ -93,7 +103,7 @@ static int s_test_rate_limiter_refills_over_time(struct aws_allocator *allocator
     aws_rate_limiter_token_bucket_init(&limiter, 0);
     aws_rate_limiter_token_bucket_update_sending_rate(&limiter, true, s_seconds_to_ns(1.0));
 
-    /* Drain to zero or below. */
+    /* Spend what capacity exists (a grant debits down toward zero, never below). */
     aws_rate_limiter_token_bucket_acquire(&limiter, limiter.max_capacity, s_seconds_to_ns(1.0));
 
     /* After a generous interval the bucket refills and a unit acquire is free again. */
@@ -169,3 +179,31 @@ static int s_test_rate_limiter_reset_disables(struct aws_allocator *allocator, v
 }
 
 AWS_TEST_CASE(test_rate_limiter_reset_disables, s_test_rate_limiter_reset_disables)
+
+/* A denied (wait-returning) acquire never debits, so repeated denials cannot drive capacity below zero. */
+static int s_test_rate_limiter_denied_acquire_no_debit(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    struct aws_rate_limiter_token_bucket limiter;
+    aws_rate_limiter_token_bucket_init(&limiter, 0);
+    aws_rate_limiter_token_bucket_update_sending_rate(&limiter, true, s_seconds_to_ns(1.0));
+    ASSERT_TRUE(limiter.enabled);
+
+    /* Spend the available capacity with a grant so the next requests must wait. */
+    aws_rate_limiter_token_bucket_acquire(&limiter, limiter.current_capacity, s_seconds_to_ns(1.0));
+
+    /* Many over-budget acquires at the same instant each report a wait and leave capacity put. */
+    double big = limiter.max_capacity + 50.0;
+    for (int i = 0; i < 20; ++i) {
+        double before = limiter.current_capacity;
+        uint64_t wait_ns = aws_rate_limiter_token_bucket_acquire(&limiter, big, s_seconds_to_ns(1.0));
+        ASSERT_TRUE(wait_ns > 0);
+        ASSERT_TRUE(limiter.current_capacity == before);
+        ASSERT_FALSE(limiter.current_capacity < 0.0);
+    }
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(test_rate_limiter_denied_acquire_no_debit, s_test_rate_limiter_denied_acquire_no_debit)

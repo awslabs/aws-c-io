@@ -510,11 +510,20 @@ static int s_test_adaptive_retry_strategy_fast_fail_config(struct aws_allocator 
     ASSERT_SUCCESS(s_acquire_token_blocking(test_data, &retry_data, &partition));
     ASSERT_NOT_NULL(retry_data.retry_token);
 
-    /* First throttle enables the limiter; the retry is scheduled while capacity remains. */
-    ASSERT_SUCCESS(s_schedule_retry_blocking(&retry_data, AWS_RETRY_ERROR_TYPE_THROTTLING));
-    ASSERT_UINT_EQUALS(AWS_ERROR_SUCCESS, retry_data.schedule_retry_error_code);
+    /* schedule_retry on a throttle is accepted synchronously; it enables the limiter and schedules the retry. */
+    retry_data.schedule_retry_error_code = 0;
+    retry_data.schedule_token_value = NULL;
+    retry_data.retry_ready_fired = false;
+    ASSERT_SUCCESS(aws_retry_strategy_schedule_retry(
+        retry_data.retry_token, AWS_RETRY_ERROR_TYPE_THROTTLING, s_on_adaptive_retry_ready_cb, &retry_data));
 
-    ASSERT_SUCCESS(aws_retry_token_record_success(retry_data.retry_token));
+    /* Wait for the paced retry-ready. Its outcome is either success or the fast-fail denial; both are valid. */
+    ASSERT_SUCCESS(aws_condition_variable_wait_pred(
+        &retry_data.cvar, &retry_data.mutex, s_adaptive_retry_ready_completed, &retry_data));
+    ASSERT_TRUE(
+        retry_data.schedule_retry_error_code == AWS_ERROR_SUCCESS ||
+        retry_data.schedule_retry_error_code == AWS_IO_RETRY_PERMISSION_DENIED);
+
     aws_retry_token_release(retry_data.retry_token);
     ASSERT_SUCCESS(aws_mutex_unlock(&retry_data.mutex));
 

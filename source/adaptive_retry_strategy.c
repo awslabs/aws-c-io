@@ -67,31 +67,29 @@ struct adaptive_retry_token {
     } thread_data;
 };
 
-static uint64_t s_now_ns(void) {
-    uint64_t now_ns = 0;
-    /*
-     * TODO: aws_high_res_clock_get_ticks can fail (AWS_ERROR_CLOCK_FAILURE); on failure it leaves now_ns
-     * untouched, so we currently fall back to 0 (the epoch). This is left unhandled pending review of how a
-     * clock failure should be propagated: fail-open at the gate / skip the bookkeeping update on the hot path,
-     * and fail construction at init. Revisit before this ships.
-     */
-    aws_high_res_clock_get_ticks(&now_ns);
-    return now_ns;
-}
-
 /* Runs the GetSendToken gate under the limiter lock. Returns the number of ns the caller must wait (0 = now). */
 static uint64_t s_rate_limiter_acquire(struct adaptive_strategy *strategy) {
+    uint64_t now = 0;
+    if (aws_high_res_clock_get_ticks(&now)) {
+        /* Clock failed: can't pace, so fail open and let the send through now. */
+        return 0;
+    }
     aws_mutex_lock(&strategy->synced_data.lock);
     uint64_t wait_ns =
-        aws_rate_limiter_token_bucket_acquire(&strategy->synced_data.limiter, s_adaptive_request_cost, s_now_ns());
+        aws_rate_limiter_token_bucket_acquire(&strategy->synced_data.limiter, s_adaptive_request_cost, now);
     aws_mutex_unlock(&strategy->synced_data.lock);
     return wait_ns;
 }
 
 /* Runs _UpdateClientSendingRate under the limiter lock. */
 static void s_rate_limiter_update(struct adaptive_strategy *strategy, bool is_throttling_error) {
+    uint64_t now = 0;
+    if (aws_high_res_clock_get_ticks(&now)) {
+        /* Clock failed: skip this update rather than move the rate against a bogus time. */
+        return;
+    }
     aws_mutex_lock(&strategy->synced_data.lock);
-    aws_rate_limiter_token_bucket_update_sending_rate(&strategy->synced_data.limiter, is_throttling_error, s_now_ns());
+    aws_rate_limiter_token_bucket_update_sending_rate(&strategy->synced_data.limiter, is_throttling_error, now);
     aws_mutex_unlock(&strategy->synced_data.lock);
 }
 
@@ -109,7 +107,17 @@ static void s_fire_gate_callback(struct adaptive_retry_token *token, bool is_acq
     }
 }
 
-/* Deferred-send task: the limiter's wait has elapsed, so let the send proceed now. */
+/* The gate task reschedules itself through this on a lost re-acquire race. */
+static void s_schedule_gate_task(
+    struct adaptive_retry_token *token,
+    bool is_acquire,
+    uint64_t wait_ns,
+    bool reused_ref);
+
+/*
+ * Re-acquire at the current time so the token is debited at the real
+ * send moment and capacity never commits below zero if other threads drained it during the wait.
+ */
 static void s_adaptive_gate_task(struct aws_task *task, void *arg, enum aws_task_status status) {
     (void)task;
 
@@ -121,58 +129,56 @@ static void s_adaptive_gate_task(struct aws_task *task, void *arg, enum aws_task
     token->thread_data.deferring_acquire = false;
     AWS_FATAL_ASSERT(!aws_mutex_unlock(&token->thread_data.mutex) && "mutex unlock failed");
 
-    /* If the task was cancelled (event loop shutting down), propagate a cancellation to the callback. */
-    int error_code = (status == AWS_TASK_STATUS_RUN_READY) ? AWS_OP_SUCCESS : AWS_ERROR_IO_OPERATION_CANCELLED;
-
-    s_fire_gate_callback(token, is_acquire, error_code);
-
-    /*
-     * On an acquire that was cancelled the caller received a NULL token and cannot release it, so drop the
-     * creation ref here. (On success the caller owns the delivered token; on the retry path the caller always
-     * receives the real token.)
-     */
-    if (error_code && is_acquire) {
+    /* On event loop shutting down deliver cancellation and release refs. */
+    if (status != AWS_TASK_STATUS_RUN_READY) {
+        s_fire_gate_callback(token, is_acquire, AWS_ERROR_IO_OPERATION_CANCELLED);
+        /* Acquire delivered NULL, so the caller can't release the creation ref; drop it here. */
+        if (is_acquire) {
+            aws_retry_token_release(&token->base);
+        }
+        /* scheduling ref. */
         aws_retry_token_release(&token->base);
+        return;
     }
 
-    /* release the acquire taken before scheduling this task. */
-    aws_retry_token_release(&token->base);
-}
-
-/*
- * Applies the GetSendToken gate result. If no wait is required the callback fires inline. If a wait is
- * required, either fast-fail (configured) or schedule a deferred task that fires the callback after wait_ns.
- */
-static void s_apply_gate(struct adaptive_retry_token *token, bool is_acquire) {
     struct adaptive_strategy *strategy = token->base.retry_strategy->impl;
-
     uint64_t wait_ns = s_rate_limiter_acquire(strategy);
 
     if (wait_ns == 0) {
-        /* A token was available; proceed immediately. */
+        /* Granted and debited now: proceed, drop the scheduling ref. */
         s_fire_gate_callback(token, is_acquire, AWS_OP_SUCCESS);
+        aws_retry_token_release(&token->base);
         return;
     }
 
     if (strategy->fast_fail_if_no_token) {
+        /* Lost the race during the wait and fast-fail is set. */
         AWS_LOGF_DEBUG(
             AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
-            "id=%p: adaptive rate limiter has no token and fast-fail is set; denying send",
+            "id=%p: adaptive rate limiter has no token after waiting and fast-fail is set; denying send",
             (void *)token->base.retry_strategy);
         aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
         s_fire_gate_callback(token, is_acquire, AWS_IO_RETRY_PERMISSION_DENIED);
-        /*
-         * On the acquire path the caller received a NULL token (per the on_acquired contract) and can never
-         * release it, so drop the creation ref here. On the retry path the caller received the real token and
-         * owns that release, so we must not drop it.
-         */
         if (is_acquire) {
             aws_retry_token_release(&token->base);
         }
+        aws_retry_token_release(&token->base);
         return;
     }
 
-    /* Defer the send until the limiter's wait elapses. */
+    /* Reschedule for the new wait, carrying the ref forward. Converges because each wait refills. */
+    s_schedule_gate_task(token, is_acquire, wait_ns, true /*reused_ref*/);
+}
+
+/*
+ * Schedules the gate task wait_ns out. Holds a ref until the task runs; reused_ref=true means the task is
+ * rescheduling itself and already holds that ref.
+ */
+static void s_schedule_gate_task(
+    struct adaptive_retry_token *token,
+    bool is_acquire,
+    uint64_t wait_ns,
+    bool reused_ref) {
     AWS_LOGF_TRACE(
         AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
         "id=%p: adaptive rate limiter pacing send by %" PRIu64 " ns",
@@ -186,11 +192,56 @@ static void s_apply_gate(struct adaptive_retry_token *token, bool is_acquire) {
     aws_task_init(&token->gate_task, s_adaptive_gate_task, token, "aws_adaptive_retry_gate_task");
 
     uint64_t current_time = 0;
-    aws_event_loop_current_clock_time(token->bound_loop, &current_time);
+    if (aws_event_loop_current_clock_time(token->bound_loop, &current_time)) {
+        /* Clock failed: fail open (send now) rather than fire at time 0 or strand the token. */
+        AWS_LOGF_WARN(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: event loop clock read failed while pacing; failing open and sending now",
+            (void *)token->base.retry_strategy);
+        s_fire_gate_callback(token, is_acquire, AWS_OP_SUCCESS);
+        if (reused_ref) {
+            aws_retry_token_release(&token->base);
+        }
+        return;
+    }
 
-    /* acquire to hold the token until the deferred task runs. */
-    aws_retry_token_acquire(&token->base);
+    /* Hold the token until the task runs (skip if reusing the prior task's ref). */
+    if (!reused_ref) {
+        aws_retry_token_acquire(&token->base);
+    }
     aws_event_loop_schedule_task_future(token->bound_loop, &token->gate_task, current_time + wait_ns);
+}
+
+/*
+ * Applies the gate result: grant now, fast-fail, or defer-and-re-acquire after the wait.
+ */
+static void s_apply_gate(struct adaptive_retry_token *token, bool is_acquire) {
+    struct adaptive_strategy *strategy = token->base.retry_strategy->impl;
+
+    uint64_t wait_ns = s_rate_limiter_acquire(strategy);
+
+    if (wait_ns == 0) {
+        /* Granted and debited: proceed. */
+        s_fire_gate_callback(token, is_acquire, AWS_OP_SUCCESS);
+        return;
+    }
+
+    if (strategy->fast_fail_if_no_token) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: adaptive rate limiter has no token and fast-fail is set; denying send",
+            (void *)token->base.retry_strategy);
+        aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
+        s_fire_gate_callback(token, is_acquire, AWS_IO_RETRY_PERMISSION_DENIED);
+        /* Acquire delivered NULL, so the caller can't release the creation ref; drop it. Nothing was debited. */
+        if (is_acquire) {
+            aws_retry_token_release(&token->base);
+        }
+        return;
+    }
+
+    /* Defer; the debit happens when the re-acquire grants. */
+    s_schedule_gate_task(token, is_acquire, wait_ns, false /*reused_ref*/);
 }
 
 static void s_adaptive_retry_destroy(struct aws_retry_strategy *retry_strategy) {
@@ -369,8 +420,6 @@ struct aws_retry_strategy *aws_retry_strategy_new_adaptive(
     const struct aws_adaptive_retry_options *config) {
     AWS_PRECONDITION(allocator);
     AWS_PRECONDITION(config);
-    AWS_PRECONDITION(config->standard_options.backoff_retry_options.el_group);
-
     if (!config->standard_options.backoff_retry_options.el_group) {
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
@@ -396,10 +445,21 @@ struct aws_retry_strategy *aws_retry_strategy_new_adaptive(
         goto error;
     }
 
+    /* Read the seed time before acquiring the el_group/mutex so the error label below stays correct. */
+    uint64_t now = 0;
+    if (aws_high_res_clock_get_ticks(&now)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: clock read failed while creating adaptive strategy: %s",
+            (void *)&strategy->base,
+            aws_error_debug_str(aws_last_error()));
+        goto error;
+    }
+
     strategy->el_group = aws_event_loop_group_acquire(config->standard_options.backoff_retry_options.el_group);
     strategy->fast_fail_if_no_token = config->fast_fail_if_no_token;
     AWS_FATAL_ASSERT(!aws_mutex_init(&strategy->synced_data.lock) && "mutex init failed");
-    aws_rate_limiter_token_bucket_init(&strategy->synced_data.limiter, s_now_ns());
+    aws_rate_limiter_token_bucket_init(&strategy->synced_data.limiter, now);
 
     strategy->base.allocator = allocator;
     strategy->base.vtable = &s_adaptive_retry_vtable;

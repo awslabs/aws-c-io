@@ -110,15 +110,22 @@ uint64_t aws_rate_limiter_token_bucket_acquire(
 
     s_token_bucket_refill(limiter, now_ns);
 
-    uint64_t wait_ns = 0;
-    if (amount > limiter->current_capacity) {
-        /* Time to accrue the shortfall at the current fill rate. */
-        double wait_seconds = (amount - limiter->current_capacity) / limiter->fill_rate;
-        wait_ns = (uint64_t)(wait_seconds * (double)AWS_TIMESTAMP_NANOS);
+    if (amount <= limiter->current_capacity) {
+        /* Capacity available: grant and deduct. */
+        limiter->current_capacity -= amount;
+        return 0;
     }
 
-    /* Deduct now; capacity may go negative and is repaid by the next refill. */
-    limiter->current_capacity -= amount;
+    /* A token is only spent on a send that proceeds, so the caller re-acquires after the wait and the debit happens
+     * then. */
+    double wait_seconds = (amount - limiter->current_capacity) / limiter->fill_rate;
+    uint64_t wait_ns = (uint64_t)(wait_seconds * (double)AWS_TIMESTAMP_NANOS);
+
+    /* Floor to 1ns: a 0ns return means "granted", which must not happen without a deduct. */
+    if (wait_ns == 0) {
+        wait_ns = 1;
+    }
+
     return wait_ns;
 }
 
