@@ -35,7 +35,7 @@ struct aws_rate_limiter_token_bucket {
     double fill_rate;
     /* Ceiling of the bucket. */
     double max_capacity;
-    /* Tokens available now. May dip below 0 between an acquire and the next refill. */
+    /* Tokens available now. */
     double current_capacity;
 
     /* Exponentially smoothed estimate of the rate the client is actually achieving. */
@@ -75,7 +75,6 @@ AWS_IO_API void aws_rate_limiter_token_bucket_reset(struct aws_rate_limiter_toke
  *
  * While the bucket is disabled this always returns 0 and takes nothing. In the real algorithm
  * `amount` is always REQUEST_COST (1); the parameter exists for genericity and testability.
- * current_capacity may go negative here; it is repaid by the next refill.
  */
 AWS_IO_API uint64_t aws_rate_limiter_token_bucket_acquire(
     struct aws_rate_limiter_token_bucket *limiter,
