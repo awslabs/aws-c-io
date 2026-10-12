@@ -427,6 +427,15 @@ add_test_case(test_standard_retry_strategy_setup_shutdown)
 add_test_case(test_standard_retry_strategy_failure_exhausts_bucket)
 add_test_case(test_standard_retry_strategy_failure_recovers)
 
+add_test_case(test_rate_limiter_starts_disabled)
+add_test_case(test_rate_limiter_first_throttle_enables_and_cuts)
+add_test_case(test_rate_limiter_enabled_acquire_paces)
+add_test_case(test_rate_limiter_refills_over_time)
+add_test_case(test_rate_limiter_cubic_throttle_vector)
+add_test_case(test_rate_limiter_cubic_time_window_vector)
+add_test_case(test_rate_limiter_cubic_success_vector)
+add_test_case(test_rate_limiter_reset_disables)
+
 # See PKCS11.md for instructions on running these tests
 if(ENABLE_PKCS11_TESTS)
     add_test_case(pkcs11_lib_sanity_check)
