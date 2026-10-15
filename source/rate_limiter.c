@@ -33,7 +33,6 @@ void aws_rate_limiter_token_bucket_init(struct aws_rate_limiter_token_bucket *li
         return;
     }
 
-
     limiter->enabled = false;
     limiter->last_timestamp_set = false;
     limiter->last_tx_rate_bucket = floor(s_ns_to_seconds(now_ns));
@@ -48,7 +47,7 @@ void aws_rate_limiter_token_bucket_reset(struct aws_rate_limiter_token_bucket *l
 static void s_token_bucket_refill(struct aws_rate_limiter_token_bucket *limiter) {
     /* timestamp = time() */
     uint64_t now_ns = 0;
-      if (aws_high_res_clock_get_ticks(&now_ns)) {
+    if (aws_high_res_clock_get_ticks(&now_ns)) {
         return;
     }
 
@@ -144,7 +143,7 @@ void aws_rate_limiter_token_bucket_update_sending_rate(
 
     /* t = time(), shared by the measured-rate and CUBIC math below. */
     uint64_t now_ns = 0;
-    if(aws_high_res_clock_get_ticks(&now_ns)){
+    if (aws_high_res_clock_get_ticks(&now_ns)) {
         return;
     }
 
