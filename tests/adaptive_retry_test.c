@@ -490,12 +490,6 @@ AWS_TEST_CASE_FIXTURE(
     s_adaptive_fixture_shutdown,
     &s_fixture_test_data);
 
-/*
- * The fast_fail_if_no_token config path builds and drives correctly end to end: acquire, a throttle that
- * enables the limiter, then record_success. The deterministic proof that an exhausted limiter returns a wait
- * (which the gate turns into AWS_IO_RETRY_PERMISSION_DENIED under this flag) lives in rate_limiter_test.c,
- * where synthetic timestamps remove the wall-clock timing race a strategy-level test would otherwise have.
- */
 static int s_test_adaptive_retry_strategy_fast_fail_config(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct adaptive_test_data *test_data = ctx;
