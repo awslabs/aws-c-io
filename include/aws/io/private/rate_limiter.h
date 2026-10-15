@@ -16,10 +16,9 @@ AWS_PUSH_SANE_WARNING_LEVEL
 /**
  * Client-side rate limiter used by the adaptive retry strategy
  *
- * This is a pure, single-threaded state machine: it performs no I/O, acquires no locks, and
- * never sleeps. The caller supplies the current time (as nanoseconds from a monotonic clock)
- * on every call and is responsible for serializing access (the adaptive strategy wraps every
- * call in its own mutex).
+ * This is a single-threaded state machine: it acquires no locks and never sleeps. It reads the
+ * current time itself from aws_high_res_clock_get_ticks, where the SEP calls time(). The caller
+ * is responsible for serializing access (the adaptive strategy wraps every call in its own mutex).
  *
  * All rates are expressed in requests-per-second as doubles. The bucket starts DISABLED; the
  * first throttling response seen by aws_rate_limiter_token_bucket_update_sending_rate() flips
@@ -57,14 +56,14 @@ struct aws_rate_limiter_token_bucket {
 AWS_EXTERN_C_BEGIN
 
 /**
- * Initializes the bucket into the disabled state. now_ns seeds the measured-rate bucket origin.
+ * Initializes the bucket into the disabled state. The current time seeds the measured-rate bucket origin.
  */
-AWS_IO_API void aws_rate_limiter_token_bucket_init(struct aws_rate_limiter_token_bucket *limiter, uint64_t now_ns);
+AWS_IO_API void aws_rate_limiter_token_bucket_init(struct aws_rate_limiter_token_bucket *limiter);
 
 /**
  * Resets the bucket back to its freshly-initialized (disabled) state.
  */
-AWS_IO_API void aws_rate_limiter_token_bucket_reset(struct aws_rate_limiter_token_bucket *limiter, uint64_t now_ns);
+AWS_IO_API void aws_rate_limiter_token_bucket_reset(struct aws_rate_limiter_token_bucket *limiter);
 
 /**
  * GetSendToken gate. Attempts to take `amount` tokens.
@@ -76,10 +75,7 @@ AWS_IO_API void aws_rate_limiter_token_bucket_reset(struct aws_rate_limiter_toke
  * While the bucket is disabled this always returns 0 and takes nothing. In the real algorithm
  * `amount` is always REQUEST_COST (1); the parameter exists for genericity and testability.
  */
-AWS_IO_API uint64_t aws_rate_limiter_token_bucket_acquire(
-    struct aws_rate_limiter_token_bucket *limiter,
-    double amount,
-    uint64_t now_ns);
+AWS_IO_API uint64_t aws_rate_limiter_token_bucket_acquire(struct aws_rate_limiter_token_bucket *limiter, double amount);
 
 /**
  * RequestBookkeeping -> _UpdateClientSendingRate. Feeds the controller one
@@ -89,8 +85,7 @@ AWS_IO_API uint64_t aws_rate_limiter_token_bucket_acquire(
  */
 AWS_IO_API void aws_rate_limiter_token_bucket_update_sending_rate(
     struct aws_rate_limiter_token_bucket *limiter,
-    bool is_throttling_error,
-    uint64_t now_ns);
+    bool is_throttling_error);
 
 /*
  * Pure CUBIC primitives, exposed so unit tests can hit the CUBIC vectors
