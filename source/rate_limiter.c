@@ -77,7 +77,7 @@ static void s_token_bucket_update_rate(struct aws_rate_limiter_token_bucket *lim
 /* _UpdateMeasuredRate: exponentially smoothed rate in half-second buckets. */
 static void s_update_measured_rate(struct aws_rate_limiter_token_bucket *limiter, uint64_t now_ns) {
     double t = s_ns_to_seconds(now_ns);
-    double time_bucket = floor(t * 2.0) / 2.0;
+    double time_bucket = floor(t * 2.0) / 2.0; // DOUBT: SHOULD we add floor to common
     limiter->request_count += 1;
 
     if (time_bucket > limiter->last_tx_rate_bucket) {
@@ -92,6 +92,7 @@ static void s_update_measured_rate(struct aws_rate_limiter_token_bucket *limiter
 double aws_rate_limiter_cubic_calculate_time_window(double last_max_rate) {
     /* cbrt((last_max_rate * (1 - BETA)) / SCALE_CONSTANT). */
     return cbrt((last_max_rate * (1.0 - AWS_RATE_LIMITER_BETA)) / AWS_RATE_LIMITER_SCALE_CONSTANT);
+    // DOUBT : SHOULD we add cbrt to common
 }
 
 double aws_rate_limiter_cubic_success(
