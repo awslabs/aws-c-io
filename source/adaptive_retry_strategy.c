@@ -25,7 +25,7 @@
  *   - Bookkeeping: _UpdateClientSendingRate run after each response. A throttling response decreases the rate
  *     and enables the limiter (schedule_retry with AWS_RETRY_ERROR_TYPE_THROTTLING). Every other RECEIVED
  *     response grows the rate along the CUBIC curve: a success (record_success) and the retryable received
- *     errors SERVER_ERROR / CLIENT_ERROR (schedule_retry). TRANSIENT errors do not affect the rte limiter
+ *     errors SERVER_ERROR / CLIENT_ERROR (schedule_retry). TRANSIENT errors do not affect the rate limiter
  *
  * The rate limiter is a single-threaded state machine; this wrapper owns a mutex and takes it around every
  * limiter call so capacity is never observed < 0 across threads.

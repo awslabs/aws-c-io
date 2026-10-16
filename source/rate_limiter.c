@@ -27,8 +27,8 @@ static double s_ns_to_seconds(uint64_t now_ns) {
 }
 
 void aws_rate_limiter_token_bucket_init(struct aws_rate_limiter_token_bucket *limiter) {
-    uint64_t now_ns = 0;
     AWS_ZERO_STRUCT(*limiter);
+    uint64_t now_ns = 0;
     if (aws_high_res_clock_get_ticks(&now_ns)) {
         return;
     }
