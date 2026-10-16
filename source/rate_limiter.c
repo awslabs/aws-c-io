@@ -58,7 +58,7 @@ static void s_token_bucket_refill(struct aws_rate_limiter_token_bucket *limiter)
         return;
     }
 
-    double elapsed_seconds = s_ns_to_seconds(now_ns) - s_ns_to_seconds(limiter->last_timestamp_ns);
+    double elapsed_seconds = s_ns_to_seconds(aws_sub_u64_saturating(now_ns-limiter->last_timestamp_ns));
     double fill_amount = elapsed_seconds * limiter->fill_rate;
     limiter->current_capacity = aws_min_double(limiter->max_capacity, limiter->current_capacity + fill_amount);
     limiter->last_timestamp_ns = now_ns;
