@@ -153,6 +153,26 @@ struct aws_standard_retry_options {
     size_t initial_bucket_capacity;
 };
 
+/**
+ * Options for the adaptive retry strategy. Adaptive mode is "standard mode plus client-side rate limiting":
+ * it composes a standard strategy (exponential backoff + retry-quota bucket) and layers a congestion-control
+ * token bucket on top. The token bucket stays disabled until the first throttling response is observed, so a
+ * client that is never throttled behaves exactly like standard mode.
+ *
+ * standard_options.backoff_retry_options.el_group MUST be set: the adaptive strategy uses that event loop
+ * group to pace (defer) sends when the rate limiter requires a wait.
+ */
+struct aws_adaptive_retry_options {
+    /** Backoff + retry-quota configuration, forwarded verbatim to the backing standard strategy. */
+    struct aws_standard_retry_options standard_options;
+    /**
+     * Controls what happens when the rate limiter has no send tokens available.
+     * false (default): defer the send on the event loop until a token is available.
+     * true: fail fast with AWS_IO_RETRY_PERMISSION_DENIED instead of waiting.
+     */
+    bool fast_fail_if_no_token;
+};
+
 AWS_EXTERN_C_BEGIN
 /**
  * Acquire a reference count on retry_strategy.
@@ -242,6 +262,23 @@ AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff
 AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_standard(
     struct aws_allocator *allocator,
     const struct aws_standard_retry_options *config);
+
+/**
+ * Creates the adaptive retry strategy. Builds on aws_retry_strategy_new_standard: it composes a standard strategy and
+ * adds a client-side rate limiter (a token bucket whose fill rate is steered by a modified CUBIC congestion
+ * controller).
+ *
+ * The rate limiter is disabled until the first throttling response is seen via
+ * aws_retry_strategy_schedule_retry() with AWS_RETRY_ERROR_TYPE_THROTTLING. Until then this strategy is
+ * behaviorally identical to standard. Once enabled, a throttling response decreases the allowed rate and a
+ * successful response increases it; transient errors do not affect the rate limiter.
+ *
+ * All quota and backoff behavior is inherited unchanged from the backing standard strategy. See the comments
+ * for aws_retry_strategy_new_standard and aws_adaptive_retry_options.
+ */
+AWS_IO_API struct aws_retry_strategy *aws_retry_strategy_new_adaptive(
+    struct aws_allocator *allocator,
+    const struct aws_adaptive_retry_options *config);
 
 /**
  * This retry strategy is used to disable retries. Passed config can be null.
