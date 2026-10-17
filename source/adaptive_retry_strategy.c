@@ -55,12 +55,24 @@ struct adaptive_retry_token {
     struct aws_event_loop *bound_loop;
     struct aws_task gate_task;
 
-    aws_retry_strategy_on_retry_token_acquired_fn *original_on_acquired;
-    aws_retry_strategy_on_retry_ready_fn *original_on_ready;
-    void *original_user_data;
+    enum adaptive_retry_token_phase {
+        ADAPTIVE_RETRY_TOKEN_PHASE_ACQUIRING, /* on_acquired pending; we own the creation ref */
+        ADAPTIVE_RETRY_TOKEN_PHASE_RETRYING,  /* caller owns the token; on_ready used for retries */
+    } phase;
 
-    /* True until on_acquired succeeds; while true we own the creation ref and must release it on failure. */
-    bool self_owned;
+    union {
+        /* data for ADAPTIVE_RETRY_TOKEN_PHASE_ACQUIRING */
+        struct {
+            aws_retry_strategy_on_retry_token_acquired_fn *on_acquired;
+            void *user_data;
+        } acquiring;
+
+        /* data for ADAPTIVE_RETRY_TOKEN_PHASE_RETRYING */
+        struct {
+            aws_retry_strategy_on_retry_ready_fn *on_ready;
+            void *user_data;
+        } retrying;
+    } u;
 };
 
 /* Runs the GetSendToken gate under the limiter lock. Returns the number of ns the caller must wait (0 = now). */
@@ -78,21 +90,28 @@ static void s_rate_limiter_update(struct adaptive_strategy *strategy, bool is_th
     aws_mutex_unlock(&strategy->synced_data.lock);
 }
 
-/* Fires on_acquired while we still own the token, otherwise on_ready. */
+/* Fires on_acquired while acquiring, otherwise on_ready. */
 static void s_fire_gate_callback(struct adaptive_retry_token *token, int error_code) {
-    if (token->self_owned) {
-        if (!error_code) {
-            /* Ownership moves to the caller; clear first since the caller may release the token in the callback. */
-            token->self_owned = false;
-            token->original_on_acquired(
-                token->base.retry_strategy, error_code, &token->base, token->original_user_data);
-        } else {
-            token->original_on_acquired(token->base.retry_strategy, error_code, NULL, token->original_user_data);
-            /* Caller got NULL and can't release it, so drop the creation ref. */
-            aws_retry_token_release(&token->base);
-        }
-    } else {
-        token->original_on_ready(&token->base, error_code, token->original_user_data);
+    switch (token->phase) {
+        case ADAPTIVE_RETRY_TOKEN_PHASE_ACQUIRING:
+            /* First send: the caller is still waiting for its token */
+            if (!error_code) {
+                /* Ownership moves to the caller; flip first, the callback may release or retry the token. */
+                token->phase = ADAPTIVE_RETRY_TOKEN_PHASE_RETRYING;
+                token->u.acquiring.on_acquired(
+                    token->base.retry_strategy, error_code, &token->base, token->u.acquiring.user_data);
+            } else {
+                /* Acquire failed: the caller gets NULL instead of token. */
+                token->u.acquiring.on_acquired(
+                    token->base.retry_strategy, error_code, NULL, token->u.acquiring.user_data);
+                /* Caller got NULL and can't release it, so drop the creation ref. */
+                aws_retry_token_release(&token->base);
+            }
+            break;
+        case ADAPTIVE_RETRY_TOKEN_PHASE_RETRYING:
+            /* Retry: the caller already owns the token, so only report the result. */
+            token->u.retrying.on_ready(&token->base, error_code, token->u.retrying.user_data);
+            break;
     }
 }
 
@@ -188,16 +207,14 @@ static void s_on_standard_token_acquired(
 
     struct adaptive_retry_token *adaptive_token = user_data;
 
-    aws_retry_token_acquire(&adaptive_token->base);
     if (!error_code) {
         adaptive_token->standard_token = token;
-        /* GetSendToken gate: fires original_on_acquired (immediately, deferred, or fast-failed). */
+        /* GetSendToken gate: fires on_acquired (immediately, deferred, or fast-failed). */
         s_apply_gate(adaptive_token);
     } else {
         /* Inner acquisition failed; the limiter is not consulted. Propagate the error straight through. */
         s_fire_gate_callback(adaptive_token, error_code);
     }
-    aws_retry_token_release(&adaptive_token->base);
 }
 
 static int s_adaptive_retry_acquire_token(
@@ -212,14 +229,14 @@ static int s_adaptive_retry_acquire_token(
     struct adaptive_retry_token *token =
         aws_mem_calloc(retry_strategy->allocator, 1, sizeof(struct adaptive_retry_token));
 
-    token->original_user_data = user_data;
-    token->original_on_acquired = on_acquired;
+    token->phase = ADAPTIVE_RETRY_TOKEN_PHASE_ACQUIRING;
+    token->u.acquiring.on_acquired = on_acquired;
+    token->u.acquiring.user_data = user_data;
     token->base.retry_strategy = retry_strategy;
     token->base.allocator = retry_strategy->allocator;
     token->base.impl = token;
     token->bound_loop = aws_event_loop_group_get_next_loop(strategy->el_group);
     aws_atomic_init_int(&token->base.ref_count, 1u);
-    token->self_owned = true;
     aws_retry_strategy_acquire(retry_strategy);
 
     if (aws_retry_strategy_acquire_retry_token(
@@ -247,11 +264,11 @@ static void s_on_standard_retry_ready(struct aws_retry_token *token, int error_c
     struct adaptive_retry_token *impl = adaptive_retry_token->impl;
 
     if (!error_code) {
-        /* GetSendToken gate before the retry: fires original_on_ready (immediately, deferred, or fast-failed). */
+        /* GetSendToken gate before the retry: fires on_ready (immediately, deferred, or fast-failed). */
         s_apply_gate(impl);
     } else {
         /* Inner retry was cancelled/failed; propagate straight through without consulting the limiter. */
-        impl->original_on_ready(adaptive_retry_token, error_code, impl->original_user_data);
+        impl->u.retrying.on_ready(adaptive_retry_token, error_code, impl->u.retrying.user_data);
     }
 
     /* release the acquire we did before scheduling the retry on the inner strategy. */
@@ -266,6 +283,9 @@ static int s_adaptive_retry_schedule_retry(
 
     struct adaptive_retry_token *impl = token->impl;
     struct adaptive_strategy *strategy = token->retry_strategy->impl;
+
+    /* Retries are only possible once the caller owns the token. */
+    AWS_ASSERT(impl->phase == ADAPTIVE_RETRY_TOKEN_PHASE_RETRYING);
 
     /*
      * Bookkeeping (_UpdateClientSendingRate) runs whenever a response is RECEIVED from the service, before the
@@ -282,10 +302,10 @@ static int s_adaptive_retry_schedule_retry(
         s_rate_limiter_update(strategy, false /*is_throttling_error*/);
     }
 
-    impl->original_user_data = user_data;
-    impl->original_on_ready = retry_ready;
+    impl->u.retrying.on_ready = retry_ready;
+    impl->u.retrying.user_data = user_data;
 
-    /* acquire before scheduling to prevent clean up before the callback runs. */
+    /* acquire before scheduling to prevent clean up before the scheduled task runs. */
     aws_retry_token_acquire(&impl->base);
     if (aws_retry_strategy_schedule_retry(impl->standard_token, error_type, s_on_standard_retry_ready, token)) {
         /* release for the above acquire */
