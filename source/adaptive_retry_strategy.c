@@ -9,7 +9,9 @@
 
 #include <aws/io/private/rate_limiter.h>
 
+#include <aws/common/hash_table.h>
 #include <aws/common/mutex.h>
+#include <aws/common/string.h>
 #include <aws/common/task_scheduler.h>
 
 #include <inttypes.h>
@@ -27,8 +29,9 @@
  *     response grows the rate along the CUBIC curve: a success (record_success) and the retryable received
  *     errors SERVER_ERROR / CLIENT_ERROR (schedule_retry). TRANSIENT errors do not affect the rate limiter
  *
- * The rate limiter is a single-threaded state machine; this wrapper owns a mutex and takes it around every
- * limiter call so capacity is never observed < 0 across threads.
+ * Each partition_id gets its own rate limiter bucket (like standard's retry quota buckets), created disabled on first
+ * use, so a throttle on one partition does not pace sends to another. The rate limiter is a single-threaded state
+ * machine; each bucket's lock is taken around every limiter call so capacity is never observed < 0 across threads.
  *
  * The event loop used for deferral comes from the el_group the caller already supplies for the backoff layer
  * (config->standard_options.backoff_retry_options.el_group). No new config and no reach into standard's
@@ -38,19 +41,38 @@
 /* REQUEST_COST: every send costs exactly one token. */
 static const double s_adaptive_request_cost = 1.0;
 
+/* NULL or empty partition_id maps to this shared key. */
+static const struct aws_byte_cursor s_empty_partition_cur = AWS_BYTE_CUR_INIT_FROM_STRING_LITERAL("");
+
+/* One rate limiter per partition_id, so a throttle on one partition does not slow sends to another. */
+struct adaptive_retry_bucket {
+    struct aws_allocator *allocator;
+    struct aws_retry_strategy *owner;
+    struct aws_string *partition_id;
+    struct aws_byte_cursor partition_id_cur;
+    struct {
+        /* This partition's sending rate (token bucket + CUBIC); off until its first throttle. */
+        struct aws_rate_limiter_token_bucket limiter;
+        /* rate_limiter.c is single-threaded, so every limiter call takes this lock. */
+        struct aws_mutex partition_lock;
+    } synced_data;
+};
+
 struct adaptive_strategy {
     struct aws_retry_strategy base;
     struct aws_retry_strategy *standard_strategy;
     struct aws_event_loop_group *el_group;
     bool fast_fail_if_no_token;
     struct {
-        struct aws_rate_limiter_token_bucket limiter;
+        /* partition_id -> adaptive_retry_bucket; the lock guards the table only. */
+        struct aws_hash_table token_buckets;
         struct aws_mutex lock;
     } synced_data;
 };
 
 struct adaptive_retry_token {
     struct aws_retry_token base;
+    struct adaptive_retry_bucket *strategy_bucket;
     struct aws_retry_token *standard_token;
     struct aws_event_loop *bound_loop;
     struct aws_task gate_task;
@@ -75,19 +97,113 @@ struct adaptive_retry_token {
     } u;
 };
 
-/* Runs the GetSendToken gate under the limiter lock. Returns the number of ns the caller must wait (0 = now). */
-static uint64_t s_rate_limiter_acquire(struct adaptive_strategy *strategy) {
+static bool s_partition_id_equals_byte_cur(const void *seated_cur, const void *cur_ptr) {
+    return aws_byte_cursor_eq_ignore_case(seated_cur, cur_ptr);
+}
+
+static uint64_t s_hash_partition_id(const void *seated_partition_ptr) {
+    return aws_hash_byte_cursor_ptr_ignore_case(seated_partition_ptr);
+}
+
+/* Hash table destroy callback; also used when a new bucket fails to insert. */
+static void s_destroy_adaptive_retry_bucket(void *retry_bucket) {
+    struct adaptive_retry_bucket *bucket = retry_bucket;
+    AWS_LOGF_TRACE(
+        AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+        "id=%p: destroying rate limiter bucket for partition_id " PRInSTR,
+        (void *)bucket->owner,
+        AWS_BYTE_CURSOR_PRI(bucket->partition_id_cur));
+    aws_string_destroy(bucket->partition_id);
+    aws_mutex_clean_up(&bucket->synced_data.partition_lock);
+    aws_mem_release(bucket->allocator, bucket);
+}
+
+/* New bucket for partition_id; its limiter starts disabled until this partition's first throttle. */
+static struct adaptive_retry_bucket *s_adaptive_retry_bucket_new(
+    struct adaptive_strategy *strategy,
+    const struct aws_byte_cursor *partition_id) {
+
+    struct adaptive_retry_bucket *bucket =
+        aws_mem_calloc(strategy->base.allocator, 1, sizeof(struct adaptive_retry_bucket));
+    bucket->allocator = strategy->base.allocator;
+    bucket->owner = &strategy->base;
+    bucket->partition_id = aws_string_new_from_cursor(bucket->allocator, partition_id);
+    bucket->partition_id_cur = aws_byte_cursor_from_string(bucket->partition_id);
+    AWS_FATAL_ASSERT(!aws_mutex_init(&bucket->synced_data.partition_lock) && "mutex init failed");
+    aws_rate_limiter_token_bucket_init(&bucket->synced_data.limiter);
+    return bucket;
+}
+
+/* Finds the bucket for partition_id, creating it on first use. Returns NULL if the table insert fails. */
+static struct adaptive_retry_bucket *s_get_or_create_bucket(
+    struct adaptive_strategy *strategy,
+    const struct aws_byte_cursor *partition_id) {
+
+    const struct aws_byte_cursor *partition_id_ptr =
+        !partition_id || partition_id->len == 0 ? &s_empty_partition_cur : partition_id;
+
+    struct adaptive_retry_bucket *bucket = NULL;
+    struct aws_hash_element *element = NULL;
+
+    /* Table lock only; each bucket's own lock guards its limiter. */
     aws_mutex_lock(&strategy->synced_data.lock);
-    uint64_t wait_ns = aws_rate_limiter_token_bucket_acquire(&strategy->synced_data.limiter, s_adaptive_request_cost);
+    aws_hash_table_find(&strategy->synced_data.token_buckets, partition_id_ptr, &element);
+    if (element) {
+        /* Seen before: every token for this partition shares this one bucket. */
+        bucket = element->value;
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: reusing rate limiter bucket for partition_id " PRInSTR,
+            (void *)&strategy->base,
+            AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
+    } else {
+        /* First token for this partition. The key points into the bucket's own string, so it lives as long. */
+        bucket = s_adaptive_retry_bucket_new(strategy, partition_id_ptr);
+        if (aws_hash_table_put(&strategy->synced_data.token_buckets, &bucket->partition_id_cur, bucket, NULL)) {
+            s_destroy_adaptive_retry_bucket(bucket);
+            bucket = NULL;
+        } else {
+            AWS_LOGF_DEBUG(
+                AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+                "id=%p: created rate limiter bucket for partition_id " PRInSTR,
+                (void *)&strategy->base,
+                AWS_BYTE_CURSOR_PRI(*partition_id_ptr));
+        }
+    }
     aws_mutex_unlock(&strategy->synced_data.lock);
+
+    return bucket;
+}
+
+/* Runs the GetSendToken gate under the partition lock. Returns the number of ns the caller must wait (0 = now). */
+static uint64_t s_rate_limiter_acquire(struct adaptive_retry_bucket *bucket) {
+    aws_mutex_lock(&bucket->synced_data.partition_lock);
+    uint64_t wait_ns = aws_rate_limiter_token_bucket_acquire(&bucket->synced_data.limiter, s_adaptive_request_cost);
+    aws_mutex_unlock(&bucket->synced_data.partition_lock);
     return wait_ns;
 }
 
-/* Runs _UpdateClientSendingRate under the limiter lock. */
-static void s_rate_limiter_update(struct adaptive_strategy *strategy, bool is_throttling_error) {
-    aws_mutex_lock(&strategy->synced_data.lock);
-    aws_rate_limiter_token_bucket_update_sending_rate(&strategy->synced_data.limiter, is_throttling_error);
-    aws_mutex_unlock(&strategy->synced_data.lock);
+/* Runs _UpdateClientSendingRate under the partition lock: throttle lowers the rate, other responses raise it. */
+static void s_rate_limiter_update(struct adaptive_retry_bucket *bucket, bool is_throttling_error) {
+    aws_mutex_lock(&bucket->synced_data.partition_lock);
+    aws_rate_limiter_token_bucket_update_sending_rate(&bucket->synced_data.limiter, is_throttling_error);
+    if (is_throttling_error) {
+        AWS_LOGF_DEBUG(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: partition_id " PRInSTR " throttled; fill_rate lowered to %.2f req/s, limiter on",
+            (void *)bucket->owner,
+            AWS_BYTE_CURSOR_PRI(bucket->partition_id_cur),
+            bucket->synced_data.limiter.fill_rate);
+    } else {
+        AWS_LOGF_TRACE(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: partition_id " PRInSTR " response received; fill_rate now %.2f req/s, limiter %s",
+            (void *)bucket->owner,
+            AWS_BYTE_CURSOR_PRI(bucket->partition_id_cur),
+            bucket->synced_data.limiter.fill_rate,
+            bucket->synced_data.limiter.enabled ? "on" : "off");
+    }
+    aws_mutex_unlock(&bucket->synced_data.partition_lock);
 }
 
 /* Fires on_acquired while acquiring, otherwise on_ready. */
@@ -140,8 +256,9 @@ static void s_adaptive_gate_task(struct aws_task *task, void *arg, enum aws_task
 static void s_schedule_gate_task(struct adaptive_retry_token *token, uint64_t wait_ns) {
     AWS_LOGF_TRACE(
         AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
-        "id=%p: adaptive rate limiter pacing send by %" PRIu64 " ns",
+        "id=%p: partition_id " PRInSTR " has no token; pacing send by %" PRIu64 " ns",
         (void *)token->base.retry_strategy,
+        AWS_BYTE_CURSOR_PRI(token->strategy_bucket->partition_id_cur),
         wait_ns);
 
     aws_task_init(&token->gate_task, s_adaptive_gate_task, token, "aws_adaptive_retry_gate_task");
@@ -160,7 +277,8 @@ static void s_schedule_gate_task(struct adaptive_retry_token *token, uint64_t wa
 static void s_apply_gate(struct adaptive_retry_token *token) {
     struct adaptive_strategy *strategy = token->base.retry_strategy->impl;
 
-    uint64_t wait_ns = s_rate_limiter_acquire(strategy);
+    /* Take one token from this token's partition bucket; a limiter that is still off always grants. */
+    uint64_t wait_ns = s_rate_limiter_acquire(token->strategy_bucket);
 
     if (wait_ns == 0) {
         /* Granted and debited: proceed. */
@@ -172,8 +290,9 @@ static void s_apply_gate(struct adaptive_retry_token *token) {
     if (strategy->fast_fail_if_no_token) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
-            "id=%p: adaptive rate limiter has no token and fast-fail is set; denying send",
-            (void *)token->base.retry_strategy);
+            "id=%p: partition_id " PRInSTR " has no token and fast-fail is set; denying send",
+            (void *)token->base.retry_strategy,
+            AWS_BYTE_CURSOR_PRI(token->strategy_bucket->partition_id_cur));
         aws_raise_error(AWS_IO_RETRY_PERMISSION_DENIED);
         /* Nothing was debited. */
         s_fire_gate_callback(token, AWS_IO_RETRY_PERMISSION_DENIED);
@@ -189,6 +308,8 @@ static void s_adaptive_retry_destroy(struct aws_retry_strategy *retry_strategy) 
     struct adaptive_strategy *strategy = retry_strategy->impl;
     struct aws_event_loop_group *el_group = strategy->el_group;
     aws_retry_strategy_release(strategy->standard_strategy);
+    /* Frees every partition bucket through s_destroy_adaptive_retry_bucket. */
+    aws_hash_table_clean_up(&strategy->synced_data.token_buckets);
     aws_mutex_clean_up(&strategy->synced_data.lock);
     aws_mem_release(retry_strategy->allocator, strategy);
     aws_event_loop_group_release(el_group);
@@ -226,9 +347,22 @@ static int s_adaptive_retry_acquire_token(
 
     struct adaptive_strategy *strategy = retry_strategy->impl;
 
+    /* Find this partition's bucket, created on first use and shared by every later token for it. */
+    struct adaptive_retry_bucket *bucket = s_get_or_create_bucket(strategy, partition_id);
+    if (!bucket) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: adaptive strategy failed to create rate limiter bucket: %s",
+            (void *)retry_strategy,
+            aws_error_debug_str(aws_last_error()));
+        return AWS_OP_ERR;
+    }
+
     struct adaptive_retry_token *token =
         aws_mem_calloc(retry_strategy->allocator, 1, sizeof(struct adaptive_retry_token));
 
+    /* Every gate check and rate update for this token goes to this bucket. */
+    token->strategy_bucket = bucket;
     token->phase = ADAPTIVE_RETRY_TOKEN_PHASE_ACQUIRING;
     token->u.acquiring.on_acquired = on_acquired;
     token->u.acquiring.user_data = user_data;
@@ -282,7 +416,6 @@ static int s_adaptive_retry_schedule_retry(
     void *user_data) {
 
     struct adaptive_retry_token *impl = token->impl;
-    struct adaptive_strategy *strategy = token->retry_strategy->impl;
 
     /* Retries are only possible once the caller owns the token. */
     AWS_ASSERT(impl->phase == ADAPTIVE_RETRY_TOKEN_PHASE_RETRYING);
@@ -297,9 +430,9 @@ static int s_adaptive_retry_schedule_retry(
      * responses, so they grow the rate just like a success does. TRANSIENT_ERROR does not affect the rate limiter
      */
     if (error_type == AWS_RETRY_ERROR_TYPE_THROTTLING) {
-        s_rate_limiter_update(strategy, true /*is_throttling_error*/);
+        s_rate_limiter_update(impl->strategy_bucket, true /*is_throttling_error*/);
     } else if (error_type != AWS_RETRY_ERROR_TYPE_TRANSIENT) {
-        s_rate_limiter_update(strategy, false /*is_throttling_error*/);
+        s_rate_limiter_update(impl->strategy_bucket, false /*is_throttling_error*/);
     }
 
     impl->u.retrying.on_ready = retry_ready;
@@ -323,10 +456,9 @@ static int s_adaptive_retry_schedule_retry(
 
 static int s_adaptive_retry_record_success(struct aws_retry_token *token) {
     struct adaptive_retry_token *impl = token->impl;
-    struct adaptive_strategy *strategy = token->retry_strategy->impl;
 
     /* Bookkeeping: a successful response grows the allowed rate along the CUBIC curve (no-op while disabled). */
-    s_rate_limiter_update(strategy, false /*is_throttling_error*/);
+    s_rate_limiter_update(impl->strategy_bucket, false /*is_throttling_error*/);
 
     return aws_retry_token_record_success(impl->standard_token);
 }
@@ -375,10 +507,26 @@ struct aws_retry_strategy *aws_retry_strategy_new_adaptive(
         goto error;
     }
 
+    /* partition_id -> bucket, case-insensitive like standard's retry quota table. */
+    if (aws_hash_table_init(
+            &strategy->synced_data.token_buckets,
+            allocator,
+            16u,
+            s_hash_partition_id,
+            s_partition_id_equals_byte_cur,
+            NULL,
+            s_destroy_adaptive_retry_bucket)) {
+        AWS_LOGF_ERROR(
+            AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+            "id=%p: rate limiter bucket table creation failed: %s",
+            (void *)&strategy->base,
+            aws_error_debug_str(aws_last_error()));
+        goto error;
+    }
+
     strategy->el_group = aws_event_loop_group_acquire(config->standard_options.backoff_retry_options.el_group);
     strategy->fast_fail_if_no_token = config->fast_fail_if_no_token;
     AWS_FATAL_ASSERT(!aws_mutex_init(&strategy->synced_data.lock) && "mutex init failed");
-    aws_rate_limiter_token_bucket_init(&strategy->synced_data.limiter);
 
     strategy->base.allocator = allocator;
     strategy->base.vtable = &s_adaptive_retry_vtable;
