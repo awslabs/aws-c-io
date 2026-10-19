@@ -913,9 +913,8 @@ static void s_aws_tcp_client_test_context_on_data_callback(struct aws_byte_curso
 
     aws_byte_buf_append_dynamic(&context->sync.received_data, &data);
 
-    aws_mutex_unlock(&context->lock);
-
     aws_condition_variable_notify_all(&context->signal);
+    aws_mutex_unlock(&context->lock);
 }
 
 static void s_aws_tcp_client_test_context_on_destroyed_callback(void *user_data) {
@@ -925,9 +924,8 @@ static void s_aws_tcp_client_test_context_on_destroyed_callback(void *user_data)
 
     context->sync.destruction_completed = true;
 
-    aws_mutex_unlock(&context->lock);
-
     aws_condition_variable_notify_all(&context->signal);
+    aws_mutex_unlock(&context->lock);
 }
 
 static void aws_tcp_client_test_context_init(
