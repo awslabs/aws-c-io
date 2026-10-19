@@ -273,7 +273,7 @@ AWS_TEST_CASE_FIXTURE(
     &s_fixture_test_data);
 
 /* Transient errors are neutral to the limiter. */
-static int s_test_adaptive_retry_strategy_non_throttle_errors_neutral(struct aws_allocator *allocator, void *ctx) {
+static int s_test_adaptive_retry_strategy_non_throttle_errors_retry(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct adaptive_test_data *test_data = ctx;
 
