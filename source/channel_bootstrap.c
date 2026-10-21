@@ -1387,7 +1387,6 @@ enum incoming_callback_status_type {
 };
 
 struct server_channel_data {
-    struct aws_channel *channel;
     struct aws_socket *socket;
     struct server_connection_args *server_connection_args;
     enum incoming_callback_status_type incoming_callback_status;
@@ -1907,9 +1906,13 @@ void s_on_server_connection_result(
             goto error_cleanup;
         }
 
-        channel_data->channel = aws_channel_new(connection_args->bootstrap->allocator, &channel_args);
+        /*
+         * On success, the channel's event loop owns channel_data and may run the channel's whole lifetime, freeing
+         * channel_data, before aws_channel_new() returns on this thread. Do not touch channel_data after success.
+         */
+        struct aws_channel *channel = aws_channel_new(connection_args->bootstrap->allocator, &channel_args);
 
-        if (!channel_data->channel) {
+        if (!channel) {
             aws_mem_release(connection_args->bootstrap->allocator, (void *)channel_data);
             goto error_cleanup;
         }
