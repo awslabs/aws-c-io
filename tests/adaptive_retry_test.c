@@ -272,8 +272,8 @@ AWS_TEST_CASE_FIXTURE(
     s_adaptive_fixture_shutdown,
     &s_fixture_test_data);
 
-/* Transient / server / client errors are neutral to the limiter but still retry through the gate. */
-static int s_test_adaptive_retry_strategy_non_throttle_errors_neutral(struct aws_allocator *allocator, void *ctx) {
+/* Transient errors are neutral to the limiter. */
+static int s_test_adaptive_retry_strategy_non_throttle_errors_retry(struct aws_allocator *allocator, void *ctx) {
     (void)allocator;
     struct adaptive_test_data *test_data = ctx;
 
@@ -281,17 +281,17 @@ static int s_test_adaptive_retry_strategy_non_throttle_errors_neutral(struct aws
         .mutex = AWS_MUTEX_INIT,
         .cvar = AWS_CONDITION_VARIABLE_INIT,
     };
-    struct aws_byte_cursor partition = aws_byte_cursor_from_c_str("us-west-2:adaptive-neutral");
+    struct aws_byte_cursor partition = aws_byte_cursor_from_c_str("us-west-2:adaptive-non-throttle");
 
     ASSERT_SUCCESS(aws_mutex_lock(&retry_data.mutex));
     ASSERT_SUCCESS(s_acquire_token_blocking(test_data, &retry_data, &partition));
     ASSERT_NOT_NULL(retry_data.retry_token);
 
-    /* A transient error (bucket cost 10) retries without ever enabling the rate limiter. */
+    /* A transient error (bucket cost 10) retries; it never enables the rate limiter. */
     ASSERT_SUCCESS(s_schedule_retry_blocking(&retry_data, AWS_RETRY_ERROR_TYPE_TRANSIENT));
     ASSERT_UINT_EQUALS(AWS_ERROR_SUCCESS, retry_data.schedule_retry_error_code);
 
-    /* A server error (bucket cost 5) also retries, still neutral to the limiter. */
+    /* A server error (bucket cost 5) retries; it grows the rate like a success. */
     ASSERT_SUCCESS(s_schedule_retry_blocking(&retry_data, AWS_RETRY_ERROR_TYPE_SERVER_ERROR));
     ASSERT_UINT_EQUALS(AWS_ERROR_SUCCESS, retry_data.schedule_retry_error_code);
 
@@ -301,9 +301,9 @@ static int s_test_adaptive_retry_strategy_non_throttle_errors_neutral(struct aws
     return AWS_OP_SUCCESS;
 }
 AWS_TEST_CASE_FIXTURE(
-    test_adaptive_retry_strategy_non_throttle_errors_neutral,
+    test_adaptive_retry_strategy_non_throttle_errors_retry,
     s_adaptive_fixture_setup,
-    s_test_adaptive_retry_strategy_non_throttle_errors_neutral,
+    s_test_adaptive_retry_strategy_non_throttle_errors_retry,
     s_adaptive_fixture_shutdown,
     &s_fixture_test_data);
 
