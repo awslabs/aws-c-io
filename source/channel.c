@@ -171,7 +171,7 @@ static void s_on_channel_setup_complete(struct aws_task *task, void *arg, enum a
 
         setup_args->channel->msg_pool = message_pool;
         setup_args->channel->channel_state = AWS_CHANNEL_ACTIVE;
-        setup_args->on_setup_completed(setup_args->channel, AWS_OP_SUCCESS, setup_args->user_data);
+        setup_args->on_setup_completed(setup_args->channel, AWS_ERROR_SUCCESS, setup_args->user_data);
         aws_channel_release_hold(setup_args->channel);
         aws_mem_release(setup_args->alloc, setup_args);
         return;
@@ -189,7 +189,7 @@ cleanup_local_obj:
     aws_mem_release(setup_args->alloc, local_object);
 
 cleanup_setup_args:
-    setup_args->on_setup_completed(setup_args->channel, AWS_OP_ERR, setup_args->user_data);
+    setup_args->on_setup_completed(setup_args->channel, aws_last_error_or_unknown_error(), setup_args->user_data);
     aws_channel_release_hold(setup_args->channel);
     aws_mem_release(setup_args->alloc, setup_args);
 }

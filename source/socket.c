@@ -183,7 +183,7 @@ int aws_socket_get_bound_address(const struct aws_socket *socket, struct aws_soc
 }
 
 void aws_socket_endpoint_init_local_address_for_test(struct aws_socket_endpoint *endpoint) {
-    (void)endpoint;
+    AWS_ZERO_STRUCT(*endpoint);
     struct aws_uuid uuid;
     AWS_FATAL_ASSERT(aws_uuid_init(&uuid) == AWS_OP_SUCCESS);
     char uuid_str[AWS_UUID_STR_LEN] = {0};

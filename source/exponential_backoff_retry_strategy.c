@@ -187,6 +187,12 @@ static inline uint64_t s_random_in_range(uint64_t from, uint64_t to, struct expo
 typedef uint64_t(compute_backoff_fn)(struct exponential_backoff_retry_token *token);
 
 static uint64_t s_compute_no_jitter(struct exponential_backoff_retry_token *token) {
+    /**
+     * Shifting a unit64_t by >= 64 is a undefined behavior, so it is maxoff at 63.
+     * This does not cap the number of retries (max_retires can exceed 63); it only caps backoff growth.
+     * Past 63 retries the backoff saturates and is bound by maximum_backoff_ns, so further retries simply wait at the
+     * maximum backoff.
+     */
     uint64_t retry_count = aws_min_u64(aws_atomic_load_int(&token->current_retry_count), 63);
     uint64_t backoff_ns = aws_mul_u64_saturating((uint64_t)1 << retry_count, token->backoff_scale_factor_ns);
     return aws_min_u64(backoff_ns, token->maximum_backoff_ns);
@@ -334,8 +340,7 @@ struct aws_retry_strategy *aws_retry_strategy_new_exponential_backoff(
     AWS_PRECONDITION(config->jitter_mode <= AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED);
     AWS_PRECONDITION(config->max_retries);
 
-    if (config->max_retries > 63 || !config->el_group ||
-        config->jitter_mode > AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED) {
+    if (!config->el_group || config->jitter_mode > AWS_EXPONENTIAL_BACKOFF_JITTER_DECORRELATED) {
         aws_raise_error(AWS_ERROR_INVALID_ARGUMENT);
         return NULL;
     }

@@ -588,19 +588,19 @@ void aws_tls_ctx_options_set_extension_data(struct aws_tls_ctx_options *options,
 
 int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
-    const struct aws_byte_cursor *ca_file) {
+    const struct aws_byte_cursor *ca_pem_contents) {
 
     if (aws_tls_options_buf_is_set(&options->ca_file)) {
         AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: cannot override trust store multiple times");
         return aws_raise_error(AWS_ERROR_INVALID_STATE);
     }
 
-    if (aws_byte_buf_init_copy_from_cursor(&options->ca_file, options->allocator, *ca_file)) {
+    if (aws_byte_buf_init_copy_from_cursor(&options->ca_file, options->allocator, *ca_pem_contents)) {
         goto error;
     }
 
     if (aws_sanitize_pem(&options->ca_file, options->allocator)) {
-        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid CA file. File must contain PEM encoded data");
+        AWS_LOGF_ERROR(AWS_LS_IO_TLS, "static: Invalid CA buffer. Buffer must contain PEM encoded data");
         goto error;
     }
 

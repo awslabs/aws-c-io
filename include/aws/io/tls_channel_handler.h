@@ -201,6 +201,7 @@ struct aws_tls_ctx_options {
 
     /**
      * A PEM armored PKCS#7 collection of CAs you want to trust as a string.
+     * Despite the name, this holds the PEM contents in memory, not a file path.
      * Only use this if it's a CA not currently installed on your system.
      */
     struct aws_byte_buf ca_file;
@@ -723,12 +724,12 @@ AWS_IO_API void aws_tls_ctx_options_set_minimum_tls_version(
     enum aws_tls_versions minimum_tls_version);
 
 /**
- * Override the default trust store. ca_file is a buffer containing a PEM armored chain of trusted CA certificates.
- * ca_file is copied.
+ * Override the default trust store. ca_pem_contents is an in-memory buffer containing a PEM armored chain of trusted CA
+ * certificates (the contents of a PEM file, not a path to one). ca_pem_contents is copied.
  */
 AWS_IO_API int aws_tls_ctx_options_override_default_trust_store(
     struct aws_tls_ctx_options *options,
-    const struct aws_byte_cursor *ca_file);
+    const struct aws_byte_cursor *ca_pem_contents);
 
 /**
  * Override the default trust store. ca_path is a path to a directory on disk containing trusted certificates. This is
