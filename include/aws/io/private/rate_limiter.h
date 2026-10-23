@@ -21,10 +21,10 @@ AWS_PUSH_SANE_WARNING_LEVEL
  * is responsible for serializing access (the adaptive strategy wraps every call in its own mutex).
  *
  * All rates are expressed in requests-per-second as doubles. The bucket starts DISABLED; the
- * first throttling response seen by aws_adaptive_rate_limiter_update_sending_rate() flips
+ * first throttling response seen by aws_adaptive_rate_limiter_token_bucket_update_sending_rate() flips
  * the one-way enable latch. While disabled, acquire() is a no-op that returns 0 (send now).
  */
-struct aws_adaptive_rate_limiter {
+struct aws_adaptive_rate_limiter_token_bucket {
     /* One-way latch. false until the first throttle is observed */
     bool enabled;
     /* last_timestamp. */
@@ -60,12 +60,12 @@ AWS_EXTERN_C_BEGIN
 /**
  * Initializes the bucket into the disabled state. The current time seeds the measured-rate bucket origin.
  */
-AWS_IO_API void aws_adaptive_rate_limiter_init(struct aws_adaptive_rate_limiter *limiter);
+AWS_IO_API void aws_adaptive_rate_limiter_token_bucket_init(struct aws_adaptive_rate_limiter_token_bucket *limiter);
 
 /**
  * Resets the bucket back to its freshly-initialized (disabled) state.
  */
-AWS_IO_API void aws_adaptive_rate_limiter_reset(struct aws_adaptive_rate_limiter *limiter);
+AWS_IO_API void aws_adaptive_rate_limiter_token_bucket_reset(struct aws_adaptive_rate_limiter_token_bucket *limiter);
 
 /**
  * GetSendToken gate. Attempts to take `amount` tokens.
@@ -77,7 +77,9 @@ AWS_IO_API void aws_adaptive_rate_limiter_reset(struct aws_adaptive_rate_limiter
  * While the bucket is disabled this always returns 0 and takes nothing. In the real algorithm
  * `amount` is always REQUEST_COST (1); the parameter exists for genericity and testability.
  */
-AWS_IO_API uint64_t aws_adaptive_rate_limiter_acquire(struct aws_adaptive_rate_limiter *limiter, double amount);
+AWS_IO_API uint64_t aws_adaptive_rate_limiter_token_bucket_acquire(
+    struct aws_adaptive_rate_limiter_token_bucket *limiter,
+    double amount);
 
 /**
  * RequestBookkeeping -> _UpdateClientSendingRate. Feeds the controller one
@@ -85,8 +87,8 @@ AWS_IO_API uint64_t aws_adaptive_rate_limiter_acquire(struct aws_adaptive_rate_l
  * false grows it along the cubic curve. Transient-error handling (whether to call this at all
  * for a transient) is the caller's policy, decided in the adaptive strategy.
  */
-AWS_IO_API void aws_adaptive_rate_limiter_update_sending_rate(
-    struct aws_adaptive_rate_limiter *limiter,
+AWS_IO_API void aws_adaptive_rate_limiter_token_bucket_update_sending_rate(
+    struct aws_adaptive_rate_limiter_token_bucket *limiter,
     bool is_throttling_error);
 
 /*

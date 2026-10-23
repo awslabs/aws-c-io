@@ -26,7 +26,7 @@ static double s_ns_to_seconds(uint64_t now_ns) {
     return (double)now_ns / (double)AWS_TIMESTAMP_NANOS;
 }
 
-void aws_adaptive_rate_limiter_init(struct aws_adaptive_rate_limiter *limiter) {
+void aws_adaptive_rate_limiter_token_bucket_init(struct aws_adaptive_rate_limiter_token_bucket *limiter) {
     AWS_ZERO_STRUCT(*limiter);
     uint64_t now_ns = 0;
     if (aws_high_res_clock_get_ticks(&now_ns)) {
@@ -39,12 +39,12 @@ void aws_adaptive_rate_limiter_init(struct aws_adaptive_rate_limiter *limiter) {
     limiter->last_throttle_time = s_ns_to_seconds(now_ns);
 }
 
-void aws_adaptive_rate_limiter_reset(struct aws_adaptive_rate_limiter *limiter) {
-    aws_adaptive_rate_limiter_init(limiter);
+void aws_adaptive_rate_limiter_token_bucket_reset(struct aws_adaptive_rate_limiter_token_bucket *limiter) {
+    aws_adaptive_rate_limiter_token_bucket_init(limiter);
 }
 
 /* _TokenBucketRefill: credit tokens accrued since the last refill. */
-static void s_token_bucket_refill(struct aws_adaptive_rate_limiter *limiter) {
+static void s_token_bucket_refill(struct aws_adaptive_rate_limiter_token_bucket *limiter) {
     /* timestamp = time() */
     uint64_t now_ns = 0;
     if (aws_high_res_clock_get_ticks(&now_ns)) {
@@ -65,7 +65,7 @@ static void s_token_bucket_refill(struct aws_adaptive_rate_limiter *limiter) {
 }
 
 /* _TokenBucketUpdateRate: refill at the OLD rate, then set the new rate. */
-static void s_token_bucket_update_rate(struct aws_adaptive_rate_limiter *limiter, double new_rps) {
+static void s_token_bucket_update_rate(struct aws_adaptive_rate_limiter_token_bucket *limiter, double new_rps) {
 
     s_token_bucket_refill(limiter);
     limiter->fill_rate = aws_max_double(new_rps, AWS_RATE_LIMITER_MIN_FILL_RATE);
@@ -75,7 +75,7 @@ static void s_token_bucket_update_rate(struct aws_adaptive_rate_limiter *limiter
 }
 
 /* _UpdateMeasuredRate: exponentially smoothed rate in half-second buckets. */
-static void s_update_measured_rate(struct aws_adaptive_rate_limiter *limiter, uint64_t now_ns) {
+static void s_update_measured_rate(struct aws_adaptive_rate_limiter_token_bucket *limiter, uint64_t now_ns) {
     double t = s_ns_to_seconds(now_ns);
     double time_bucket = floor(t * 2.0) / 2.0;
     limiter->request_count += 1;
@@ -109,7 +109,9 @@ double aws_adaptive_rate_limiter_cubic_throttle(double rate_to_use) {
     return rate_to_use * AWS_RATE_LIMITER_BETA;
 }
 
-uint64_t aws_adaptive_rate_limiter_acquire(struct aws_adaptive_rate_limiter *limiter, double amount) {
+uint64_t aws_adaptive_rate_limiter_token_bucket_acquire(
+    struct aws_adaptive_rate_limiter_token_bucket *limiter,
+    double amount) {
 
     /* No-op until the first throttle enables the limiter. */
     if (!limiter->enabled) {
@@ -137,8 +139,8 @@ uint64_t aws_adaptive_rate_limiter_acquire(struct aws_adaptive_rate_limiter *lim
     return wait_ns;
 }
 
-void aws_adaptive_rate_limiter_update_sending_rate(
-    struct aws_adaptive_rate_limiter *limiter,
+void aws_adaptive_rate_limiter_token_bucket_update_sending_rate(
+    struct aws_adaptive_rate_limiter_token_bucket *limiter,
     bool is_throttling_error) {
 
     /* t = time(), shared by the measured-rate and CUBIC math below. */
