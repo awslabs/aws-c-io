@@ -21,18 +21,18 @@ static uint64_t s_seconds_to_ns(double seconds) {
 
 /* Enables the limiter with a throttle, then sets a known rate and an empty bucket. */
 static void s_enable_with_rate(
-    struct aws_adaptive_rate_limiter_token_bucket *limiter,
+    struct aws_client_retry_rate_limiter_token_bucket *limiter,
     double fill_rate,
     double max_capacity) {
-    aws_adaptive_rate_limiter_token_bucket_init(limiter);
-    aws_adaptive_rate_limiter_token_bucket_update_sending_rate(limiter, true /*is_throttling_error*/);
+    aws_client_retry_rate_limiter_token_bucket_init(limiter);
+    aws_client_retry_rate_limiter_token_bucket_update_sending_rate(limiter, true /*is_throttling_error*/);
     limiter->fill_rate = fill_rate;
     limiter->max_capacity = max_capacity;
     limiter->current_capacity = 0.0;
 }
 
 /* Simulates `seconds` passing by moving the last refill time back. */
-static void s_rewind_last_refill(struct aws_adaptive_rate_limiter_token_bucket *limiter, double seconds) {
+static void s_rewind_last_refill(struct aws_client_retry_rate_limiter_token_bucket *limiter, double seconds) {
     limiter->last_timestamp_ns -= s_seconds_to_ns(seconds);
 }
 
@@ -41,12 +41,12 @@ static int s_test_rate_limiter_starts_disabled(struct aws_allocator *allocator, 
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
-    aws_adaptive_rate_limiter_token_bucket_init(&limiter);
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
+    aws_client_retry_rate_limiter_token_bucket_init(&limiter);
 
     ASSERT_FALSE(limiter.enabled);
-    ASSERT_UINT_EQUALS(0, aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1.0));
-    ASSERT_UINT_EQUALS(0, aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1000.0));
+    ASSERT_UINT_EQUALS(0, aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1.0));
+    ASSERT_UINT_EQUALS(0, aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1000.0));
     ASSERT_TRUE(limiter.current_capacity == 0.0);
     ASSERT_FALSE(limiter.enabled);
 
@@ -60,14 +60,14 @@ static int s_test_rate_limiter_first_throttle_enables(struct aws_allocator *allo
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
-    aws_adaptive_rate_limiter_token_bucket_init(&limiter);
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
+    aws_client_retry_rate_limiter_token_bucket_init(&limiter);
 
-    aws_adaptive_rate_limiter_token_bucket_update_sending_rate(&limiter, false /*is_throttling_error*/);
-    aws_adaptive_rate_limiter_token_bucket_update_sending_rate(&limiter, false /*is_throttling_error*/);
+    aws_client_retry_rate_limiter_token_bucket_update_sending_rate(&limiter, false /*is_throttling_error*/);
+    aws_client_retry_rate_limiter_token_bucket_update_sending_rate(&limiter, false /*is_throttling_error*/);
     ASSERT_FALSE(limiter.enabled);
 
-    aws_adaptive_rate_limiter_token_bucket_update_sending_rate(&limiter, true /*is_throttling_error*/);
+    aws_client_retry_rate_limiter_token_bucket_update_sending_rate(&limiter, true /*is_throttling_error*/);
     ASSERT_TRUE(limiter.enabled);
     ASSERT_TRUE(limiter.fill_rate >= 0.5);
     ASSERT_TRUE(limiter.max_capacity >= 1.0);
@@ -82,12 +82,12 @@ static int s_test_rate_limiter_denied_acquire_no_debit(struct aws_allocator *all
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
     s_enable_with_rate(&limiter, 2.0, 10.0);
 
     for (int i = 0; i < 20; ++i) {
         double before = limiter.current_capacity;
-        ASSERT_TRUE(aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1.0) > 0);
+        ASSERT_TRUE(aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1.0) > 0);
         ASSERT_TRUE(limiter.current_capacity >= before);
     }
 
@@ -101,10 +101,10 @@ static int s_test_rate_limiter_wait_matches_fill_rate(struct aws_allocator *allo
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
     s_enable_with_rate(&limiter, 2.0, 10.0);
 
-    uint64_t wait_ns = aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1.0);
+    uint64_t wait_ns = aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1.0);
     ASSERT_TRUE(wait_ns <= s_seconds_to_ns(0.5));
     ASSERT_TRUE(wait_ns > s_seconds_to_ns(0.4));
 
@@ -118,11 +118,11 @@ static int s_test_rate_limiter_refill_caps_at_max(struct aws_allocator *allocato
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
     s_enable_with_rate(&limiter, 2.0, 3.0);
 
     s_rewind_last_refill(&limiter, 10.0);
-    ASSERT_UINT_EQUALS(0, aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1.0));
+    ASSERT_UINT_EQUALS(0, aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1.0));
     ASSERT_TRUE(limiter.current_capacity == 2.0);
 
     return AWS_OP_SUCCESS;
@@ -135,14 +135,14 @@ static int s_test_rate_limiter_grants_until_empty(struct aws_allocator *allocato
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
     s_enable_with_rate(&limiter, 2.0, 3.0);
     limiter.current_capacity = 3.0;
 
     for (int i = 0; i < 3; ++i) {
-        ASSERT_UINT_EQUALS(0, aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1.0));
+        ASSERT_UINT_EQUALS(0, aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1.0));
     }
-    ASSERT_TRUE(aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1.0) > 0);
+    ASSERT_TRUE(aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1.0) > 0);
 
     return AWS_OP_SUCCESS;
 }
@@ -154,15 +154,15 @@ static int s_test_rate_limiter_success_grows_rate(struct aws_allocator *allocato
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
     s_enable_with_rate(&limiter, 7.0, 7.0);
     limiter.last_max_rate = 10.0;
     /* Keep the cached time window in sync with the directly-set last_max_rate. */
-    limiter.time_window = aws_adaptive_rate_limiter_cubic_calculate_time_window(limiter.last_max_rate);
+    limiter.time_window = aws_client_retry_rate_limiter_cubic_calculate_time_window(limiter.last_max_rate);
     limiter.measured_tx_rate = 100.0;
     limiter.last_throttle_time -= 10.0;
 
-    aws_adaptive_rate_limiter_token_bucket_update_sending_rate(&limiter, false /*is_throttling_error*/);
+    aws_client_retry_rate_limiter_token_bucket_update_sending_rate(&limiter, false /*is_throttling_error*/);
     ASSERT_TRUE(limiter.fill_rate > 7.0);
 
     return AWS_OP_SUCCESS;
@@ -175,13 +175,13 @@ static int s_test_rate_limiter_reset_disables(struct aws_allocator *allocator, v
     (void)allocator;
     (void)ctx;
 
-    struct aws_adaptive_rate_limiter_token_bucket limiter;
+    struct aws_client_retry_rate_limiter_token_bucket limiter;
     s_enable_with_rate(&limiter, 2.0, 10.0);
     ASSERT_TRUE(limiter.enabled);
 
-    aws_adaptive_rate_limiter_token_bucket_reset(&limiter);
+    aws_client_retry_rate_limiter_token_bucket_reset(&limiter);
     ASSERT_FALSE(limiter.enabled);
-    ASSERT_UINT_EQUALS(0, aws_adaptive_rate_limiter_token_bucket_acquire(&limiter, 1000.0));
+    ASSERT_UINT_EQUALS(0, aws_client_retry_rate_limiter_token_bucket_acquire(&limiter, 1000.0));
 
     return AWS_OP_SUCCESS;
 }
@@ -193,7 +193,7 @@ static int s_test_rate_limiter_cubic_throttle_vector(struct aws_allocator *alloc
     (void)allocator;
     (void)ctx;
 
-    double out = aws_adaptive_rate_limiter_cubic_throttle(10.0);
+    double out = aws_client_retry_rate_limiter_cubic_throttle(10.0);
     ASSERT_TRUE(fabs(out - (10.0 * TEST_BETA)) < 1e-9);
 
     return AWS_OP_SUCCESS;
@@ -208,7 +208,7 @@ static int s_test_rate_limiter_cubic_time_window_vector(struct aws_allocator *al
 
     double last_max_rate = 10.0;
     double expected = cbrt((last_max_rate * (1.0 - TEST_BETA)) / TEST_SCALE_CONSTANT);
-    double out = aws_adaptive_rate_limiter_cubic_calculate_time_window(last_max_rate);
+    double out = aws_client_retry_rate_limiter_cubic_calculate_time_window(last_max_rate);
     ASSERT_TRUE(fabs(out - expected) < 1e-9);
 
     return AWS_OP_SUCCESS;
@@ -223,10 +223,11 @@ static int s_test_rate_limiter_cubic_success_vector(struct aws_allocator *alloca
 
     double last_max_rate = 10.0;
     double last_throttle_time = 5.0;
-    double time_window = aws_adaptive_rate_limiter_cubic_calculate_time_window(last_max_rate);
+    double time_window = aws_client_retry_rate_limiter_cubic_calculate_time_window(last_max_rate);
     /* At now = throttle_time + time_window, dt - time_window == 0, so the cube term vanishes. */
     double now_seconds = last_throttle_time + time_window;
-    double out = aws_adaptive_rate_limiter_cubic_success(last_max_rate, last_throttle_time, time_window, now_seconds);
+    double out =
+        aws_client_retry_rate_limiter_cubic_success(last_max_rate, last_throttle_time, time_window, now_seconds);
     ASSERT_TRUE(fabs(out - last_max_rate) < 1e-9);
 
     return AWS_OP_SUCCESS;
