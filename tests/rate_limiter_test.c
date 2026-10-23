@@ -154,6 +154,8 @@ static int s_test_rate_limiter_success_grows_rate(struct aws_allocator *allocato
     struct aws_rate_limiter_token_bucket limiter;
     s_enable_with_rate(&limiter, 7.0, 7.0);
     limiter.last_max_rate = 10.0;
+    /* Keep the cached time window in sync with the directly-set last_max_rate. */
+    limiter.time_window = aws_rate_limiter_cubic_calculate_time_window(limiter.last_max_rate);
     limiter.measured_tx_rate = 100.0;
     limiter.last_throttle_time -= 10.0;
 

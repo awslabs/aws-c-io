@@ -77,7 +77,7 @@ static void s_token_bucket_update_rate(struct aws_rate_limiter_token_bucket *lim
 /* _UpdateMeasuredRate: exponentially smoothed rate in half-second buckets. */
 static void s_update_measured_rate(struct aws_rate_limiter_token_bucket *limiter, uint64_t now_ns) {
     double t = s_ns_to_seconds(now_ns);
-    double time_bucket = floor(t * 2.0) / 2.0; // DOUBT: SHOULD we add floor to common
+    double time_bucket = floor(t * 2.0) / 2.0;
     limiter->request_count += 1;
 
     if (time_bucket > limiter->last_tx_rate_bucket) {
@@ -92,7 +92,6 @@ static void s_update_measured_rate(struct aws_rate_limiter_token_bucket *limiter
 double aws_rate_limiter_cubic_calculate_time_window(double last_max_rate) {
     /* cbrt((last_max_rate * (1 - BETA)) / SCALE_CONSTANT). */
     return cbrt((last_max_rate * (1.0 - AWS_RATE_LIMITER_BETA)) / AWS_RATE_LIMITER_SCALE_CONSTANT);
-    // DOUBT : SHOULD we add cbrt to common
 }
 
 double aws_rate_limiter_cubic_success(
@@ -159,14 +158,15 @@ void aws_rate_limiter_token_bucket_update_sending_rate(
             rate_to_use = aws_min_double(limiter->measured_tx_rate, limiter->fill_rate);
         }
         limiter->last_max_rate = rate_to_use;
+        /* Rate to use change when there is a throttling error so updating the time window*/
+        limiter->time_window = aws_rate_limiter_cubic_calculate_time_window(limiter->last_max_rate);
         limiter->last_throttle_time = s_ns_to_seconds(now_ns);
         calculated_rate = aws_rate_limiter_cubic_throttle(rate_to_use);
         /* Enable latch flips on the first throttle. */
         limiter->enabled = true;
     } else {
-        double time_window = aws_rate_limiter_cubic_calculate_time_window(limiter->last_max_rate);
         calculated_rate = aws_rate_limiter_cubic_success(
-            limiter->last_max_rate, limiter->last_throttle_time, time_window, s_ns_to_seconds(now_ns));
+            limiter->last_max_rate, limiter->last_throttle_time, limiter->time_window, s_ns_to_seconds(now_ns));
     }
 
     /* 2x measured-rate burst cap so the ceiling never outruns achievable throughput. */

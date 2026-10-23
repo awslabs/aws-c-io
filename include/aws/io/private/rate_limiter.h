@@ -48,6 +48,8 @@ struct aws_rate_limiter_token_bucket {
     double last_max_rate;
     /* Time (seconds) of the last throttle; the CUBIC curve's x-origin. */
     double last_throttle_time;
+    /* Cached time window, it is recomputed only when last_max_rate_changes. */
+    double time_window;
 
     /* Last refill time, nanoseconds. Valid only when last_timestamp_set is true. */
     uint64_t last_timestamp_ns;
