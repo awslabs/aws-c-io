@@ -1300,7 +1300,7 @@ static struct aws_channel_handler_vtable s_handler_vtable = {
 
 static int s_parse_protocol_preferences(
     struct aws_string *alpn_list_str,
-    const char protocol_output[4][128],
+    char protocol_output[4][128],
     size_t *protocol_count) {
     size_t max_count = *protocol_count;
     *protocol_count = 0;
@@ -1439,7 +1439,7 @@ static struct aws_channel_handler *s_new_tls_handler(
             (void *)&s2n_handler->handler,
             aws_string_c_str(options->alpn_list));
 
-        const char protocols_cpy[4][128] = {{0}};
+        char protocols_cpy[4][128] = {{0}};
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
         if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
@@ -1837,7 +1837,7 @@ static struct aws_tls_ctx *s_tls_ctx_new(
 
     if (options->alpn_list) {
         AWS_LOGF_DEBUG(AWS_LS_IO_TLS, "ctx: Setting ALPN list %s", aws_string_c_str(options->alpn_list));
-        const char protocols_cpy[4][128] = {{0}};
+        char protocols_cpy[4][128] = {{0}};
         AWS_ZERO_ARRAY(protocols_cpy);
         size_t protocols_size = 4;
         if (s_parse_protocol_preferences(options->alpn_list, protocols_cpy, &protocols_size)) {
