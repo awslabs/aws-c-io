@@ -1931,7 +1931,7 @@ error_cleanup:
 
     SETUP_SOCKET_SHUTDOWN_CALLBACKS(
         allocator,
-        socket,
+        new_socket,
         socket_shutdown_server_connection_result_args,
         s_socket_shutdown_server_connection_result_fn,
         connection_args,
