@@ -44,7 +44,7 @@ struct adaptive_strategy {
     struct aws_event_loop_group *el_group;
     bool fast_fail_if_no_token;
     struct {
-        struct aws_rate_limiter_token_bucket limiter;
+        struct aws_client_retry_rate_limiter_token_bucket limiter;
         struct aws_mutex lock;
     } synced_data;
 };
@@ -78,7 +78,8 @@ struct adaptive_retry_token {
 /* Runs the GetSendToken gate under the limiter lock. Returns the number of ns the caller must wait (0 = now). */
 static uint64_t s_rate_limiter_acquire(struct adaptive_strategy *strategy) {
     aws_mutex_lock(&strategy->synced_data.lock);
-    uint64_t wait_ns = aws_rate_limiter_token_bucket_acquire(&strategy->synced_data.limiter, s_adaptive_request_cost);
+    uint64_t wait_ns =
+        aws_client_retry_rate_limiter_token_bucket_acquire(&strategy->synced_data.limiter, s_adaptive_request_cost);
     aws_mutex_unlock(&strategy->synced_data.lock);
     return wait_ns;
 }
@@ -86,7 +87,7 @@ static uint64_t s_rate_limiter_acquire(struct adaptive_strategy *strategy) {
 /* Runs _UpdateClientSendingRate under the limiter lock. */
 static void s_rate_limiter_update(struct adaptive_strategy *strategy, bool is_throttling_error) {
     aws_mutex_lock(&strategy->synced_data.lock);
-    aws_rate_limiter_token_bucket_update_sending_rate(&strategy->synced_data.limiter, is_throttling_error);
+    aws_client_retry_rate_limiter_token_bucket_update_sending_rate(&strategy->synced_data.limiter, is_throttling_error);
     aws_mutex_unlock(&strategy->synced_data.lock);
 }
 
@@ -378,7 +379,7 @@ struct aws_retry_strategy *aws_retry_strategy_new_adaptive(
     strategy->el_group = aws_event_loop_group_acquire(config->standard_options.backoff_retry_options.el_group);
     strategy->fast_fail_if_no_token = config->fast_fail_if_no_token;
     AWS_FATAL_ASSERT(!aws_mutex_init(&strategy->synced_data.lock) && "mutex init failed");
-    aws_rate_limiter_token_bucket_init(&strategy->synced_data.limiter);
+    aws_client_retry_rate_limiter_token_bucket_init(&strategy->synced_data.limiter);
 
     strategy->base.allocator = allocator;
     strategy->base.vtable = &s_adaptive_retry_vtable;

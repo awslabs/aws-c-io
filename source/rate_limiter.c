@@ -26,7 +26,7 @@ static double s_ns_to_seconds(uint64_t now_ns) {
     return (double)now_ns / (double)AWS_TIMESTAMP_NANOS;
 }
 
-void aws_rate_limiter_token_bucket_init(struct aws_rate_limiter_token_bucket *limiter) {
+void aws_client_retry_rate_limiter_token_bucket_init(struct aws_client_retry_rate_limiter_token_bucket *limiter) {
     AWS_ZERO_STRUCT(*limiter);
     uint64_t now_ns = 0;
     if (aws_high_res_clock_get_ticks(&now_ns)) {
@@ -39,12 +39,12 @@ void aws_rate_limiter_token_bucket_init(struct aws_rate_limiter_token_bucket *li
     limiter->last_throttle_time = s_ns_to_seconds(now_ns);
 }
 
-void aws_rate_limiter_token_bucket_reset(struct aws_rate_limiter_token_bucket *limiter) {
-    aws_rate_limiter_token_bucket_init(limiter);
+void aws_client_retry_rate_limiter_token_bucket_reset(struct aws_client_retry_rate_limiter_token_bucket *limiter) {
+    aws_client_retry_rate_limiter_token_bucket_init(limiter);
 }
 
 /* _TokenBucketRefill: credit tokens accrued since the last refill. */
-static void s_token_bucket_refill(struct aws_rate_limiter_token_bucket *limiter) {
+static void s_token_bucket_refill(struct aws_client_retry_rate_limiter_token_bucket *limiter) {
     /* timestamp = time() */
     uint64_t now_ns = 0;
     if (aws_high_res_clock_get_ticks(&now_ns)) {
@@ -65,7 +65,7 @@ static void s_token_bucket_refill(struct aws_rate_limiter_token_bucket *limiter)
 }
 
 /* _TokenBucketUpdateRate: refill at the OLD rate, then set the new rate. */
-static void s_token_bucket_update_rate(struct aws_rate_limiter_token_bucket *limiter, double new_rps) {
+static void s_token_bucket_update_rate(struct aws_client_retry_rate_limiter_token_bucket *limiter, double new_rps) {
 
     s_token_bucket_refill(limiter);
     limiter->fill_rate = aws_max_double(new_rps, AWS_RATE_LIMITER_MIN_FILL_RATE);
@@ -75,7 +75,7 @@ static void s_token_bucket_update_rate(struct aws_rate_limiter_token_bucket *lim
 }
 
 /* _UpdateMeasuredRate: exponentially smoothed rate in half-second buckets. */
-static void s_update_measured_rate(struct aws_rate_limiter_token_bucket *limiter, uint64_t now_ns) {
+static void s_update_measured_rate(struct aws_client_retry_rate_limiter_token_bucket *limiter, uint64_t now_ns) {
     double t = s_ns_to_seconds(now_ns);
     double time_bucket = floor(t * 2.0) / 2.0;
     limiter->request_count += 1;
@@ -89,12 +89,12 @@ static void s_update_measured_rate(struct aws_rate_limiter_token_bucket *limiter
     }
 }
 
-double aws_rate_limiter_cubic_calculate_time_window(double last_max_rate) {
+double aws_client_retry_rate_limiter_cubic_calculate_time_window(double last_max_rate) {
     /* cbrt((last_max_rate * (1 - BETA)) / SCALE_CONSTANT). */
     return cbrt((last_max_rate * (1.0 - AWS_RATE_LIMITER_BETA)) / AWS_RATE_LIMITER_SCALE_CONSTANT);
 }
 
-double aws_rate_limiter_cubic_success(
+double aws_client_retry_rate_limiter_cubic_success(
     double last_max_rate,
     double last_throttle_time,
     double time_window,
@@ -105,11 +105,13 @@ double aws_rate_limiter_cubic_success(
     return AWS_RATE_LIMITER_SCALE_CONSTANT * (delta * delta * delta) + last_max_rate;
 }
 
-double aws_rate_limiter_cubic_throttle(double rate_to_use) {
+double aws_client_retry_rate_limiter_cubic_throttle(double rate_to_use) {
     return rate_to_use * AWS_RATE_LIMITER_BETA;
 }
 
-uint64_t aws_rate_limiter_token_bucket_acquire(struct aws_rate_limiter_token_bucket *limiter, double amount) {
+uint64_t aws_client_retry_rate_limiter_token_bucket_acquire(
+    struct aws_client_retry_rate_limiter_token_bucket *limiter,
+    double amount) {
 
     /* No-op until the first throttle enables the limiter. */
     if (!limiter->enabled) {
@@ -137,8 +139,8 @@ uint64_t aws_rate_limiter_token_bucket_acquire(struct aws_rate_limiter_token_buc
     return wait_ns;
 }
 
-void aws_rate_limiter_token_bucket_update_sending_rate(
-    struct aws_rate_limiter_token_bucket *limiter,
+void aws_client_retry_rate_limiter_token_bucket_update_sending_rate(
+    struct aws_client_retry_rate_limiter_token_bucket *limiter,
     bool is_throttling_error) {
 
     /* t = time(), shared by the measured-rate and CUBIC math below. */
@@ -159,13 +161,13 @@ void aws_rate_limiter_token_bucket_update_sending_rate(
         }
         limiter->last_max_rate = rate_to_use;
         /* Rate to use change when there is a throttling error so updating the time window*/
-        limiter->time_window = aws_rate_limiter_cubic_calculate_time_window(limiter->last_max_rate);
+        limiter->time_window = aws_client_retry_rate_limiter_cubic_calculate_time_window(limiter->last_max_rate);
         limiter->last_throttle_time = s_ns_to_seconds(now_ns);
-        calculated_rate = aws_rate_limiter_cubic_throttle(rate_to_use);
+        calculated_rate = aws_client_retry_rate_limiter_cubic_throttle(rate_to_use);
         /* Enable latch flips on the first throttle. */
         limiter->enabled = true;
     } else {
-        calculated_rate = aws_rate_limiter_cubic_success(
+        calculated_rate = aws_client_retry_rate_limiter_cubic_success(
             limiter->last_max_rate, limiter->last_throttle_time, limiter->time_window, s_ns_to_seconds(now_ns));
     }
 
