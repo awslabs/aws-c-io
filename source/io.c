@@ -423,7 +423,11 @@ static struct aws_log_subject_info s_io_log_subject_infos[] = {
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PKCS11, "pkcs11", "Subject for PKCS#11 library operations"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_PEM, "pem", "Subject for pem operations"),
     DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_SOCKS5, "socks5", "Subject for socks5 proxy connection establishment"),
-    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_L4_PROXY, "l4proxy", "Subject for l4 proxy connection establishment")};
+    DEFINE_LOG_SUBJECT_INFO(AWS_LS_IO_L4_PROXY, "l4proxy", "Subject for l4 proxy connection establishment"),
+    DEFINE_LOG_SUBJECT_INFO(
+        AWS_LS_IO_ADAPTIVE_RETRY_STRATEGY,
+        "adaptive-retry-strategy",
+        "Subject for adaptive retry strategy")};
 
 static struct aws_log_subject_info_list s_io_log_subject_list = {
     .subject_list = s_io_log_subject_infos,
