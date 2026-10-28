@@ -49,14 +49,6 @@
 #    define O_CLOEXEC 02000000
 #endif
 
-#ifdef USE_VSOCK
-#    if defined(__linux__) && defined(AF_VSOCK)
-#        include <linux/vm_sockets.h>
-#    else
-#        error "USE_VSOCK not supported on current platform"
-#    endif
-#endif
-
 /* other than CONNECTED_READ | CONNECTED_WRITE
  * a socket is only in one of these states at a time. */
 enum socket_state {
