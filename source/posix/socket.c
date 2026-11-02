@@ -1379,7 +1379,7 @@ static int s_socket_set_options(struct aws_socket *socket, const struct aws_sock
                 SOL_SOCKET,
                 SO_BINDTODEVICE,
                 options->network_interface_name,
-                network_interface_length)) {
+                (socklen_t)network_interface_length)) {
             int errno_value = errno; /* Always cache errno before potential side-effect */
             AWS_LOGF_ERROR(
                 AWS_LS_IO_SOCKET,
