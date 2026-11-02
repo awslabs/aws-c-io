@@ -245,10 +245,11 @@ jobs:
         python .\aws-c-io\build\deps\aws-c-common\scripts\appverifier_ctest.py --build_directory .\aws-c-io\build\aws-c-io
 
   macos:
-    runs-on: macos-14 # latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        runner: [macos-15, macos-latest]
         eventloop: ["kqueue", "dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
@@ -263,7 +264,11 @@ jobs:
         ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
 
   macos-x64:
-    runs-on: macos-14-large # latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15-large, macos-latest-large]
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -276,7 +281,11 @@ jobs:
         ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DCMAKE_NO_SYSTEM_FROM_IMPORTED=ON
 
   macos-x64-s2n:
-    runs-on: macos-14-large # latest
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15-large, macos-latest-large]
     env:
       AWS_CRT_USE_NON_FIPS_TLS_13: 1
     steps:
@@ -291,12 +300,13 @@ jobs:
         ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DCMAKE_NO_SYSTEM_FROM_IMPORTED=ON
 
   macos-s2n-debug:
-    runs-on: macos-14 # latest
+    runs-on: ${{ matrix.runner }}
     env:
       AWS_CRT_USE_NON_FIPS_TLS_13: 1
     strategy:
       fail-fast: false
       matrix:
+        runner: [macos-15, macos-latest]
         eventloop: ["kqueue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
@@ -311,10 +321,11 @@ jobs:
         ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=OFF --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}" --config Debug
 
   macos-debug:
-    runs-on: macos-14 # latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        runner: [macos-15, macos-latest]
         eventloop: ["kqueue", "dispatch_queue"]
         sanitizers: [",thread", ",address,undefined"]
     steps:
@@ -329,10 +340,11 @@ jobs:
         ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=${{ matrix.eventloop == 'dispatch_queue' && 'ON' || 'OFF' }} --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}" --config Debug
 
   macos-secitem:
-    runs-on: macos-14 # latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        runner: [macos-15, macos-latest]
         sanitizers: [",thread", ",address,undefined"]
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
@@ -346,10 +358,11 @@ jobs:
         ./builder build -p ${{ env.PACKAGE_NAME }} --cmake-extra=-DAWS_USE_SECITEM=ON --cmake-extra=-DAWS_USE_APPLE_NETWORK_FRAMEWORK=ON --cmake-extra=-DENABLE_SANITIZERS=ON --cmake-extra=-DSANITIZERS="${{ matrix.sanitizers }}"
 
   macos-secitem-no-keychain:
-    runs-on: macos-14 # latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
+        runner: [macos-15, macos-latest]
         sanitizers: [",thread", ",address,undefined"]
     steps:
     - uses: aws-actions/configure-aws-credentials@v4
