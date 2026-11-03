@@ -368,6 +368,12 @@ static struct aws_event_loop *s_default_new_event_loop(
 uint16_t aws_event_loop_group_static_default_loop_count(size_t processor_count) {
     uint16_t loop_count = s_default_loop_count(processor_count);
     if (loop_count > AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_EVENT_LOOP,
+            "The default event loop count for %zu processors is %u. Capping the static default event loop group at %u.",
+            processor_count,
+            (unsigned int)loop_count,
+            (unsigned int)AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS);
         return AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS;
     }
     return loop_count;
