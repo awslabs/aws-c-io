@@ -235,6 +235,11 @@ static void s_aws_event_loop_group_shutdown_async(void *user_data) {
     aws_thread_launch(&cleanup_thread, s_event_loop_destroy_async_thread_fn, el_group, &thread_options);
 }
 
+/* cut them in half to avoid using hyper threads for the IO work. */
+static uint16_t s_default_loop_count(size_t processor_count) {
+    return (uint16_t)(processor_count > 1 ? processor_count / 2 : processor_count);
+}
+
 struct aws_event_loop_group *aws_event_loop_group_new_internal(
     struct aws_allocator *allocator,
     const struct aws_event_loop_group_options *options,
@@ -276,9 +281,7 @@ struct aws_event_loop_group *aws_event_loop_group_new_internal(
 
     uint16_t el_count = options->loop_count;
     if (el_count == 0) {
-        uint16_t processor_count = (uint16_t)aws_system_info_processor_count();
-        /* cut them in half to avoid using hyper threads for the IO work. */
-        el_count = processor_count > 1 ? processor_count / 2 : processor_count;
+        el_count = s_default_loop_count(aws_system_info_processor_count());
     }
 
     if (aws_array_list_init_dynamic(&el_group->event_loops, allocator, el_count, sizeof(struct aws_event_loop *))) {
@@ -360,6 +363,32 @@ static struct aws_event_loop *s_default_new_event_loop(
 
     (void)user_data;
     return aws_event_loop_new(allocator, options);
+}
+
+uint16_t aws_event_loop_group_static_default_loop_count(size_t processor_count) {
+    uint16_t loop_count = s_default_loop_count(processor_count);
+    if (loop_count > AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS) {
+        AWS_LOGF_INFO(
+            AWS_LS_IO_EVENT_LOOP,
+            "The default event loop count for %zu processors is %u. Capping the static default event loop group at %u.",
+            processor_count,
+            (unsigned int)loop_count,
+            (unsigned int)AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS);
+        return AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS;
+    }
+    return loop_count;
+}
+
+struct aws_event_loop_group *aws_event_loop_group_new_static_default(
+    struct aws_allocator *allocator,
+    const struct aws_shutdown_callback_options *shutdown_options) {
+
+    struct aws_event_loop_group_options options = {
+        .loop_count = aws_event_loop_group_static_default_loop_count(aws_system_info_processor_count()),
+        .shutdown_options = shutdown_options,
+    };
+
+    return aws_event_loop_group_new(allocator, &options);
 }
 
 struct aws_event_loop_group *aws_event_loop_group_new(

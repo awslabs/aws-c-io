@@ -173,6 +173,24 @@ struct aws_event_loop_group *aws_event_loop_group_new(
     const struct aws_event_loop_group_options *options);
 
 /**
+ * Upper limit on the event loops of a group created by aws_event_loop_group_new_static_default().
+ * Each event loop holds file descriptors, so the limit keeps hosts with many CPUs under the default fd limit.
+ * Based on experiments, we never needed more than 64 event loops to reach the target throughput.
+ * The limit of 96 leaves headroom for high-performance instances.
+ */
+#define AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS 96
+
+/**
+ * Creation function for the event loop group an SDK shares as its static default.
+ * It has the default loop count of aws_event_loop_group_new() (half the processors),
+ * but never more than AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS.
+ */
+AWS_IO_API
+struct aws_event_loop_group *aws_event_loop_group_new_static_default(
+    struct aws_allocator *allocator,
+    const struct aws_shutdown_callback_options *shutdown_options);
+
+/**
  * Increments the reference count on the event loop group, allowing the caller to take a reference to it.
  *
  * Returns the same event loop group passed in.

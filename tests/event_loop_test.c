@@ -1166,6 +1166,41 @@ static int test_event_loop_group_setup_and_shutdown(struct aws_allocator *alloca
 
 AWS_TEST_CASE(event_loop_group_setup_and_shutdown, test_event_loop_group_setup_and_shutdown)
 
+static int s_test_event_loop_group_static_default_loop_count(struct aws_allocator *allocator, void *ctx) {
+    (void)allocator;
+    (void)ctx;
+
+    /* Half the processors, capped at AWS_EVENT_LOOP_GROUP_STATIC_DEFAULT_MAX_LOOPS. */
+    ASSERT_UINT_EQUALS(1, aws_event_loop_group_static_default_loop_count(1));
+    ASSERT_UINT_EQUALS(32, aws_event_loop_group_static_default_loop_count(64));
+    ASSERT_UINT_EQUALS(96, aws_event_loop_group_static_default_loop_count(192));
+    ASSERT_UINT_EQUALS(96, aws_event_loop_group_static_default_loop_count(194));
+    ASSERT_UINT_EQUALS(96, aws_event_loop_group_static_default_loop_count(448));
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_group_static_default_loop_count, s_test_event_loop_group_static_default_loop_count)
+
+static int s_test_event_loop_group_new_static_default(struct aws_allocator *allocator, void *ctx) {
+    (void)ctx;
+    aws_io_library_init(allocator);
+
+    struct aws_event_loop_group *event_loop_group = aws_event_loop_group_new_static_default(allocator, NULL);
+    ASSERT_NOT_NULL(event_loop_group);
+
+    size_t expected = aws_event_loop_group_static_default_loop_count(aws_system_info_processor_count());
+    ASSERT_UINT_EQUALS(expected, aws_event_loop_group_get_loop_count(event_loop_group));
+
+    aws_event_loop_group_release(event_loop_group);
+
+    aws_io_library_clean_up();
+
+    return AWS_OP_SUCCESS;
+}
+
+AWS_TEST_CASE(event_loop_group_new_static_default, s_test_event_loop_group_new_static_default)
+
 static int test_numa_aware_event_loop_group_setup_and_shutdown(struct aws_allocator *allocator, void *ctx) {
 
     (void)ctx;

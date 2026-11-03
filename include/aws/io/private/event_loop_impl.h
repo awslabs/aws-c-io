@@ -138,6 +138,14 @@ struct aws_event_loop_group {
 
 AWS_EXTERN_C_BEGIN
 
+/**
+ * @internal - Don't use outside of testing.
+ *
+ * Returns the loop count of aws_event_loop_group_new_static_default() for a given number of processors.
+ */
+AWS_IO_API
+uint16_t aws_event_loop_group_static_default_loop_count(size_t processor_count);
+
 #ifdef AWS_ENABLE_IO_COMPLETION_PORTS
 
 /**
