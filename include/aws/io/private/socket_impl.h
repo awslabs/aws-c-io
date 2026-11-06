@@ -9,6 +9,14 @@
 #include <aws/io/io.h>
 #include <aws/io/socket.h>
 
+#ifdef USE_VSOCK
+#    if defined(__linux__) && defined(AF_VSOCK)
+#        include <linux/vm_sockets.h>
+#    else
+#        error "USE_VSOCK not supported on current platform"
+#    endif
+#endif
+
 /* These are hacks for working around headers and functions we need for IO work but aren't directly includable or
    linkable. these are purposely not exported. These functions only get called internally. The awkward aws_ prefixes are
    just in case someone includes this header somewhere they were able to get these definitions included. */
