@@ -364,6 +364,11 @@ int aws_pem_objects_init_from_file_contents(
         aws_array_list_get_at_ptr(pem_objects, (void **)&pem_obj_ptr, i);
         struct aws_byte_cursor byte_cur = aws_byte_cursor_from_buf(&pem_obj_ptr->data);
 
+        if (byte_cur.len == 0) {
+            AWS_LOGF_ERROR(AWS_LS_IO_PEM, "PEM object contains no data.");
+            aws_raise_error(AWS_ERROR_PEM_MALFORMED);
+            goto on_error;
+        }
         size_t decoded_len = 0;
         if (aws_base64_compute_decoded_len(&byte_cur, &decoded_len)) {
             AWS_LOGF_ERROR(AWS_LS_IO_PEM, "Failed to get length for decoded base64 pem object.");
