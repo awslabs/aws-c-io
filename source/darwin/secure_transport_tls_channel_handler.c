@@ -589,6 +589,10 @@ static int s_process_write_message(
     if (status != noErr) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS, "id=%p: SSLWrite failed with OSStatus error code %d.", (void *)handler, (int)status);
+        if (status == errSSLClosedNoNotify) {
+            /* The connection was closed without a close_notify alert, e.g. s_write_cb failed to send to the socket. */
+            return aws_raise_error(AWS_IO_SOCKET_CLOSED);
+        }
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
 
