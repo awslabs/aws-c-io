@@ -6,8 +6,8 @@ on:
       - 'main'
 
 env:
-  BUILDER_VERSION: avoid-cmake-4.5
-  BUILDER_SOURCE: channels
+  BUILDER_VERSION: latest
+  BUILDER_SOURCE: releases
   BUILDER_HOST: https://d19elf31gohf1l.cloudfront.net
   PACKAGE_NAME: aws-c-io
   LINUX_BASE_IMAGE: ubuntu-18-x64
