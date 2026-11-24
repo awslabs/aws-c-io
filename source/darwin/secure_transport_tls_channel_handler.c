@@ -150,6 +150,8 @@ struct secure_transport_handler {
     bool read_task_pending;
     enum aws_tls_handler_read_state read_state;
     int delay_shutdown_error_code;
+    /* Error from the downstream send that failed in s_write_cb, since an OSStatus cannot carry it. */
+    int write_error_code;
 };
 
 static OSStatus s_read_cb(SSLConnectionRef conn, void *data, size_t *len) {
@@ -229,8 +231,9 @@ static OSStatus s_write_cb(SSLConnectionRef conn, const void *data, size_t *len)
         }
 
         if (aws_channel_slot_send_message(handler->parent_slot, message, AWS_CHANNEL_DIR_WRITE)) {
+            handler->write_error_code = aws_last_error();
             aws_mem_release(message->allocator, message);
-            return errSSLClosedNoNotify;
+            return errSecIO;
         }
     }
 
@@ -581,6 +584,7 @@ static int s_process_write_message(
     secure_transport_handler->latest_message_completion_user_data = message->user_data;
 
     size_t processed = 0;
+    secure_transport_handler->write_error_code = AWS_ERROR_SUCCESS;
     OSStatus status =
         SSLWrite(secure_transport_handler->ctx, message->message_data.buffer, message->message_data.len, &processed);
 
@@ -589,9 +593,9 @@ static int s_process_write_message(
     if (status != noErr) {
         AWS_LOGF_DEBUG(
             AWS_LS_IO_TLS, "id=%p: SSLWrite failed with OSStatus error code %d.", (void *)handler, (int)status);
-        if (status == errSSLClosedNoNotify) {
-            /* The connection was closed without a close_notify alert, e.g. s_write_cb failed to send to the socket. */
-            return aws_raise_error(AWS_IO_SOCKET_CLOSED);
+        if (secure_transport_handler->write_error_code != AWS_ERROR_SUCCESS) {
+            /* s_write_cb failed to send downstream; report that error rather than a generic TLS failure. */
+            return aws_raise_error(secure_transport_handler->write_error_code);
         }
         return aws_raise_error(AWS_IO_TLS_ERROR_WRITE_FAILURE);
     }
