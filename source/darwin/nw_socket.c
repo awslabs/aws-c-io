@@ -346,6 +346,8 @@ struct nw_socket {
         /* Used to avoid scheduling a duplicate read call. We would like to wait for the read call complete back before
          * we schedule another one. */
         bool read_scheduled;
+        /* Remember terminal connection failure even after the socket state advances from ERROR to CLOSING. */
+        bool connection_failed;
         /* The aws_nw_socket_state. aws_socket also has a field `state` which should be represent the same parameter,
          * however, as it is possible that the aws_socket object is released while nw_socket is still alive, we will use
          * nw_socket->state instead of socket->state to verify the socket_state.
@@ -1469,9 +1471,18 @@ static void s_process_connection_state_changed_task(struct aws_task *task, void 
                     connection_args->error);
                 s_process_connection_state_changed_ready(nw_socket, nw_connection);
             } break;
+            case nw_connection_state_failed: {
+                s_lock_socket_synced_data(nw_socket);
+                nw_socket->synced_data.connection_failed = true;
+                /* Close normally waits for sends before cancelling. A failed connection may need cancellation to
+                 * complete those sends, so break that wait cycle once close has been requested. */
+                if (nw_socket->synced_data.state & AWS_NW_SOCKET_STATE_CLOSING) {
+                    nw_connection_cancel(nw_connection);
+                }
+                s_unlock_socket_synced_data(nw_socket);
+            } break;
             case nw_connection_state_waiting:
             case nw_connection_state_preparing:
-            case nw_connection_state_failed:
             default:
                 break;
         }
@@ -2424,6 +2435,12 @@ static int s_socket_close_fn(struct aws_socket *socket) {
         // We would like to keep CONNECTED_READ so that we could continue processing any received data until the we
         // got the system callback indicates that the system connection has been closed in the receiving direction.
         s_set_socket_state(nw_socket, AWS_NW_SOCKET_STATE_CLOSING | AWS_NW_SOCKET_STATE_CONNECTED_READ);
+        /* If failure arrived before close, unblock pending sends now. Do this before releasing the initial write
+         * reference, which can start destroying the socket. Healthy connections still drain their writes first. */
+        if (nw_socket->synced_data.connection_failed && nw_socket->mode == NWSM_CONNECTION &&
+            nw_socket->os_handle.nw_connection != NULL) {
+            nw_connection_cancel(nw_socket->os_handle.nw_connection);
+        }
         s_socket_release_write_ref(nw_socket);
     }
     s_unlock_socket_synced_data(nw_socket);
